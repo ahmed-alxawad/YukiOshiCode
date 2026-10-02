@@ -5,6 +5,7 @@
  * project's sandbox-allowed tree?" logic. Centralising it here avoids drift
  * between the three sites and makes the policy easy to adjust in one place.
  */
+import path from "path"
 import type { InstanceContext } from "../project/instance-context"
 import type { ConfigSandboxV1 } from "@yukioshi/core/v1/config/sandbox"
 import * as Sandbox from "@yukioshi/sandbox"
@@ -42,7 +43,7 @@ export function sandboxProfile(
     GlobalPath.bin,
     GlobalPath.log,
     GlobalPath.repos,
-    ...(cfg?.writablePaths ?? []),
+    ...(cfg?.writablePaths ?? []).map((entry) => resolveWritablePath(entry, project[0])),
   ].map((value) => ({ path: value, kind: "subtree" as const }))
 
   return {
@@ -55,6 +56,13 @@ export function sandboxProfile(
     network: { mode: cfg?.network ?? "allow", allowedHosts: [] },
     environment: { deny: [], set: {} },
   }
+}
+
+/** Expands a leading `~` to the home directory and resolves relative entries against the project root. */
+function resolveWritablePath(entry: string, root: string) {
+  if (entry === "~") return GlobalPath.home
+  if (entry.startsWith("~/") || entry.startsWith("~\\")) return path.join(GlobalPath.home, entry.slice(2))
+  return path.resolve(root, entry)
 }
 
 /**

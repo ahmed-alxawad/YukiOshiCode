@@ -1,4 +1,5 @@
 import { describe, expect } from "bun:test"
+import os from "os"
 import path from "path"
 import * as fs from "fs/promises"
 import { PermissionV1 } from "@yukioshi/core/v1/permission"
@@ -9,6 +10,7 @@ import { LSP } from "@/lsp/lsp"
 import { FSUtil } from "@yukioshi/core/fs-util"
 import { Format } from "../../src/format"
 import { Agent } from "../../src/agent/agent"
+import { Config } from "../../src/config/config"
 import { EventV2Bridge } from "../../src/event-v2-bridge"
 import { Truncate } from "@/tool/truncate"
 import { TestInstance } from "../fixture/fixture"
@@ -17,7 +19,7 @@ import { testEffect } from "../lib/effect"
 
 const it = testEffect(
   LayerNode.compile(
-    LayerNode.group([LSP.node, FSUtil.node, Format.node, EventV2Bridge.node, Truncate.node, Agent.node]),
+    LayerNode.group([LSP.node, FSUtil.node, Format.node, EventV2Bridge.node, Truncate.node, Agent.node, Config.node]),
   ),
 )
 
@@ -545,5 +547,69 @@ EOF`
       // Result has ASCII quotes because that's what the patch specifies
       expect(yield* readText(target)).toBe(`He said "hi"\nsome${emDash}dash\nend\n`)
     }),
+  )
+})
+
+describe("tool.apply_patch sandbox enforcement", () => {
+  const exists = (filepath: string) =>
+    Effect.promise(() =>
+      fs.stat(filepath).then(
+        () => true,
+        () => false,
+      ),
+    )
+
+  it.instance(
+    "denies adding a file outside the workspace when sandbox.enabled is true",
+    () =>
+      Effect.gen(function* () {
+        const { ctx } = makeCtx()
+        const outside = path.join(os.tmpdir(), `apply-patch-sandbox-${Date.now()}.txt`)
+        const exit = yield* execute(
+          { patchText: `*** Begin Patch\n*** Add File: ${outside}\n+escaped\n*** End Patch` },
+          ctx,
+        ).pipe(Effect.exit)
+
+        if (Exit.isSuccess(exit)) throw new Error("expected sandbox to deny an outside-workspace patch")
+        expect(Cause.pretty(exit.cause)).toContain("Sandbox denied write access")
+        expect(yield* exists(outside)).toBe(false)
+      }),
+    { git: true, config: { sandbox: { enabled: true } } },
+  )
+
+  it.instance(
+    "denies moving a file outside the workspace when sandbox.enabled is true",
+    () =>
+      Effect.gen(function* () {
+        const test = yield* TestInstance
+        const { ctx } = makeCtx()
+        const source = path.join(test.directory, "move-me.txt")
+        yield* writeText(source, "content\n")
+        const outside = path.join(os.tmpdir(), `apply-patch-move-${Date.now()}.txt`)
+        const exit = yield* execute(
+          {
+            patchText: `*** Begin Patch\n*** Update File: ${source}\n*** Move to: ${outside}\n@@\n-content\n+moved\n*** End Patch`,
+          },
+          ctx,
+        ).pipe(Effect.exit)
+
+        if (Exit.isSuccess(exit)) throw new Error("expected sandbox to deny a move outside the workspace")
+        expect(yield* exists(outside)).toBe(false)
+        expect(yield* readText(source)).toBe("content\n")
+      }),
+    { git: true, config: { sandbox: { enabled: true } } },
+  )
+
+  it.instance(
+    "allows patching inside the workspace when sandbox.enabled is true",
+    () =>
+      Effect.gen(function* () {
+        const test = yield* TestInstance
+        const { ctx } = makeCtx()
+        const target = path.join(test.directory, "inside.txt")
+        yield* execute({ patchText: `*** Begin Patch\n*** Add File: ${target}\n+inside\n*** End Patch` }, ctx)
+        expect(yield* readText(target)).toBe("inside\n")
+      }),
+    { git: true, config: { sandbox: { enabled: true } } },
   )
 })

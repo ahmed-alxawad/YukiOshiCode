@@ -1,5 +1,5 @@
 import * as path from "path"
-import { Effect, Schema } from "effect"
+import { Effect, Option, Schema } from "effect"
 import * as Tool from "./tool"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { Watcher } from "@yukioshi/core/filesystem/watcher"
@@ -7,6 +7,8 @@ import { InstanceState } from "@/effect/instance-state"
 import { Patch } from "../patch"
 import { createTwoFilesPatch, diffLines } from "diff"
 import { assertExternalDirectoryEffect } from "./external-directory"
+import { assertSandboxWrite } from "./sandbox-profile"
+import { Config } from "@/config/config"
 import { trimDiff } from "./edit"
 import { LSP } from "@/lsp/lsp"
 import { FSUtil } from "@yukioshi/core/fs-util"
@@ -26,6 +28,7 @@ export const ApplyPatchTool = Tool.define(
     const afs = yield* FSUtil.Service
     const format = yield* Format.Service
     const events = yield* EventV2Bridge.Service
+    const config = yield* Effect.serviceOption(Config.Service)
 
     const run = Effect.fn("ApplyPatchTool.execute")(function* (
       params: Schema.Schema.Type<typeof Parameters>,
@@ -201,8 +204,14 @@ export const ApplyPatchTool = Tool.define(
         ...(change.movePath ? { movePath: change.movePath } : {}),
       }))
 
+      // Every path the patch touches, including move destinations, must pass the sandbox
+      // and the permission check - the same boundary the edit and write tools enforce.
+      const touched = fileChanges.flatMap((c) => (c.movePath ? [c.filePath, c.movePath] : [c.filePath]))
+      const cfg = Option.isSome(config) ? yield* config.value.get() : undefined
+      for (const target of touched) yield* assertSandboxWrite(target, instance, cfg?.sandbox)
+
       // Check permissions if needed
-      const relativePaths = fileChanges.map((c) => path.relative(instance.worktree, c.filePath).replaceAll("\\", "/"))
+      const relativePaths = touched.map((target) => path.relative(instance.worktree, target).replaceAll("\\", "/"))
       yield* ctx.ask({
         permission: "edit",
         patterns: relativePaths,
