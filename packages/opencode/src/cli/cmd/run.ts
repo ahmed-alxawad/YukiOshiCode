@@ -243,8 +243,8 @@ export const RunCommand = effectCmd({
       })
       .option("verify", {
         type: "boolean",
-        describe: "run verification checks on changed files (default: true)",
-        default: true,
+        describe: "run full project verification on changed files (off by default)",
+        default: false,
         hidden: true,
       })
       .option("skip-verify", {
@@ -1060,7 +1060,7 @@ export async function runMini(input: MiniCommandInput) {
     "dangerously-skip-permissions": false,
     dangerouslySkipPermissions: false,
     mode: undefined,
-    verify: true,
+    verify: false,
     "skip-verify": false,
     skipVerify: false,
     demo: input.demo ?? false,

@@ -1,6 +1,7 @@
 import { describe, expect } from "bun:test"
 import { LayerNode } from "@yukioshi/core/effect/layer-node"
 import { FSUtil } from "@yukioshi/core/fs-util"
+import { ProviderV2 } from "@yukioshi/core/provider"
 import { Effect, Layer } from "effect"
 import path from "path"
 import { resetDatabase } from "../fixture/db"
@@ -370,10 +371,16 @@ describe("provider HttpApi", () => {
 
       const providerBody = yield* providerResponse.json
       const configBody = yield* configResponse.json
+      const pickerProviderIDs = providerList(providerBody, "all").flatMap((item) =>
+        isRecord(item) && typeof item.id === "string" ? [item.id] : [],
+      )
       expect(hasProviderWithFetch(providerBody, "all")).toBe(false)
       expect(hasProviderWithFetch(configBody, "providers")).toBe(false)
       expect(hasNonZeroModelCost(providerBody, "all", "google")).toBe(true)
       expect(hasNonZeroModelCost(configBody, "providers", "google")).toBe(true)
+      expect(pickerProviderIDs.length).toBeGreaterThan(0)
+      expect(pickerProviderIDs.every(ProviderV2.isSelected)).toBe(true)
+      expect(pickerProviderIDs).not.toContain("mistral")
     }),
     { ...projectOptions, init: writeFunctionOptionsPlugin },
   )
@@ -397,5 +404,32 @@ describe("provider HttpApi", () => {
       expect(hasNonZeroModelCost(providerBody, "all", "google")).toBe(true)
     }),
     { ...projectOptions, init: writeProviderModelsMutationPlugin },
+  )
+
+  it.instance(
+    "keeps explicitly configured endpoints without exposing the full catalog",
+    Effect.gen(function* () {
+      const directory = (yield* TestInstance).directory
+      const response = yield* request("/provider", { headers: { "x-yukioshi-directory": directory } })
+
+      expect(response.status).toBe(200)
+      const body = yield* response.json
+      expect(providerByID(body, "all", "local")).toBeDefined()
+      expect(providerByID(body, "all", "mistral")).toBeUndefined()
+    }),
+    {
+      ...projectOptions,
+      config: {
+        ...projectOptions.config,
+        provider: {
+          local: {
+            name: "Local test provider",
+            npm: "@ai-sdk/openai-compatible",
+            api: "http://127.0.0.1:1234/v1",
+            models: { test: { name: "Local test model" } },
+          },
+        },
+      },
+    },
   )
 })

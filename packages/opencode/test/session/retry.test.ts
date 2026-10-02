@@ -33,18 +33,18 @@ function wrap(message: unknown): ReturnType<NamedError["toObject"]> {
 }
 
 describe("session.retry.delay", () => {
-  test("caps delay at 30 seconds when headers missing", () => {
+  test("caps delay at 10 seconds when headers are missing", () => {
     const error = apiError()
     const delays = Array.from({ length: 10 }, (_, index) => SessionRetry.delay(index + 1, error, 0))
-    expect(delays).toStrictEqual([2000, 4000, 8000, 16000, 30000, 30000, 30000, 30000, 30000, 30000])
+    expect(delays).toStrictEqual([2000, 4000, 8000, 10000, 10000, 10000, 10000, 10000, 10000, 10000])
   })
 
   test("adds jitter to exponential delays", () => {
     const error = apiError()
     expect(SessionRetry.delay(1, error, 0)).toBe(2000)
     expect(SessionRetry.delay(1, error, 1)).toBe(2500)
-    expect(SessionRetry.delay(4, error, 1)).toBe(20000)
-    expect(SessionRetry.delay(5, error, 1)).toBe(30000)
+    expect(SessionRetry.delay(4, error, 1)).toBe(10000)
+    expect(SessionRetry.delay(5, error, 1)).toBe(10000)
   })
 
   test("prefers retry-after-ms when shorter than exponential", () => {
@@ -52,17 +52,15 @@ describe("session.retry.delay", () => {
     expect(SessionRetry.delay(4, error)).toBe(1500)
   })
 
-  test("uses retry-after seconds when reasonable", () => {
+  test("caps retry-after seconds to the interactive maximum", () => {
     const error = apiError({ "retry-after": "30" })
-    expect(SessionRetry.delay(3, error)).toBe(30000)
+    expect(SessionRetry.delay(3, error)).toBe(SessionRetry.RETRY_MAX_DELAY)
   })
 
-  test("accepts http-date retry-after values", () => {
+  test("caps http-date retry-after values to the interactive maximum", () => {
     const date = new Date(Date.now() + 20000).toUTCString()
     const error = apiError({ "retry-after": date })
-    const d = SessionRetry.delay(1, error)
-    expect(d).toBeGreaterThanOrEqual(19000)
-    expect(d).toBeLessThanOrEqual(20000)
+    expect(SessionRetry.delay(1, error)).toBe(SessionRetry.RETRY_MAX_DELAY)
   })
 
   test("ignores invalid retry hints", () => {
@@ -81,12 +79,12 @@ describe("session.retry.delay", () => {
     expect(SessionRetry.delay(1, error, 0)).toBe(2000)
   })
 
-  test("uses retry-after values even when exceeding 10 minutes with headers", () => {
+  test("caps long provider retry hints instead of freezing an interactive turn", () => {
     const error = apiError({ "retry-after": "50" })
-    expect(SessionRetry.delay(1, error)).toBe(50000)
+    expect(SessionRetry.delay(1, error)).toBe(SessionRetry.RETRY_MAX_DELAY)
 
     const longError = apiError({ "retry-after-ms": "700000" })
-    expect(SessionRetry.delay(1, longError)).toBe(700000)
+    expect(SessionRetry.delay(1, longError)).toBe(SessionRetry.RETRY_MAX_DELAY)
   })
 
   test("caps oversized header delays to the runtime timer limit", () => {
@@ -124,7 +122,7 @@ describe("session.retry.delay", () => {
     }),
   )
 
-  it.instance("policy stops after five retries", () =>
+  it.instance("policy stops after two retries", () =>
     Effect.gen(function* () {
       const attempts: number[] = []
       const error = apiError({ "retry-after-ms": "0" })
@@ -143,7 +141,7 @@ describe("session.retry.delay", () => {
         Effect.ignore(step(error)),
       )
 
-      expect(attempts).toStrictEqual([1, 2, 3, 4, 5])
+      expect(attempts).toStrictEqual([1, 2])
     }),
   )
 })
@@ -156,7 +154,9 @@ describe("session.retry.retryable", () => {
 
   test("retries serialized overloaded provider codes", () => {
     const error = wrap(JSON.stringify({ code: "resource_exhausted" }))
-    expect(SessionRetry.retryable(error, retryProvider)).toEqual({ message: "Provider is overloaded" })
+    expect(SessionRetry.retryable(error, retryProvider)).toEqual({
+      message: SessionRetry.PROVIDER_OVERLOADED_MESSAGE,
+    })
   })
 
   test("retries serialized rate_limit messages", () => {
@@ -219,16 +219,23 @@ describe("session.retry.retryable", () => {
     "Please retry your request",
     "try your request again",
     "Please try again in a few minutes",
-    "The model is currently at capacity due to high demand",
-    "The service is temporarily at capacity",
     "upstream returned status 524",
   ])("retries matching API error text: %s", (message) => {
     expect(SessionRetry.retryable(wrap(message), retryProvider)).toEqual({ message })
   })
 
+  test.each(["The model is currently at capacity due to high demand", "The service is temporarily at capacity"])(
+    "normalizes overloaded-provider guidance: %s",
+    (message) => {
+      expect(SessionRetry.retryable(wrap(message), retryProvider)).toEqual({
+        message: SessionRetry.PROVIDER_OVERLOADED_MESSAGE,
+      })
+    },
+  )
+
   test("retries hyphenated service-unavailable errors", () => {
     expect(SessionRetry.retryable(wrap("service-unavailable"), retryProvider)).toEqual({
-      message: "Provider is overloaded",
+      message: SessionRetry.PROVIDER_OVERLOADED_MESSAGE,
     })
   })
 
@@ -306,7 +313,9 @@ describe("session.retry.retryable", () => {
       }).toObject(),
     )
 
-    expect(SessionRetry.retryable(error, retryProvider)).toEqual({ message: "Service unavailable" })
+    expect(SessionRetry.retryable(error, retryProvider)).toEqual({
+      message: SessionRetry.PROVIDER_OVERLOADED_MESSAGE,
+    })
   })
 
   test("does not retry 4xx errors when isRetryable is false", () => {

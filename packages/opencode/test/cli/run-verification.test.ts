@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs"
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect } from "effect"
@@ -246,14 +246,14 @@ describe("run verification post-turn", () => {
         // Have the LLM call the bash tool to create/modify a file, then reply
         yield* llm.push(
           reply().text("starting").tool("bash", {
-            command: "echo '{\"version\":\"1.0\"}' > app-config.json",
+            command: 'echo \'{"version":"1.0"}\' > app-config.json',
             description: "Create app-config.json",
           }),
         )
         yield* llm.text("Created app-config.json")
 
         const result = yield* opencode.run("create the config file", {
-          extraArgs: ["--dangerously-skip-permissions"],
+          extraArgs: ["--dangerously-skip-permissions", "--verify"],
           env: {
             HTTP_PROXY: "",
             http_proxy: "",

@@ -143,8 +143,8 @@ export const TuiThreadCommand = cmd({
       })
       .option("verify", {
         type: "boolean",
-        describe: "run verification checks on changed files after tasks (default true)",
-        default: true,
+        describe: "run full project verification after changed-file tasks (off by default)",
+        default: false,
         hidden: true,
       })
       .option("skip-verify", {

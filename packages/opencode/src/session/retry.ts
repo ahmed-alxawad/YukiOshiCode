@@ -1,7 +1,6 @@
 import type { NamedError } from "@yukioshi/core/util/error"
 import { SessionV1 } from "@yukioshi/core/v1/session"
 import { Cause, Clock, Duration, Effect, Schedule } from "effect"
-import { MessageV2 } from "./message-v2"
 import { iife } from "@/util/iife"
 import { isRecord } from "@/util/record"
 
@@ -26,9 +25,14 @@ export type Retryable = {
 export const RETRY_INITIAL_DELAY = 2000
 export const RETRY_BACKOFF_FACTOR = 2
 export const RETRY_JITTER_FACTOR = 0.25
-export const RETRY_MAX_DELAY_NO_HEADERS = 30_000 // 30 seconds
-export const RETRY_MAX_DELAY = 2_147_483_647 // max 32-bit signed integer for setTimeout
-export const RETRY_MAX_RETRIES = 5
+// Keep an interactive turn bounded. Provider Retry-After headers can legally
+// ask clients to wait for minutes or hours, which is useful for batch jobs but
+// makes the terminal appear frozen. Longer outages are surfaced immediately so
+// the user can choose another model or retry later.
+export const RETRY_MAX_DELAY = 10_000
+export const RETRY_MAX_DELAY_NO_HEADERS = RETRY_MAX_DELAY
+export const RETRY_MAX_RETRIES = 2
+export const PROVIDER_OVERLOADED_MESSAGE = "Provider is overloaded. Try another model or provider if this continues."
 
 const RETRYABLE_MESSAGE_PATTERNS = [
   /429|500|502|503|504|524/i,
@@ -38,6 +42,11 @@ const RETRYABLE_MESSAGE_PATTERNS = [
   /^timeout$|\b(?:request|response|connection|network|stream|read) (?:timeout|timed out|time out)\b/i,
   /try your request again|retry your request|resource exhausted|resource_exhausted/i,
   /\btry again (?:later|in\b)|\b(?:currently|temporarily) at capacity\b/i,
+]
+
+const OVERLOADED_MESSAGE_PATTERNS = [
+  /overloaded|service unavailable|service_unavailable|service-unavailable|resource exhausted|resource_exhausted/i,
+  /high demand|spikes? in demand|(?:currently|temporarily) at capacity/i,
 ]
 
 function cap(ms: number) {
@@ -142,20 +151,27 @@ export function retryable(error: Err, provider: string) {
         },
       }
     }
-    return { message: error.data.message.includes("Overloaded") ? "Provider is overloaded" : error.data.message }
+    if (matchesOverloadedMessage(error.data.message) || matchesOverloadedMessage(error.data.responseBody)) {
+      return { message: PROVIDER_OVERLOADED_MESSAGE }
+    }
+    return { message: error.data.message }
   }
 
   const message = isRecord(error.data) ? error.data.message : undefined
   if (typeof message !== "string") return undefined
   const lower = message.toLowerCase()
   if (lower.includes("too_many_requests")) return { message: "Too Many Requests" }
-  if (lower.includes("exhausted") || lower.includes("unavailable")) return { message: "Provider is overloaded" }
+  if (matchesOverloadedMessage(message)) return { message: PROVIDER_OVERLOADED_MESSAGE }
   if (matchesRetryableMessage(message)) return { message }
   return undefined
 }
 
 function matchesRetryableMessage(value: unknown) {
   return typeof value === "string" && RETRYABLE_MESSAGE_PATTERNS.some((pattern) => pattern.test(value))
+}
+
+function matchesOverloadedMessage(value: unknown) {
+  return typeof value === "string" && OVERLOADED_MESSAGE_PATTERNS.some((pattern) => pattern.test(value))
 }
 
 function str(value: unknown) {

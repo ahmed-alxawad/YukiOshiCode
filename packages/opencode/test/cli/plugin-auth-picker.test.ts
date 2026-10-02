@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test"
-import { resolvePluginAuth, resolvePluginProviders } from "../../src/cli/cmd/providers"
+import { providerLoginOptions, resolvePluginAuth, resolvePluginProviders } from "../../src/cli/cmd/providers"
 import type { Hooks } from "@yukioshi/plugin"
 
 function hookWithAuth(provider: string): Hooks {
@@ -160,5 +160,34 @@ describe("resolvePluginAuth", () => {
     const auth = resolvePluginAuth([first, second], "google")
     expect(auth?.methods).toHaveLength(1)
     expect(auth?.methods[0]).toBe(second.auth!.methods[0])
+  })
+})
+
+describe("providerLoginOptions", () => {
+  test("shows only the selected providers with product-facing names", () => {
+    const result = providerLoginOptions(
+      [
+        { id: "mistral", name: "Mistral" },
+        { id: "openai", name: "OpenAI" },
+        { id: "google", name: "Google" },
+        { id: "opencode", name: "OpenCode Zen" },
+      ],
+      [
+        { id: "portkey", name: "Portkey AI" },
+        { id: "agentrouter", name: "AgentRouter plugin" },
+      ],
+    )
+
+    expect(result.map((option) => [option.value, option.label])).toEqual([
+      ["openai", "Codex (OpenAI)"],
+      ["google", "Antigravity OAuth (Google)"],
+      ["agentrouter", "AgentRouter"],
+      ["opencode", "OpenCode"],
+    ])
+  })
+
+  test("does not synthesize an Other or custom-provider option", () => {
+    const result = providerLoginOptions([{ id: "anthropic", name: "Anthropic" }], [])
+    expect(result.some((option) => option.value === "other")).toBe(false)
   })
 })

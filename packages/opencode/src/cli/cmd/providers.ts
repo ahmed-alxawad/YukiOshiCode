@@ -5,6 +5,7 @@ import { CliError, effectCmd, fail } from "../effect-cmd"
 import { UI } from "../ui"
 import * as Prompt from "../effect/prompt"
 import { ModelsDev } from "@yukioshi/core/models-dev"
+import { ProviderV2 } from "@yukioshi/core/provider"
 
 import { map, pipe, sortBy, values } from "remeda"
 import path from "path"
@@ -243,6 +244,31 @@ export function resolvePluginAuth(hooks: Hooks[], provider: string): { methods: 
   return { methods: entries.map(({ method }) => method) }
 }
 
+const PROVIDER_PRIORITY = new Map(Object.keys(ProviderV2.SELECTED).map((id, index) => [id, index]))
+
+export function providerLoginOptions(
+  providers: Array<{ id: string; name?: string }>,
+  pluginProviders: Array<{ id: string; name: string }>,
+) {
+  const selected = [...providers, ...pluginProviders].filter((provider) => ProviderV2.isSelected(provider.id))
+  return pipe(
+    selected,
+    sortBy(
+      (provider) => PROVIDER_PRIORITY.get(provider.id) ?? Number.MAX_SAFE_INTEGER,
+      (provider) => ProviderV2.selectedName(provider.id) ?? provider.name ?? provider.id,
+    ),
+    map((provider) => ({
+      label: ProviderV2.selectedName(provider.id) ?? provider.name ?? provider.id,
+      value: provider.id,
+      hint: {
+        opencode: "free models",
+        openai: "ChatGPT Plus/Pro OAuth or API key",
+        google: "Antigravity OAuth or API key",
+      }[provider.id],
+    })),
+  )
+}
+
 export const ProvidersCommand = cmd({
   command: "providers",
   aliases: ["auth"],
@@ -375,15 +401,6 @@ export const ProvidersLoginCommand = effectCmd({
     }
     const hooks = yield* pluginSvc.list()
 
-    const priority: Record<string, number> = {
-      opencode: 0,
-      openai: 1,
-      "github-copilot": 2,
-      google: 3,
-      anthropic: 4,
-      openrouter: 5,
-      vercel: 6,
-    }
     const pluginProviders = resolvePluginProviders({
       hooks,
       existingProviders: providers,
@@ -391,29 +408,7 @@ export const ProvidersLoginCommand = effectCmd({
       enabled,
       providerNames: Object.fromEntries(Object.entries(config.provider ?? {}).map(([id, p]) => [id, p.name])),
     })
-    const options = [
-      ...pipe(
-        providers,
-        values(),
-        sortBy(
-          (x) => priority[x.id] ?? 99,
-          (x) => x.name ?? x.id,
-        ),
-        map((x) => ({
-          label: x.name,
-          value: x.id,
-          hint: {
-            opencode: "recommended",
-            openai: "ChatGPT Plus/Pro or API key",
-          }[x.id],
-        })),
-      ),
-      ...pluginProviders.map((x) => ({
-        label: x.name,
-        value: x.id,
-        hint: "plugin",
-      })),
-    ]
+    const options = providerLoginOptions(values(providers), pluginProviders)
 
     let provider: string
     if (args.provider) {
@@ -430,7 +425,7 @@ export const ProvidersLoginCommand = effectCmd({
         yield* Prompt.autocomplete({
           message: "Select provider",
           maxItems: 8,
-          options: [...options, { value: "other", label: "Other" }],
+          options,
         }),
       )
     }
@@ -439,25 +434,6 @@ export const ProvidersLoginCommand = effectCmd({
     if (plugin) {
       const handled = yield* handlePluginAuth(plugin, provider, args.method)
       if (handled) return
-    }
-
-    if (provider === "other") {
-      provider = (yield* promptValue(
-        yield* Prompt.text({
-          message: "Enter provider id",
-          validate: (x) => (x && x.match(/^[0-9a-z-]+$/) ? undefined : "a-z, 0-9 and hyphens only"),
-        }),
-      )).replace(/^@ai-sdk\//, "")
-
-      const customPlugin = resolvePluginAuth(hooks, provider)
-      if (customPlugin) {
-        const handled = yield* handlePluginAuth(customPlugin, provider, args.method)
-        if (handled) return
-      }
-
-      yield* Prompt.log.warn(
-        `This only stores a credential for ${provider} - configure it in yukioshi.json (legacy opencode.json is also supported); check the docs for examples.`,
-      )
     }
 
     if (provider === "amazon-bedrock") {

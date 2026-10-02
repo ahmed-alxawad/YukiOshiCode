@@ -1,20 +1,8 @@
 import { describe, expect, test } from "bun:test"
-import { normalizeCustomProviderID, providerOptions } from "../../../../src/component/dialog-provider"
+import { providerOptions } from "../../../../src/component/dialog-provider"
 
 describe("providerOptions", () => {
-  test("includes a synthetic Other option for custom providers", () => {
-    expect(providerOptions([{ id: "openai", name: "OpenAI" }]).at(-1)).toMatchObject({
-      title: "Other",
-      description: "Custom provider",
-      category: "Providers",
-    })
-  })
-
-  test("does not use Other as the generic provider category", () => {
-    expect(providerOptions([{ id: "mistral", name: "Mistral" }])[0]?.category).toBe("Providers")
-  })
-
-  test("keeps popular providers first and sorts the rest alphabetically", () => {
+  test("shows only YukiOshi's selected providers in the intended order", () => {
     expect(
       providerOptions([
         { id: "openai", name: "OpenAI" },
@@ -22,20 +10,36 @@ describe("providerOptions", () => {
         { id: "anthropic", name: "Anthropic" },
         { id: "mistral", name: "Mistral" },
         { id: "aws", name: "AWS Bedrock" },
+        { id: "google", name: "Google" },
+        { id: "xai", name: "xAI" },
+        { id: "nvidia", name: "Nvidia" },
       ]).map((option) => option.value),
-    ).toEqual(["openai", "anthropic", "aws", "mistral", "custom-z", "__opencode_custom_provider__"])
+    ).toEqual(["anthropic", "openai", "google", "xai", "nvidia"])
   })
 
-  test("does not collide with a configured provider named other", () => {
-    const values = providerOptions([{ id: "other", name: "Other Provider" }]).map((option) => option.value)
-    expect(new Set(values).size).toBe(values.length)
+  test("uses product-facing names for OAuth and model families", () => {
+    const options = providerOptions([
+      { id: "anthropic", name: "Anthropic" },
+      { id: "openai", name: "OpenAI" },
+      { id: "google", name: "Google" },
+      { id: "zai", name: "Z.AI" },
+    ])
+
+    expect(options.map((option) => option.title)).toEqual([
+      "Claude (Anthropic)",
+      "Codex (OpenAI)",
+      "Antigravity OAuth (Google)",
+      "Z.AI (GLM)",
+    ])
   })
 
-  test("normalizes and validates custom provider ids", () => {
-    expect(normalizeCustomProviderID("  custom-provider  ")).toBe("custom-provider")
-    expect(normalizeCustomProviderID("custom_provider")).toBe("custom_provider")
-    expect(normalizeCustomProviderID("@ai-sdk/custom-provider")).toBe("custom-provider")
-    expect(normalizeCustomProviderID("-custom-provider")).toBeUndefined()
-    expect(normalizeCustomProviderID("Custom Provider")).toBeUndefined()
+  test("does not add an Other or custom-provider option", () => {
+    const options = providerOptions([
+      { id: "openrouter", name: "OpenRouter" },
+      { id: "custom-provider", name: "Custom Provider" },
+    ])
+
+    expect(options.map((option) => option.value)).toEqual(["openrouter"])
+    expect(options.some((option) => option.title === "Other")).toBe(false)
   })
 })

@@ -72,6 +72,17 @@ describe("tui thread", () => {
     expect(args.mdns).toBe(false)
   })
 
+  test("keeps heavyweight post-turn verification opt-in", async () => {
+    const parse = (argv: string[]) =>
+      yargs([])
+        .command({ ...TuiThreadCommand, handler: () => {} })
+        .exitProcess(false)
+        .parse(argv)
+
+    expect((await parse([])).verify).toBe(false)
+    expect((await parse(["--verify"])).verify).toBe(true)
+  })
+
   cliIt.live("rejects mini-only options without --mini", ({ opencode }) =>
     Effect.gen(function* () {
       const result = yield* opencode.spawn(["--replay-limit", "10"])
