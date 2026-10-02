@@ -74,8 +74,9 @@ jobs:
     needs: build
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
+    # Draft releases are visible only to tokens with write access, so reading the draft needs it.
     permissions:
-      contents: read
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -83,7 +84,7 @@ jobs:
           - os: macos-14
             archive: yukioshi-darwin-arm64.zip
             binary: yukioshi
-          - os: macos-13
+          - os: macos-15-intel
             archive: yukioshi-darwin-x64.zip
             binary: yukioshi
           - os: windows-latest
