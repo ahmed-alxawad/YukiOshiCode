@@ -42,14 +42,14 @@ const providerLayer = LayerNode.compile(
 const it = testEffect(providerLayer)
 
 it.live(
-  "OmniRoute preset sends a request through the configured OpenAI-compatible endpoint",
+  "Google AI Studio preset sends a request through a configured OpenAI-compatible endpoint",
   provideTmpdirServer(
     ({ llm }) =>
       Effect.gen(function* () {
-        yield* llm.text("OmniRoute response")
+        yield* llm.text("Google AI Studio response")
 
         const provider = yield* Provider.Service
-        const model = yield* provider.getModel(ProviderV2.ID.make("omniroute"), ModelV2.ID.make("fake-model"))
+        const model = yield* provider.getModel(ProviderV2.ID.make("google-ai-studio"), ModelV2.ID.make("fake-model"))
         const language = yield* provider.getLanguage(model)
         const result = streamText({
           model: language,
@@ -57,17 +57,17 @@ it.live(
           maxRetries: 0,
         })
 
-        expect(yield* Effect.promise(() => result.text)).toBe("OmniRoute response")
+        expect(yield* Effect.promise(() => result.text)).toBe("Google AI Studio response")
         expect((yield* llm.inputs)[0]?.model).toBe("fake-model")
         expect((yield* llm.hits)[0]?.url.pathname).toBe("/v1/chat/completions")
       }),
     {
       config: (url) => ({
-        model: "omniroute/fake-model",
-        enabled_providers: ["omniroute"],
+        model: "google-ai-studio/fake-model",
+        enabled_providers: ["google-ai-studio"],
         provider: {
-          omniroute: {
-            name: "OmniRoute",
+          "google-ai-studio": {
+            name: "Google AI Studio",
             npm: "@ai-sdk/openai-compatible",
             models: {
               "fake-model": {
@@ -76,7 +76,7 @@ it.live(
               },
             },
             options: {
-              apiKey: "omniroute-test-key",
+              apiKey: "google-test-key",
               baseURL: url,
             },
           },
@@ -84,4 +84,50 @@ it.live(
       }),
     },
   ),
+  30_000,
+)
+
+it.live(
+  "native OpenCode provider round-trips a zero-cost model with public access",
+  provideTmpdirServer(
+    ({ llm }) =>
+      Effect.gen(function* () {
+        yield* llm.text("OpenCode free response")
+
+        const provider = yield* Provider.Service
+        const model = yield* provider.getModel(ProviderV2.ID.make("opencode"), ModelV2.ID.make("fake-free-model"))
+        const language = yield* provider.getLanguage(model)
+        const result = streamText({
+          model: language,
+          prompt: "Say hello",
+          maxRetries: 0,
+        })
+
+        expect(model.providerID).toBe(ProviderV2.ID.make("opencode"))
+        expect(model.cost.input).toBe(0)
+        expect(model.cost.output).toBe(0)
+        expect(yield* Effect.promise(() => result.text)).toBe("OpenCode free response")
+        expect((yield* llm.inputs)[0]?.model).toBe("fake-free-model")
+        expect((yield* llm.hits)[0]?.url.pathname).toBe("/v1/chat/completions")
+      }),
+    {
+      config: (url) => ({
+        model: "opencode/fake-free-model",
+        enabled_providers: ["opencode"],
+        provider: {
+          opencode: {
+            models: {
+              "fake-free-model": {
+                name: "Fake free model",
+                cost: { input: 0, output: 0 },
+                limit: { context: 128000, output: 4096 },
+              },
+            },
+            options: { baseURL: url },
+          },
+        },
+      }),
+    },
+  ),
+  30_000,
 )

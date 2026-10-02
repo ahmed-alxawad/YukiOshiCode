@@ -3,7 +3,7 @@ import { mkdir, unlink } from "fs/promises"
 import path from "path"
 import { LayerNode } from "@yukioshi/core/effect/layer-node"
 import { AppNodeBuilder } from "@yukioshi/core/effect/app-node-builder"
-import { Effect, Layer } from "effect"
+import { Effect } from "effect"
 import { ModelsDev } from "@yukioshi/core/models-dev"
 import { FSUtil } from "@yukioshi/core/fs-util"
 import { CrossSpawnSpawner } from "@yukioshi/core/cross-spawn-spawner"
@@ -1326,13 +1326,11 @@ it.instance(
   "OpenAI-compatible provider presets use ordered environment fallbacks",
   Effect.gen(function* () {
     yield* set("YUKIOSHI_API_KEY", "yuki-key")
-    yield* set("OMNIROUTE_API_KEY", "omniroute-key")
     yield* set("GOOGLE_API_KEY", "google-key")
     yield* set("GEMINI_API_KEY", "gemini-key")
     yield* set("OPENCODE_API_KEY", "zen-key")
 
     const providers = yield* list
-    expect(providers[ProviderV2.ID.make("omniroute")].options.apiKey).toBe("yuki-key")
     expect(providers[ProviderV2.ID.make("google-ai-studio")].options).toMatchObject({
       apiKey: "google-key",
       baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
@@ -1342,13 +1340,6 @@ it.instance(
       baseURL: "https://opencode.ai/zen/v1",
     })
   }),
-  {
-    config: {
-      provider: {
-        omniroute: { models: { "configured-model": { name: "Configured Model" } } },
-      },
-    },
-  },
 )
 
 it.instance("OpenCode Zen falls back to the YukiOshi key", () =>
@@ -1362,22 +1353,24 @@ it.instance("OpenCode Zen falls back to the YukiOshi key", () =>
 )
 
 it.instance(
-  "OmniRoute preset accepts a configured local base URL",
+  "OpenCode free models are exposed only by the native provider",
   Effect.gen(function* () {
+    yield* set("OPENCODE_API_KEY", "zen-key")
+    yield* set("YUKIOSHI_API_KEY", "shared-key")
+
     const providers = yield* list
-    expect(providers[ProviderV2.ID.make("omniroute")].options.baseURL).toBe("http://localhost:20128/v1")
-    expect(providers[ProviderV2.ID.make("omniroute")].models["local-model"]).toBeDefined()
+    const native = providers[ProviderV2.ID.make("opencode")]
+    const zen = providers[ProviderV2.ID.make("opencode-zen")]
+    const free = Object.values(native.models).find((model) => model.cost.input === 0 && model.cost.output === 0)
+    const paid = Object.values(zen.models).find((model) => model.cost.input > 0 || model.cost.output > 0)
+
+    expect(free).toBeDefined()
+    expect(paid).toBeDefined()
+    expect(native.name).toBe("OpenCode")
+    expect(zen.name).toBe("OpenCode Zen")
+    expect(zen.models[free!.id]).toBeUndefined()
+    expect(zen.models[paid!.id]).toBeDefined()
   }),
-  {
-    config: {
-      provider: {
-        omniroute: {
-          models: { "local-model": { name: "Local Model" } },
-          options: { baseURL: "http://localhost:20128/v1", apiKey: "local-key" },
-        },
-      },
-    },
-  },
 )
 
 it.instance(

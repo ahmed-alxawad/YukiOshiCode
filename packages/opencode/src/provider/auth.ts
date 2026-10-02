@@ -6,7 +6,8 @@ import { InstanceState } from "@/effect/instance-state"
 import { optional } from "@yukioshi/core/schema"
 import { Plugin } from "../plugin"
 import { ProviderV2 } from "@yukioshi/core/provider"
-import { Array as Arr, Effect, Layer, Record, Result, Context, Schema } from "effect"
+import { Effect, Layer, Context, Schema } from "effect"
+import { authMethodEntries, authProviders } from "./auth-methods"
 
 const When = Schema.Struct({
   key: Schema.String,
@@ -85,8 +86,6 @@ export class ValidationFailed extends Schema.TaggedErrorClass<ValidationFailed>(
 
 export type Error = Auth.AuthError | OauthMissing | OauthCodeMissing | OauthCallbackFailed | ValidationFailed
 
-type Hook = NonNullable<Hooks["auth"]>
-
 export interface Interface {
   readonly methods: () => Effect.Effect<Methods>
   readonly authorize: (
@@ -98,8 +97,8 @@ export interface Interface {
 }
 
 interface State {
-  hooks: Record<ProviderV2.ID, Hook>
-  pending: Map<ProviderV2.ID, AuthOAuthResult>
+  hooks: Hooks[]
+  pending: Map<string, AuthOAuthResult>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@yukioshi/ProviderAuth") {}
@@ -115,14 +114,8 @@ const layer: Layer.Layer<Service, never, Auth.Service | Plugin.Service> = Layer.
       Effect.fn("ProviderAuth.state")(function* () {
         const plugins = yield* plugin.list()
         return {
-          hooks: Record.fromEntries(
-            Arr.filterMap(plugins, (x) =>
-              x.auth?.provider !== undefined
-                ? Result.succeed([ProviderV2.ID.make(x.auth.provider), x.auth] as const)
-                : Result.failVoid,
-            ),
-          ),
-          pending: new Map<ProviderV2.ID, AuthOAuthResult>(),
+          hooks: plugins,
+          pending: new Map<string, AuthOAuthResult>(),
         }
       }),
     )
@@ -131,31 +124,34 @@ const layer: Layer.Layer<Service, never, Auth.Service | Plugin.Service> = Layer.
     const methods = Effect.fn("ProviderAuth.methods")(function* () {
       const hooks = (yield* InstanceState.get(state)).hooks
       return decode(
-        Record.map(hooks, (item) =>
-          item.methods.map((method) => ({
-            type: method.type,
-            label: method.label,
-            ...(method.prompts && {
-              prompts: method.prompts.map((prompt) => {
-                if (prompt.type === "select") {
+        Object.fromEntries(
+          authProviders(hooks).map((providerID) => [
+            providerID,
+            authMethodEntries(hooks, providerID).map(({ method }) => ({
+              type: method.type,
+              label: method.label,
+              ...(method.prompts && {
+                prompts: method.prompts.map((prompt) => {
+                  if (prompt.type === "select") {
+                    return {
+                      type: "select" as const,
+                      key: prompt.key,
+                      message: prompt.message,
+                      options: prompt.options,
+                      ...(prompt.when && { when: prompt.when }),
+                    }
+                  }
                   return {
-                    type: "select" as const,
+                    type: "text" as const,
                     key: prompt.key,
                     message: prompt.message,
-                    options: prompt.options,
+                    ...(prompt.placeholder && { placeholder: prompt.placeholder }),
                     ...(prompt.when && { when: prompt.when }),
                   }
-                }
-                return {
-                  type: "text" as const,
-                  key: prompt.key,
-                  message: prompt.message,
-                  ...(prompt.placeholder && { placeholder: prompt.placeholder }),
-                  ...(prompt.when && { when: prompt.when }),
-                }
+                }),
               }),
-            }),
-          })),
+            })),
+          ]),
         ),
       )
     })
@@ -164,8 +160,10 @@ const layer: Layer.Layer<Service, never, Auth.Service | Plugin.Service> = Layer.
       input: { providerID: ProviderV2.ID } & AuthorizeInput,
     ) {
       const { hooks, pending } = yield* InstanceState.get(state)
-      const method = hooks[input.providerID].methods[input.method]
-      if (method.type !== "oauth") return
+      const entry = authMethodEntries(hooks, input.providerID)[input.method]
+      if (!entry) return yield* new OauthMissing({ providerID: input.providerID })
+      const method = entry.method
+      if (method.type !== "oauth") return undefined
 
       if (method.prompts && input.inputs) {
         for (const prompt of method.prompts) {
@@ -177,7 +175,7 @@ const layer: Layer.Layer<Service, never, Auth.Service | Plugin.Service> = Layer.
       }
 
       const result = yield* Effect.promise(() => method.authorize(input.inputs))
-      pending.set(input.providerID, result)
+      pending.set(`${input.providerID}:${input.method}`, result)
       return {
         url: result.url,
         method: result.method,
@@ -189,7 +187,8 @@ const layer: Layer.Layer<Service, never, Auth.Service | Plugin.Service> = Layer.
       input: { providerID: ProviderV2.ID } & CallbackInput,
     ) {
       const pending = (yield* InstanceState.get(state)).pending
-      const match = pending.get(input.providerID)
+      const key = `${input.providerID}:${input.method}`
+      const match = pending.get(key)
       if (!match) return yield* new OauthMissing({ providerID: input.providerID })
       if (match.method === "code" && !input.code) {
         return yield* new OauthCodeMissing({ providerID: input.providerID })
@@ -199,9 +198,11 @@ const layer: Layer.Layer<Service, never, Auth.Service | Plugin.Service> = Layer.
         match.method === "code" ? match.callback(input.code!) : match.callback(),
       )
       if (!result || result.type !== "success") return yield* new OauthCallbackFailed({})
+      pending.delete(key)
+      const providerID = ProviderV2.ID.make(result.provider ?? input.providerID)
 
       if ("key" in result) {
-        yield* auth.set(input.providerID, {
+        yield* auth.set(providerID, {
           type: "api",
           key: result.key,
           ...(result.metadata ? { metadata: result.metadata } : {}),
@@ -210,7 +211,7 @@ const layer: Layer.Layer<Service, never, Auth.Service | Plugin.Service> = Layer.
 
       if ("refresh" in result) {
         const { type: _, provider: __, refresh, access, expires, ...extra } = result
-        yield* auth.set(input.providerID, {
+        yield* auth.set(providerID, {
           type: "oauth",
           access,
           refresh,
@@ -218,6 +219,7 @@ const layer: Layer.Layer<Service, never, Auth.Service | Plugin.Service> = Layer.
           ...extra,
         })
       }
+      return undefined
     })
 
     return Service.of({ methods, authorize, callback })

@@ -13,11 +13,12 @@ import { testEffect } from "../lib/effect"
 import { CrossSpawnSpawner } from "@yukioshi/core/cross-spawn-spawner"
 import { ProviderV2 } from "@yukioshi/core/provider"
 import { Config } from "@/config/config"
+import { Auth } from "@/auth"
 
 const it = testEffect(LayerNode.compile(LayerNode.group([CrossSpawnSpawner.node, FSUtil.node])))
 
 function providerAuthLayer(directory: string, plugins: string[]) {
-  return LayerNode.compile(ProviderAuth.node, [
+  return LayerNode.compile(LayerNode.group([ProviderAuth.node, Auth.node]), [
     [
       Config.node,
       TestConfig.layer({
@@ -39,7 +40,7 @@ function providerAuthLayer(directory: string, plugins: string[]) {
 
 describe("plugin.auth-override", () => {
   it.instance(
-    "user plugin overrides built-in github-copilot auth",
+    "user plugin auth methods augment the built-in provider methods",
     () =>
       Effect.gen(function* () {
         const tmp = yield* TestInstance
@@ -76,9 +77,100 @@ describe("plugin.auth-override", () => {
 
         const copilot = methods[ProviderV2.ID.make("github-copilot")]
         expect(copilot).toBeDefined()
-        expect(copilot.length).toBe(1)
-        expect(copilot[0].label).toBe("Test Override Auth")
-        expect(plainMethods[ProviderV2.ID.make("github-copilot")][0].label).not.toBe("Test Override Auth")
+        expect(copilot.map((method) => method.label)).toContain("Test Override Auth")
+        expect(copilot).toHaveLength(plainMethods[ProviderV2.ID.make("github-copilot")].length + 1)
+        expect(plainMethods[ProviderV2.ID.make("github-copilot")].map((method) => method.label)).not.toContain(
+          "Test Override Auth",
+        )
+      }),
+    { git: true },
+    30000,
+  )
+
+  it.instance(
+    "Antigravity OAuth registered by a Google plugin completes through ProviderAuth",
+    () =>
+      Effect.gen(function* () {
+        const tmp = yield* TestInstance
+        const fs = yield* FSUtil.Service
+        const apiPluginFile = path.join(tmp.directory, ".yukioshi", "plugin", "google-api-auth.ts")
+        const pluginFile = path.join(tmp.directory, ".yukioshi", "plugin", "antigravity-auth.ts")
+
+        yield* fs.writeWithDirs(
+          apiPluginFile,
+          [
+            "export default {",
+            '  id: "test.google-api-auth",',
+            "  server: async () => ({",
+            "    auth: {",
+            '      provider: "google",',
+            '      methods: [{ type: "api", label: "Google API key" }],',
+            "    },",
+            "  }),",
+            "}",
+            "",
+          ].join("\n"),
+        )
+
+        yield* fs.writeWithDirs(
+          pluginFile,
+          [
+            "export default {",
+            '  id: "test.antigravity-auth",',
+            "  server: async () => ({",
+            "    auth: {",
+            '      provider: "google",',
+            "      methods: [{",
+            '        type: "oauth",',
+            '        label: "OAuth with Google (Antigravity)",',
+            "        authorize: async () => ({",
+            '          url: "https://accounts.google.test/authorize",',
+            '          instructions: "Sign in with Google",',
+            '          method: "code",',
+            "          callback: async () => ({",
+            '            type: "success",',
+            '            provider: "google",',
+            '            refresh: "refresh-token",',
+            '            access: "access-token",',
+            "            expires: 4102444800000,",
+            "          }),",
+            "        }),",
+            "      }],",
+            "    },",
+            "  }),",
+            "}",
+            "",
+          ].join("\n"),
+        )
+
+        const apiPlugin = pathToFileURL(apiPluginFile).href
+        const plugin = pathToFileURL(pluginFile).href
+        const result = yield* Effect.gen(function* () {
+          const providerAuth = yield* ProviderAuth.Service
+          const auth = yield* Auth.Service
+          const methods = yield* providerAuth.methods()
+          const google = methods[ProviderV2.ID.make("google")]
+          const method = google.findIndex((item) => item.label === "OAuth with Google (Antigravity)")
+
+          expect(google.map((item) => item.label)).toContain("Google API key")
+          expect(method).toBeGreaterThan(0)
+          expect(
+            yield* providerAuth.authorize({ providerID: ProviderV2.ID.make("google"), method, inputs: {} }),
+          ).toEqual({
+            url: "https://accounts.google.test/authorize",
+            instructions: "Sign in with Google",
+            method: "code",
+          })
+
+          yield* providerAuth.callback({ providerID: ProviderV2.ID.make("google"), method, code: "oauth-code" })
+          return yield* auth.get("google")
+        }).pipe(Effect.provide(providerAuthLayer(tmp.directory, [apiPlugin, plugin])))
+
+        expect(result).toMatchObject({
+          type: "oauth",
+          refresh: "refresh-token",
+          access: "access-token",
+        })
       }),
     { git: true },
     30000,

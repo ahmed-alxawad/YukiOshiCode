@@ -60,7 +60,7 @@ YukiOshi Code (repo)
     │                                  Stop, Notification
     │
     ├── patched in from main
-    │   └── multi-provider model gateway: OmniRoute / OpenRouter / NVIDIA NIM /
+    │   └── multi-provider model gateway: OpenRouter / NVIDIA NIM /
     │       Google AI Studio / OpenCode Zen / custom OpenAI-compatible  ← Done
     │
     ├── investigated (no port)

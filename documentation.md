@@ -13,7 +13,7 @@ This repository currently holds **two separate implementations** of YukiOshi Cod
 A Node.js-built-ins-only coding agent (no runtime dependencies). Ships today at version 0.2.0 (preview).
 
 - Works like Claude Code: interactive session, slash commands, `@` file mentions, `!` shell commands, `#` memory notes, mode switching, `-p` print mode, `--continue`/`--resume`.
-- Model providers: OmniRoute (default, bring-your-own OpenAI-compatible URL), OpenRouter, NVIDIA NIM, Google AI Studio, OpenCode Zen, or any OpenAI-compatible endpoint (LM Studio, Ollama, vLLM, LiteLLM). One provider at a time, switchable.
+- Model providers: OpenRouter, NVIDIA NIM, Google AI Studio, OpenCode Zen, or any OpenAI-compatible endpoint (LM Studio, Ollama, vLLM, LiteLLM). One provider at a time, switchable.
 - Skills: Claude-compatible `SKILL.md` format, 26 built in.
 - Hooks: PreToolUse, PostToolUse, UserPromptSubmit, SessionStart, Stop, Notification — Claude Code compatible, already fully implemented and shipped.
 - Permission modes: Manual, Auto, Auto-All, Plan (plus Claude Code's names as aliases).
@@ -26,7 +26,7 @@ A fork of the upstream `opencode` project (Bun workspaces, Effect-TS throughout)
 
 1. Fork opencode. **Done.**
 2. Port the valuable features from Kilo Code into the fork (Kilo is feature-rich but slow). **Done**: OS-level sandbox, cross-session memory (`memory_recall`/`memory_save`), parallel/worktree-isolated subagents (`task_parallel`), semantic code search/indexing (`code_search`), and all six Claude-Code-compatible hook events.
-3. Patch in `main`'s own distinguishing features that opencode-foundation still lacks: the multi-provider model gateway (OmniRoute/OpenRouter/NVIDIA NIM/Google AI Studio/OpenCode Zen/custom). **Done.**
+3. Patch in `main`'s own distinguishing features that opencode-foundation still lacks: the multi-provider model gateway (OpenRouter/NVIDIA NIM/Google AI Studio/OpenCode Zen/custom). **Done.**
 4. Investigate and port relevant pieces of Kimi Code (`MoonshotAI/kimi-code`, MIT-licensed). **Done: investigated — Moonshot/Kimi works out of the box with zero code changes (models.dev already catalogs it; opencode's compaction and truncation already match Kimi Code's long-context mechanisms). Nothing ported; see `NOTICE.md`.**
 5. Rename the entire fork from the upstream executable/package/env branding to `yukioshi`, `@yukioshi/*`, and `YUKIOSHI_*`. **Done.** New configuration can use `yukioshi.json` and `.yukioshi/`; legacy `opencode.json` and `.opencode/` remain recognized for backward compatibility. Third-party package names, provider identifiers, and upstream attribution remain where required.
 

@@ -172,22 +172,22 @@ function selectBedrockMantleLanguageModel(sdk: BundledSDK, modelID: string) {
 }
 
 const COMPATIBLE_PRESETS = {
-  omniroute: {
-    name: "OmniRoute",
-    env: ["YUKIOSHI_API_KEY", "OMNIROUTE_API_KEY"],
-    baseURL: undefined,
-  },
   "google-ai-studio": {
     name: "Google AI Studio",
     env: ["GOOGLE_API_KEY", "GEMINI_API_KEY", "YUKIOSHI_API_KEY"],
     baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
     source: "google",
+    paidOnly: false,
   },
   "opencode-zen": {
     name: "OpenCode Zen",
     env: ["OPENCODE_API_KEY", "YUKIOSHI_API_KEY"],
     baseURL: "https://opencode.ai/zen/v1",
     source: "opencode",
+    // OpenCode's public/free models belong to the native `opencode` provider.
+    // Duplicating them under this API-key preset routes them through the wrong
+    // provider identity and the Console service rejects the request.
+    paidOnly: true,
   },
 } as const
 
@@ -217,18 +217,20 @@ function addCompatiblePreset(
   const providerID = ProviderV2.ID.make(presetID)
 
   const models = Object.fromEntries(
-    Object.entries(source?.models ?? {}).map(([modelID, model]) => [
-      modelID,
-      {
-        ...model,
-        providerID,
-        api: {
-          ...model.api,
-          npm: "@ai-sdk/openai-compatible",
-          url: preset.baseURL ?? model.api.url,
+    Object.entries(source?.models ?? {})
+      .filter(([, model]) => !preset.paidOnly || model.cost.input > 0 || model.cost.output > 0)
+      .map(([modelID, model]) => [
+        modelID,
+        {
+          ...model,
+          providerID,
+          api: {
+            ...model.api,
+            npm: "@ai-sdk/openai-compatible",
+            url: preset.baseURL ?? model.api.url,
+          },
         },
-      },
-    ]),
+      ]),
   )
 
   const existing = catalog[providerID]
@@ -260,19 +262,16 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
           },
         },
       }),
-    omniroute: compatiblePresetLoader(dep, COMPATIBLE_PRESETS.omniroute),
     "google-ai-studio": compatiblePresetLoader(dep, COMPATIBLE_PRESETS["google-ai-studio"]),
     "opencode-zen": compatiblePresetLoader(dep, COMPATIBLE_PRESETS["opencode-zen"]),
     opencode: Effect.fnUntraced(function* (input: Info) {
       const env = yield* dep.env()
+      const cfg = yield* dep.config()
       const hasKey = iife(() => {
         if (input.env.some((item) => env[item])) return true
         return false
       })
-      const ok =
-        hasKey ||
-        Boolean(yield* dep.auth(input.id)) ||
-        Boolean((yield* dep.config()).provider?.["opencode"]?.options?.apiKey)
+      const ok = hasKey || Boolean(yield* dep.auth(input.id)) || Boolean(cfg.provider?.["opencode"]?.options?.apiKey)
 
       if (!ok) {
         for (const [key, value] of Object.entries(input.models)) {
@@ -1484,9 +1483,11 @@ const layer = Layer.effect(
         const cfg = yield* config.get()
         const modelsDev = yield* modelsDevSvc.get()
         const catalog = mapValues(modelsDev, fromModelsDevProvider)
-        addCompatiblePreset(catalog, "omniroute")
         addCompatiblePreset(catalog, "google-ai-studio", "google")
         addCompatiblePreset(catalog, "opencode-zen", "opencode")
+        // Keep the native provider distinct from the paid alias in the model
+        // picker. A configured provider name can still override this below.
+        if (catalog[ProviderV2.ID.make("opencode")]) catalog[ProviderV2.ID.make("opencode")].name = "OpenCode"
         const database = mapValues(catalog, toPublicInfo)
 
         const providers: Record<ProviderV2.ID, Info> = {} as Record<ProviderV2.ID, Info>

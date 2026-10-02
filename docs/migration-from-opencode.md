@@ -14,7 +14,7 @@ The two branches are intentionally separate implementations for now. Upstream op
 
 ### More provider profiles over the native provider system
 
-The fork adds OmniRoute, Google AI Studio, and OpenCode Zen presets alongside opencode's existing providers, including OpenRouter and NVIDIA NIM. These profiles use opencode's native models.dev-backed, multi-provider system and shared SDK transports rather than introducing a separate single-provider HTTP client. Existing Anthropic, OpenAI, Gemini/Google, Bedrock, and other catalogued providers remain available.
+The fork adds Google AI Studio and OpenCode Zen presets alongside opencode's existing providers, including OpenRouter and NVIDIA NIM. These profiles use opencode's native models.dev-backed, multi-provider system and shared SDK transports rather than introducing a separate single-provider HTTP client. Existing Anthropic, OpenAI, Gemini/Google, Bedrock, and other catalogued providers remain available. OpenCode's zero-cost models remain exclusive to the native `opencode` provider rather than being duplicated into the `opencode-zen` API-key alias.
 
 Provider selection and configuration continue to use the fork's opencode-compatible configuration format. See [provider configuration](providers.md) for the provider names, environment-key precedence, endpoint overrides, and generic OpenAI-compatible setup.
 

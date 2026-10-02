@@ -37,12 +37,13 @@ custom URL. A configured provider may define models explicitly:
 
 ```json
 {
-  "model": "omniroute/my-model",
+  "model": "gateway/my-model",
   "provider": {
-    "omniroute": {
+    "gateway": {
+      "npm": "@ai-sdk/openai-compatible",
       "options": {
         "baseURL": "https://gateway.example/v1",
-        "apiKey": "{env:YUKIOSHI_API_KEY}"
+        "apiKey": "{env:GATEWAY_API_KEY}"
       },
       "models": {
         "my-model": {
@@ -61,15 +62,17 @@ environment variables are tried left-to-right.
 
 | Provider ID | Preset | Default base URL | API-key precedence |
 | --- | --- | --- | --- |
-| `omniroute` | OmniRoute | None; configure `options.baseURL` | `YUKIOSHI_API_KEY`, then `OMNIROUTE_API_KEY` |
 | `google-ai-studio` | Google AI Studio through its OpenAI-compatible endpoint | `https://generativelanguage.googleapis.com/v1beta/openai/` | `GOOGLE_API_KEY`, then `GEMINI_API_KEY`, then `YUKIOSHI_API_KEY` |
 | `opencode-zen` | OpenCode Zen | `https://opencode.ai/zen/v1` | `OPENCODE_API_KEY`, then `YUKIOSHI_API_KEY` |
 
-OmniRoute has no built-in model catalog because its URL is user-defined. Add
-the model under `provider.omniroute.models` as shown above. The Google AI
-Studio preset is separate from the native `google` Gemini provider; use
+The Google AI Studio preset is separate from the native `google` Gemini provider; use
 `google/<model>` for the native Google SDK and `google-ai-studio/<model>` for
-the OpenAI-compatible endpoint.
+the OpenAI-compatible endpoint. The `opencode-zen` API-key preset deliberately
+contains only paid models. OpenCode's zero-cost models are exposed only as
+`opencode/<model>` so they cannot be accidentally sent under the wrong
+provider identity. If an older session saved a free model as
+`opencode-zen/<model>`, open `/models` and select the corresponding
+`opencode/<model>` entry once; the corrected selection is then persisted.
 
 ## Catalog-backed providers
 
@@ -141,12 +144,60 @@ flow:
 | `cloudflare-ai-gateway` | `CLOUDFLARE_API_TOKEN` (or `CF_AIG_TOKEN`) — required for authenticated gateways; `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_GATEWAY_ID` also required to identify the gateway. All three are mandatory; the order listed is not a fallback chain. |
 | `cloudflare-workers-ai` | `CLOUDFLARE_ACCOUNT_ID`, then `CLOUDFLARE_API_KEY`. |
 | `snowflake-cortex` | `SNOWFLAKE_ACCOUNT`, then `SNOWFLAKE_CORTEX_TOKEN` (or `SNOWFLAKE_CORTEX_PAT`); the account is also used to form the default Cortex URL. |
-| `opencode` | Native OpenCode provider. Use the normal OpenCode authentication flow or `OPENCODE_API_KEY`; this is distinct from the OpenAI-compatible `opencode-zen` preset. |
+| `opencode` | Native OpenCode provider, displayed as **OpenCode** in YukiOshi. Its public zero-cost models require no local API key; paid/service-account access uses the normal OpenCode authentication flow. OpenCode still enforces its own account, client, quota, and eligibility policies server-side, and currently restricts its free tier to the official OpenCode client. YukiOshi does not spoof that client identity. |
+
+The upstream restriction is documented by an OpenCode maintainer in
+[anomalyco/opencode#49590](https://github.com/anomalyco/opencode/issues/49590).
+YukiOshi keeps the native provider wiring correct and transparent, but cannot
+override that external service policy.
 
 The exact model list and provider metadata can change with the catalog. If a
 provider is present in the model picker but is not listed above, its
 `models.dev` `env` list is authoritative: the first non-empty variable wins,
 and an explicit `provider.<id>.options.apiKey` overrides that discovery.
+
+## OAuth providers
+
+### OpenAI Codex / ChatGPT
+
+Codex OAuth is built in. It supports browser and headless device login, token
+refresh, the ChatGPT account header, and the Codex Responses endpoint. Start
+the browser flow with:
+
+```sh
+yukioshi auth login --provider openai --method "ChatGPT Pro/Plus (browser)"
+```
+
+For SSH or another headless environment, select `ChatGPT Pro/Plus (headless)`
+instead. After login, choose one of the OAuth-enabled `openai/<model>` entries.
+An OpenAI API key remains a separate login method.
+
+### Google Antigravity
+
+YukiOshi can host an OpenCode-compatible Antigravity OAuth plugin under the
+native `google` provider. Authentication methods from multiple Google plugins
+are merged, so an Antigravity OAuth option is not hidden by another Google
+credential plugin. Example opt-in configuration:
+
+```json
+{
+  "plugin": ["opencode-antigravity-auth@latest"]
+}
+```
+
+Then run:
+
+```sh
+yukioshi auth login --provider google --method "OAuth with Google (Antigravity)"
+```
+
+Antigravity OAuth plugins are third-party integrations, not bundled Google or
+YukiOshi components. Some implementations reuse IDE credentials or private
+service endpoints, which may be unsupported by Google and may put an account
+at risk. Review the selected plugin and Google's current terms before enabling
+it. The supported first-party alternatives are the native `google` provider
+with a Gemini API key, Google Vertex through ADC, or Google's official `agy`
+client.
 
 ## Generic OpenAI-compatible endpoints
 

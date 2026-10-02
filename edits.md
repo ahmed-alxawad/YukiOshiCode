@@ -15,7 +15,6 @@ Purpose: multiple AI tools (Antigravity, Codex, opencode, Kilo Code, Claude Code
 
 | Tool | Branch | Files/paths | Task | Started (UTC) | Status |
 |---|---|---|---|---|---|
-| _(none)_ | | | | | |
 
 ## Completed log
 
@@ -106,3 +105,4 @@ Purpose: multiple AI tools (Antigravity, Codex, opencode, Kilo Code, Claude Code
 | Codex | `opencode-foundation` | `packages/opencode/test/session/snapshot-tool-race.test.ts`, `packages/opencode/test/session/structured-output-integration.test.ts`, `history.md`, `edits.md` | Bound the required InstanceBootstrap replacement in standalone session test graphs | 2026-10-02 12:50 | 2026-10-02 12:54 | done |
 | Codex | `opencode-foundation` | `packages/opencode/src/session/llm/request.ts`, `packages/opencode/test/session/llm.test.ts`, `packages/tui/src/{logo.ts,util/presentation.ts}`, `packages/tui/test/util/presentation.test.ts`, `history.md`, `edits.md` | Restored Console protocol headers and replaced duplicated TUI OpenCode wordmarks with YukiOshi Code branding; free-tier policy limitation documented | 2026-10-02 14:30 | 2026-10-02 14:45 | done |
 | Codex | `opencode-foundation` | `packages/opencode/test/session/llm.test.ts`, `packages/opencode/test/session/prompt.test.ts`, `history.md`, `edits.md` | Root-caused isolated Cerebras reasoning replay expectation and confirmed the MCP prompt timeout remains a pre-existing timeout; corrected the stale test expectation | 2026-10-02 13:00 | 2026-10-02 13:05 | done |
+| Codex | `opencode-foundation` | Provider catalog/auth/CLI/docs/tests; `packages/tui/src/{logo.ts,component/logo.tsx,util/presentation.ts}` and focused tests; `README.md`, `NOTICE.md`, `documentation.md`, `knowledge.md`, `history.md`, `edits.md` | Removed OmniRoute, isolated OpenCode zero-cost models to the native provider, composed Codex/Antigravity OAuth methods, and rendered the supplied YukiOshi Code emblem in the TUI | 2026-10-02 15:10 | 2026-10-02 15:32 | done |

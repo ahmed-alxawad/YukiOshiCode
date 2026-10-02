@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test"
-import { resolvePluginProviders } from "../../src/cli/cmd/providers"
+import { resolvePluginAuth, resolvePluginProviders } from "../../src/cli/cmd/providers"
 import type { Hooks } from "@yukioshi/plugin"
 
 function hookWithAuth(provider: string): Hooks {
@@ -116,5 +116,49 @@ describe("resolvePluginProviders", () => {
       providerNames: {},
     })
     expect(result).toEqual([])
+  })
+})
+
+describe("resolvePluginAuth", () => {
+  test("keeps Antigravity OAuth alongside another Google auth plugin", () => {
+    const api: Hooks = {
+      auth: {
+        provider: "google",
+        methods: [{ type: "api", label: "Google API key" }],
+      },
+    }
+    const antigravity: Hooks = {
+      auth: {
+        provider: "google",
+        methods: [
+          {
+            type: "oauth",
+            label: "OAuth with Google (Antigravity)",
+            authorize: async () => ({
+              url: "https://accounts.google.test/authorize",
+              instructions: "Sign in",
+              method: "code",
+              callback: async () => ({ type: "success", refresh: "refresh", access: "access", expires: 1 }),
+            }),
+          },
+        ],
+      },
+    }
+
+    expect(resolvePluginAuth([api, antigravity], "google")?.methods.map((method) => method.label)).toEqual([
+      "Google API key",
+      "OAuth with Google (Antigravity)",
+    ])
+  })
+
+  test("uses the later implementation for a duplicate auth method", () => {
+    const first = hookWithAuth("google")
+    first.auth!.methods = [{ type: "api", label: "Google API key" }]
+    const second = hookWithAuth("google")
+    second.auth!.methods = [{ type: "api", label: "Google API key" }]
+
+    const auth = resolvePluginAuth([first, second], "google")
+    expect(auth?.methods).toHaveLength(1)
+    expect(auth?.methods[0]).toBe(second.auth!.methods[0])
   })
 })

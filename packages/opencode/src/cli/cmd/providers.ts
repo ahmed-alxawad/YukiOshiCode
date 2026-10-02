@@ -17,6 +17,7 @@ import { Process } from "@/util/process"
 import { errorMessage } from "@/util/error"
 import { text } from "node:stream/consumers"
 import { Effect, Option } from "effect"
+import { authMethodEntries } from "@/provider/auth-methods"
 
 type PluginAuth = NonNullable<Hooks["auth"]>
 
@@ -37,32 +38,32 @@ const cliTry = <Value>(message: string, fn: () => PromiseLike<Value>) =>
   })
 
 const handlePluginAuth = Effect.fn("Cli.providers.pluginAuth")(function* (
-  plugin: { auth: PluginAuth },
+  plugin: { methods: PluginAuth["methods"] },
   provider: string,
   methodName?: string,
 ) {
   const index = yield* Effect.gen(function* () {
     if (!methodName) {
-      if (plugin.auth.methods.length <= 1) return 0
+      if (plugin.methods.length <= 1) return 0
       return yield* promptValue(
         yield* Prompt.select({
           message: "Login method",
-          options: plugin.auth.methods.map((x, index) => ({
+          options: plugin.methods.map((x, index) => ({
             label: x.label,
             value: index,
           })),
         }),
       )
     }
-    const match = plugin.auth.methods.findIndex((x) => x.label.toLowerCase() === methodName.toLowerCase())
+    const match = plugin.methods.findIndex((x) => x.label.toLowerCase() === methodName.toLowerCase())
     if (match === -1) {
       return yield* fail(
-        `Unknown method "${methodName}" for ${provider}. Available: ${plugin.auth.methods.map((x) => x.label).join(", ")}`,
+        `Unknown method "${methodName}" for ${provider}. Available: ${plugin.methods.map((x) => x.label).join(", ")}`,
       )
     }
     return match
   })
-  const method = plugin.auth.methods[index]
+  const method = plugin.methods[index]
 
   yield* Effect.sleep("10 millis")
   const inputs: Record<string, string> = {}
@@ -234,6 +235,12 @@ export function resolvePluginProviders(input: {
   }
 
   return result
+}
+
+export function resolvePluginAuth(hooks: Hooks[], provider: string): { methods: PluginAuth["methods"] } | undefined {
+  const entries = authMethodEntries(hooks, provider)
+  if (entries.length === 0) return undefined
+  return { methods: entries.map(({ method }) => method) }
 }
 
 export const ProvidersCommand = cmd({
@@ -428,9 +435,9 @@ export const ProvidersLoginCommand = effectCmd({
       )
     }
 
-    const plugin = hooks.findLast((x) => x.auth?.provider === provider)
-    if (plugin && plugin.auth) {
-      const handled = yield* handlePluginAuth({ auth: plugin.auth! }, provider, args.method)
+    const plugin = resolvePluginAuth(hooks, provider)
+    if (plugin) {
+      const handled = yield* handlePluginAuth(plugin, provider, args.method)
       if (handled) return
     }
 
@@ -442,9 +449,9 @@ export const ProvidersLoginCommand = effectCmd({
         }),
       )).replace(/^@ai-sdk\//, "")
 
-      const customPlugin = hooks.findLast((x) => x.auth?.provider === provider)
-      if (customPlugin && customPlugin.auth) {
-        const handled = yield* handlePluginAuth({ auth: customPlugin.auth! }, provider, args.method)
+      const customPlugin = resolvePluginAuth(hooks, provider)
+      if (customPlugin) {
+        const handled = yield* handlePluginAuth(customPlugin, provider, args.method)
         if (handled) return
       }
 

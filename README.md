@@ -10,7 +10,7 @@ The major port and branding work is landed. The CLI is `yukioshi`, workspace pac
 
 ## What is included
 
-- Multi-provider model access through the native models.dev-backed provider system, including OmniRoute, Google AI Studio, OpenCode Zen, OpenRouter, NVIDIA NIM, Anthropic, OpenAI, and generic OpenAI-compatible endpoints.
+- Multi-provider model access through the native models.dev-backed provider system, including Google AI Studio, OpenCode, OpenCode Zen, OpenRouter, NVIDIA NIM, Anthropic, OpenAI, and generic OpenAI-compatible endpoints. Codex OAuth is built in; optional OpenCode-compatible plugins can add Antigravity OAuth.
 - Permission modes, OS-level shell sandboxing, write/edit path enforcement, and OS-keychain-backed credential storage with a restricted-file fallback.
 - Cross-session memory, semantic code search, code-graph repository signals, parallel/worktree-isolated subagents, and all six supported Claude Code-style hook events.
 - Evidence-based post-turn verification in the CLI and TUI.
