@@ -13,6 +13,66 @@ import {
   type ToolExecutionResult,
 } from "./index"
 
+function splitCommandLine(value: string, variable: string): string[] {
+  const result: string[] = []
+  let current = ""
+  let quote: "'" | '"' | undefined
+  let started = false
+
+  for (let index = 0; index < value.length; index++) {
+    const char = value[index]
+
+    if (quote) {
+      if (char === quote) {
+        quote = undefined
+        started = true
+        continue
+      }
+      if (char === "\\" && quote === '"' && ['"', "\\"].includes(value[index + 1] ?? "")) {
+        current += value[++index]
+        started = true
+        continue
+      }
+      current += char
+      started = true
+      continue
+    }
+
+    if (char === "'" || char === '"') {
+      quote = char
+      started = true
+      continue
+    }
+    if (/\s/.test(char)) {
+      if (started) {
+        result.push(current)
+        current = ""
+        started = false
+      }
+      continue
+    }
+    if (char === "\\" && /[\s'"\\]/.test(value[index + 1] ?? "")) {
+      current += value[++index]
+      started = true
+      continue
+    }
+    current += char
+    started = true
+  }
+
+  if (quote) throw new Error(`${variable} contains an unterminated ${quote} quote`)
+  if (started) result.push(current)
+  if (!result[0]) throw new Error(`${variable} must contain an executable command`)
+  return result
+}
+
+function commandOverride(kind: ProjectCommandInput["kind"], variable: string): ProjectCommandInput | undefined {
+  const value = process.env[variable]?.trim()
+  if (!value) return undefined
+  const [command, ...args] = splitCommandLine(value, variable)
+  return { kind, label: value, command, args }
+}
+
 /** Minimal client contract needed for post-turn diff and message detection. */
 export interface VerificationClient {
   readonly session?: {
@@ -24,48 +84,18 @@ export interface VerificationClient {
 /** Discovers how to test, lint, and type-check the project based on package/project metadata. */
 export async function discoverProjectCommands(cwd: string): Promise<ProjectCommandInput[]> {
   // If a single full verify command override is provided, use it directly
-  if (process.env.YUKIOSHI_VERIFY_COMMAND) {
-    const parts = process.env.YUKIOSHI_VERIFY_COMMAND.trim().split(/\s+/)
-    return [
-      {
-        kind: "test",
-        label: process.env.YUKIOSHI_VERIFY_COMMAND.trim(),
-        command: parts[0],
-        args: parts.slice(1),
-      },
-    ]
-  }
+  const verify = commandOverride("test", "YUKIOSHI_VERIFY_COMMAND")
+  if (verify) return [verify]
 
   const commands: ProjectCommandInput[] = []
 
   // Check explicit environment overrides first
-  if (process.env.YUKIOSHI_VERIFY_TEST_CMD) {
-    const parts = process.env.YUKIOSHI_VERIFY_TEST_CMD.trim().split(/\s+/)
-    commands.push({
-      kind: "test",
-      label: process.env.YUKIOSHI_VERIFY_TEST_CMD.trim(),
-      command: parts[0],
-      args: parts.slice(1),
-    })
-  }
-  if (process.env.YUKIOSHI_VERIFY_TYPECHECK_CMD) {
-    const parts = process.env.YUKIOSHI_VERIFY_TYPECHECK_CMD.trim().split(/\s+/)
-    commands.push({
-      kind: "typecheck",
-      label: process.env.YUKIOSHI_VERIFY_TYPECHECK_CMD.trim(),
-      command: parts[0],
-      args: parts.slice(1),
-    })
-  }
-  if (process.env.YUKIOSHI_VERIFY_LINT_CMD) {
-    const parts = process.env.YUKIOSHI_VERIFY_LINT_CMD.trim().split(/\s+/)
-    commands.push({
-      kind: "lint",
-      label: process.env.YUKIOSHI_VERIFY_LINT_CMD.trim(),
-      command: parts[0],
-      args: parts.slice(1),
-    })
-  }
+  const test = commandOverride("test", "YUKIOSHI_VERIFY_TEST_CMD")
+  if (test) commands.push(test)
+  const typecheck = commandOverride("typecheck", "YUKIOSHI_VERIFY_TYPECHECK_CMD")
+  if (typecheck) commands.push(typecheck)
+  const lint = commandOverride("lint", "YUKIOSHI_VERIFY_LINT_CMD")
+  if (lint) commands.push(lint)
 
   // 1. Node / TypeScript / JavaScript ecosystem
   const pkgPath = path.join(cwd, "package.json")
@@ -130,9 +160,7 @@ export async function discoverProjectCommands(cwd: string): Promise<ProjectComma
   // 2. Python ecosystem
   const pyproject = path.join(cwd, "pyproject.toml")
   const hasPython =
-    fs.existsSync(pyproject) ||
-    fs.existsSync(path.join(cwd, "pytest.ini")) ||
-    fs.existsSync(path.join(cwd, "setup.py"))
+    fs.existsSync(pyproject) || fs.existsSync(path.join(cwd, "pytest.ini")) || fs.existsSync(path.join(cwd, "setup.py"))
   if (hasPython) {
     const pythonBin = process.platform === "win32" ? "python" : "python3"
     if (!commands.some((c) => c.kind === "test")) {
@@ -175,8 +203,11 @@ export async function detectTurnChangedFiles(
   const diffFiles: string[] = []
 
   // 1. Try querying session diff for the parent user message
-  const userMsgID = promptResult?.data?.info?.parentID
-  if (userMsgID && client.session?.diff) {
+  const promptInfo = promptResult?.data?.info ?? promptResult?.info ?? promptResult
+  const assistantMsgID = typeof promptInfo?.id === "string" ? promptInfo.id : undefined
+  const userMsgID = typeof promptInfo?.parentID === "string" ? promptInfo.parentID : undefined
+  const readTurnDiff = async () => {
+    if (!userMsgID || !client.session?.diff) return
     try {
       const diffRes = await client.session.diff({ sessionID, messageID: userMsgID })
       if (diffRes && "data" in diffRes && Array.isArray(diffRes.data)) {
@@ -186,14 +217,17 @@ export async function detectTurnChangedFiles(
       }
     } catch {}
   }
+  await readTurnDiff()
 
   // 2. Inspect parts returned in the promptResult / assistant message
+  let sawCompletedTool = false
   const inspectParts = (parts: any[]) => {
     for (const part of parts) {
       if (part.type === "patch" && Array.isArray(part.files)) {
         diffFiles.push(...part.files)
       }
       if (part.type === "tool" && part.state?.status === "completed") {
+        sawCompletedTool = true
         const input = part.state?.input
         const pathVal = input?.filePath ?? input?.path ?? input?.file
         if (typeof pathVal === "string" && ["edit", "write", "apply_patch"].includes(part.tool)) {
@@ -209,12 +243,53 @@ export async function detectTurnChangedFiles(
     inspectParts(promptResult.parts)
   }
 
-  // 3. Fallback: check session messages if diffFiles is still empty
-  if (diffFiles.length === 0 && client.session?.messages) {
+  // Snapshot summaries are finalized asynchronously after the assistant turn.
+  // The prompt response contains only the final assistant message, so inspect
+  // this turn's full user/assistant pair to find tools used in earlier steps.
+  // Briefly retry only when the current turn actually used a tool rather than
+  // falling back to unrelated Git state.
+  if (diffFiles.length === 0 && promptResult != null) {
+    const inspectCurrentTurn = async () => {
+      if (!client.session?.messages) return
+      try {
+        const response = await client.session.messages({ sessionID, limit: 20 })
+        if (!response || !("data" in response) || !Array.isArray(response.data)) return
+        for (const message of response.data) {
+          const info = message?.info
+          const isUser = userMsgID !== undefined && info?.id === userMsgID
+          const isAssistant =
+            (assistantMsgID !== undefined && info?.id === assistantMsgID) ||
+            (userMsgID !== undefined && info?.role === "assistant" && info?.parentID === userMsgID)
+          if (!isUser && !isAssistant) continue
+          if (isUser && Array.isArray(info?.summary?.diffs)) {
+            for (const diff of info.summary.diffs) {
+              if (diff?.file) diffFiles.push(diff.file)
+            }
+          }
+          if (isAssistant && Array.isArray(message.parts)) inspectParts(message.parts)
+        }
+      } catch {}
+    }
+
+    await inspectCurrentTurn()
+    for (const delayMs of [25, 50, 100, 200, 250]) {
+      if (diffFiles.length > 0 || !sawCompletedTool) break
+      await new Promise((resolve) => setTimeout(resolve, delayMs))
+      await readTurnDiff()
+      if (diffFiles.length > 0) break
+      await inspectCurrentTurn()
+    }
+  }
+
+  // 3. Without a concrete turn result, inspect only the latest assistant
+  // message. Scanning the whole session replays old edits on every later turn.
+  if (diffFiles.length === 0 && promptResult == null && client.session?.messages) {
     try {
-      const msgs = await client.session.messages({ sessionID })
+      const msgs = await client.session.messages({ sessionID, limit: 1 })
       if (msgs && "data" in msgs && Array.isArray(msgs.data)) {
-        for (const m of msgs.data) {
+        const latest = msgs.data[0]
+        if (latest) {
+          const m = latest
           if (m.info?.summary?.diffs && Array.isArray(m.info.summary.diffs)) {
             for (const d of m.info.summary.diffs) {
               if (d.file) diffFiles.push(d.file)
@@ -228,11 +303,16 @@ export async function detectTurnChangedFiles(
     } catch {}
   }
 
-  // 4. Fallback: check git status in workspace for modified or newly added files
-  if (diffFiles.length === 0) {
+  // 4. A whole-worktree fallback is useful only when there is no completed
+  // turn to scope against. A concrete no-edit turn must remain a no-edit turn.
+  if (diffFiles.length === 0 && promptResult == null) {
     try {
       const { execSync } = await import("node:child_process")
-      const statusOut = execSync("git status --porcelain", { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] })
+      const statusOut = execSync("git status --porcelain", {
+        cwd,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      })
       for (const line of statusOut.split(/\r?\n/)) {
         const trimmed = line.trim()
         if (!trimmed) continue
@@ -263,24 +343,59 @@ export async function executeVerificationCommand(
     let stdout = ""
     let stderr = ""
     let settled = false
+    let timedOut = false
+    let forceKillTimer: ReturnType<typeof setTimeout> | undefined
+    let timeoutResolutionTimer: ReturnType<typeof setTimeout> | undefined
 
     const proc = spawn(cmd.command ?? "", cmd.args ? [...cmd.args] : [], {
       cwd,
       env: process.env,
       stdio: ["ignore", "pipe", "pipe"],
       shell: false,
+      // A separate POSIX process group lets timeout cleanup reach test-runner
+      // workers as well as the package-manager process we launched directly.
+      detached: process.platform !== "win32",
     })
 
-    const timer = setTimeout(() => {
+    const signalTree = (signal: "SIGTERM" | "SIGKILL") => {
+      if (!proc.pid) return
+      if (process.platform === "win32") {
+        if (signal !== "SIGKILL") return
+        const killer = spawn("taskkill", ["/pid", String(proc.pid), "/T", "/F"], {
+          stdio: "ignore",
+          windowsHide: true,
+        })
+        killer.on("error", () => {})
+        return
+      }
+      try {
+        process.kill(-proc.pid, signal)
+      } catch {
+        try {
+          proc.kill(signal)
+        } catch {}
+      }
+    }
+
+    const resolveTimeout = () => {
       if (settled) return
       settled = true
-      proc.kill("SIGTERM")
       resolve({
         status: "failed",
         output: `Command timed out after ${timeoutMs}ms`,
         exitCode: 124,
         durationMs: Date.now() - started,
       })
+    }
+
+    const timer = setTimeout(() => {
+      if (settled) return
+      timedOut = true
+      signalTree("SIGTERM")
+      forceKillTimer = setTimeout(() => signalTree("SIGKILL"), process.platform === "win32" ? 0 : 250)
+      // Do not report completion before the forced tree-kill phase. A direct
+      // child can close while a detached worker continues running.
+      timeoutResolutionTimer = setTimeout(resolveTimeout, process.platform === "win32" ? 500 : 350)
     }, timeoutMs)
 
     proc.stdout?.on("data", (chunk: Buffer) => {
@@ -291,9 +406,11 @@ export async function executeVerificationCommand(
     })
 
     proc.on("error", (err) => {
-      if (settled) return
+      if (settled || timedOut) return
       settled = true
       clearTimeout(timer)
+      if (forceKillTimer) clearTimeout(forceKillTimer)
+      if (timeoutResolutionTimer) clearTimeout(timeoutResolutionTimer)
       resolve({
         status: "failed",
         output: err.message,
@@ -303,9 +420,11 @@ export async function executeVerificationCommand(
     })
 
     proc.on("close", (code) => {
-      if (settled) return
+      if (settled || timedOut) return
       settled = true
       clearTimeout(timer)
+      if (forceKillTimer) clearTimeout(forceKillTimer)
+      if (timeoutResolutionTimer) clearTimeout(timeoutResolutionTimer)
       const output = (stdout + "\n" + stderr).trim()
       resolve({
         status: code === 0 ? "success" : "failed",
@@ -338,9 +457,7 @@ export interface RunVerificationOptions {
  * 5. Runs the verification engine
  * 6. Returns the derived Verification.Summary
  */
-export async function runVerificationPipeline(
-  options: RunVerificationOptions,
-): Promise<Verification.Summary> {
+export async function runVerificationPipeline(options: RunVerificationOptions): Promise<Verification.Summary> {
   if (
     options.skip ||
     process.env.YUKIOSHI_SKIP_VERIFY === "1" ||

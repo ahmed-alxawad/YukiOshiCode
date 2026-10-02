@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect } from "effect"
@@ -8,6 +8,7 @@ import { cliIt } from "../lib/cli-process"
 import {
   discoverProjectCommands,
   detectTurnChangedFiles,
+  executeVerificationCommand,
   executePostTurnVerification,
   formatVerificationOutput,
 } from "../../src/cli/cmd/run/verification"
@@ -51,6 +52,23 @@ describe("run verification post-turn", () => {
         else delete process.env.YUKIOSHI_VERIFY_TEST_CMD
       }
     })
+
+    it("preserves quoted arguments in environment command overrides", async () => {
+      const original = process.env.YUKIOSHI_VERIFY_COMMAND
+      try {
+        process.env.YUKIOSHI_VERIFY_COMMAND = 'node -e "process.stdout.write(\\"hello world\\")"'
+        const [command] = await discoverProjectCommands("/nonexistent-dir")
+        expect(command.command).toBe("node")
+        expect(command.args).toEqual(["-e", 'process.stdout.write("hello world")'])
+
+        const result = await executeVerificationCommand(command, process.cwd(), 2_000)
+        expect(result.status).toBe("success")
+        expect(result.output).toBe("hello world")
+      } finally {
+        if (original !== undefined) process.env.YUKIOSHI_VERIFY_COMMAND = original
+        else delete process.env.YUKIOSHI_VERIFY_COMMAND
+      }
+    })
   })
 
   describe("detectTurnChangedFiles", () => {
@@ -79,6 +97,127 @@ describe("run verification post-turn", () => {
       expect(paths).toContain("src/user.ts")
       expect(paths).toContain("package.json")
       expect(paths).toContain("src/config.json")
+    })
+
+    it("does not attribute historical messages or dirty worktree files to a concrete no-edit turn", async () => {
+      let messagesCalled = false
+      const mockClient: any = {
+        session: {
+          diff: () => Promise.resolve({ data: [] }),
+          messages: () => {
+            messagesCalled = true
+            return Promise.resolve({
+              data: [{ info: { id: "old", summary: { diffs: [{ file: "old-change.ts" }] } }, parts: [] }],
+            })
+          },
+        },
+      }
+      const promptResult = { data: { info: { id: "current", parentID: "user-current" }, parts: [] } }
+
+      expect(await detectTurnChangedFiles(mockClient, "ses-1", promptResult, process.cwd())).toEqual([])
+      expect(messagesCalled).toBe(true)
+    })
+
+    it("detects a patch from an earlier assistant step in the current turn", async () => {
+      const mockClient: any = {
+        session: {
+          diff: () => Promise.resolve({ data: [] }),
+          messages: () =>
+            Promise.resolve({
+              data: [
+                { info: { id: "user-current", role: "user", summary: { diffs: [] } }, parts: [] },
+                {
+                  info: { id: "assistant-tool", role: "assistant", parentID: "user-current" },
+                  parts: [
+                    { type: "tool", tool: "bash", state: { status: "completed", input: { command: "write" } } },
+                    { type: "patch", files: ["app-config.json"] },
+                  ],
+                },
+                {
+                  info: { id: "assistant-current", role: "assistant", parentID: "user-current" },
+                  parts: [{ type: "text", text: "done" }],
+                },
+                { info: { id: "old", role: "user", summary: { diffs: [{ file: "old-change.ts" }] } }, parts: [] },
+              ],
+            }),
+        },
+      }
+
+      const changes = await detectTurnChangedFiles(mockClient, "ses-1", {
+        data: {
+          info: { id: "assistant-current", role: "assistant", parentID: "user-current" },
+          parts: [{ type: "text", text: "done" }],
+        },
+      })
+
+      expect(changes).toEqual([{ path: "app-config.json", kind: "modified" }])
+    })
+
+    it("recognizes the TUI assistant-message shape when requesting the turn diff", async () => {
+      let input: unknown
+      const mockClient: any = {
+        session: {
+          diff: (value: unknown) => {
+            input = value
+            return Promise.resolve({ data: [{ file: "src/tui-change.ts" }] })
+          },
+        },
+      }
+
+      const changes = await detectTurnChangedFiles(mockClient, "ses-1", {
+        id: "assistant-current",
+        parentID: "user-current",
+      })
+      expect(input).toEqual({ sessionID: "ses-1", messageID: "user-current" })
+      expect(changes).toEqual([{ path: "src/tui-change.ts", kind: "modified" }])
+    })
+
+    it("limits message fallback to the newest message when no turn result is available", async () => {
+      let request: unknown
+      const mockClient: any = {
+        session: {
+          messages: (input: unknown) => {
+            request = input
+            return Promise.resolve({
+              data: [
+                { info: { id: "latest", summary: { diffs: [{ file: "latest.ts" }] } }, parts: [] },
+                { info: { id: "old", summary: { diffs: [{ file: "old.ts" }] } }, parts: [] },
+              ],
+            })
+          },
+        },
+      }
+
+      const changes = await detectTurnChangedFiles(mockClient, "ses-1", undefined, process.cwd())
+      expect(request).toEqual({ sessionID: "ses-1", limit: 1 })
+      expect(changes).toEqual([{ path: "latest.ts", kind: "modified" }])
+    })
+  })
+
+  describe("executeVerificationCommand", () => {
+    it("kills descendant workers before returning a timeout", async () => {
+      const dir = mkdtempSync(join(tmpdir(), "yk-verify-tree-"))
+      const marker = join(dir, "descendant-survived")
+      try {
+        const childCode = `setTimeout(() => require("node:fs").writeFileSync(${JSON.stringify(marker)}, "survived"), 700)`
+        const parentCode = `require("node:child_process").spawn(process.execPath, ["-e", ${JSON.stringify(childCode)}], { stdio: "ignore" }); setInterval(() => {}, 1000)`
+        const result = await executeVerificationCommand(
+          {
+            kind: "test",
+            label: "process-tree timeout probe",
+            command: process.execPath,
+            args: ["-e", parentCode],
+          },
+          dir,
+          120,
+        )
+
+        expect(result.exitCode).toBe(124)
+        await Bun.sleep(700)
+        expect(existsSync(marker)).toBe(false)
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
     })
   })
 
@@ -245,10 +384,12 @@ describe("run verification post-turn", () => {
 
         // Have the LLM call the bash tool to create/modify a file, then reply
         yield* llm.push(
-          reply().text("starting").tool("bash", {
-            command: 'echo \'{"version":"1.0"}\' > app-config.json',
-            description: "Create app-config.json",
-          }),
+          reply()
+            .text("starting")
+            .tool("bash", {
+              command: `printf '%s\\n' '{"version":"1.0"}' > ${JSON.stringify(join(home, "app-config.json"))}`,
+              description: "Create app-config.json",
+            }),
         )
         yield* llm.text("Created app-config.json")
 

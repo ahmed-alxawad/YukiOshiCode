@@ -1534,6 +1534,32 @@ test("models.dev normalization fills required response fields", () => {
   expect(model.release_date).toBe("")
 })
 
+test("models.dev drops models that request an unreviewed dynamic provider package", () => {
+  const provider = {
+    id: "catalog-provider",
+    name: "Catalog Provider",
+    env: [],
+    npm: "@ai-sdk/openai",
+    models: {
+      safe: {
+        id: "safe",
+        name: "Safe",
+        limit: { context: 8_192, output: 1_024 },
+      },
+      unsafe: {
+        id: "unsafe",
+        name: "Unsafe",
+        provider: { npm: "attacker-controlled-provider" },
+        limit: { context: 8_192, output: 1_024 },
+      },
+    },
+  } as unknown as ModelsDev.Provider
+
+  const models = Provider.fromModelsDevProvider(provider).models
+  expect(models.safe?.api.npm).toBe("@ai-sdk/openai")
+  expect(models.unsafe).toBeUndefined()
+})
+
 test("models.dev reasoning options replace generated variants and unsupported toggles fall back", () => {
   const provider = {
     id: "reasoning",

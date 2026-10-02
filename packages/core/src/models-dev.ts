@@ -165,6 +165,17 @@ const layer = Layer.effect(
     const ttl = Duration.minutes(5)
     const lockKey = `models-dev:${filepath}`
 
+    const decodeCatalog = (value: unknown) =>
+      Effect.try({
+        try: () => {
+          if (value === null || typeof value !== "object" || Array.isArray(value)) {
+            throw new TypeError("Models catalog must be a JSON object")
+          }
+          return value as Record<string, Provider>
+        },
+        catch: (cause) => new FSUtil.FileSystemError({ method: "parse models catalog", cause }),
+      })
+
     const fresh = Effect.fnUntraced(function* () {
       const stat = yield* fs.stat(filepath).pipe(Effect.catch(() => Effect.succeed(undefined)))
       if (!stat) return false
@@ -182,6 +193,7 @@ const layer = Layer.effect(
     })
 
     const loadFromDisk = fs.readJson(Flag.YUKIOSHI_MODELS_PATH ?? filepath).pipe(
+      Effect.flatMap(decodeCatalog),
       Effect.catch((error) => {
         if (
           Flag.YUKIOSHI_MODELS_PATH === undefined &&
@@ -192,7 +204,6 @@ const layer = Layer.effect(
         }
         return Effect.succeed(undefined)
       }),
-      Effect.map((v) => v as Record<string, Provider> | undefined),
     )
 
     const loadSnapshot = Effect.sync(() =>
@@ -201,6 +212,10 @@ const layer = Layer.effect(
 
     const fetchAndWrite = Effect.fn("ModelsDev.fetchAndWrite")(function* () {
       const text = yield* fetchApi()
+      const catalog = yield* Effect.try({
+        try: () => JSON.parse(text),
+        catch: (cause) => new FSUtil.FileSystemError({ method: "parse models catalog", cause }),
+      }).pipe(Effect.flatMap(decodeCatalog))
       const tempfile = `${filepath}.${process.pid}.${Date.now()}.tmp`
       yield* fs.writeWithDirs(tempfile, text).pipe(
         Effect.andThen(fs.rename(tempfile, filepath)),
@@ -211,7 +226,7 @@ const layer = Layer.effect(
           }),
         ),
       )
-      return text
+      return catalog
     })
 
     const populate = Effect.gen(function* () {
@@ -221,14 +236,19 @@ const layer = Layer.effect(
       if (snapshot) return snapshot
       if (Flag.YUKIOSHI_DISABLE_MODELS_FETCH) return {}
       // Flock is cross-process: concurrent yukioshi CLIs can race on this cache file.
-      const text = yield* Effect.scoped(
+      return yield* Effect.scoped(
         Effect.gen(function* () {
           yield* Flock.effect(lockKey)
           return yield* fetchAndWrite()
         }),
+      ).pipe(
+        Effect.catch((error) =>
+          Effect.logWarning("Models catalog unavailable; continuing with configured providers", { error }).pipe(
+            Effect.as({} as Record<string, Provider>),
+          ),
+        ),
       )
-      return JSON.parse(text) as Record<string, Provider>
-    }).pipe(Effect.withSpan("ModelsDev.populate"), Effect.orDie)
+    }).pipe(Effect.withSpan("ModelsDev.populate"))
 
     const [cachedGet, invalidate] = yield* Effect.cachedInvalidateWithTTL(populate, Duration.infinity)
 

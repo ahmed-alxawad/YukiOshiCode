@@ -142,6 +142,17 @@ const BUNDLED_PROVIDERS: Record<string, () => Promise<(opts: any) => BundledSDK>
   "venice-ai-sdk-provider": () => import("venice-ai-sdk-provider").then((m) => m.createVenice),
 }
 
+// Remote catalog data may choose among provider adapters YukiOshi has reviewed,
+// but it must not be able to nominate an arbitrary package for installation and
+// dynamic import. Explicit local provider configuration remains unrestricted.
+const CATALOG_PROVIDER_PACKAGES = new Set([
+  ...Object.keys(BUNDLED_PROVIDERS),
+  "@aihubmix/ai-sdk-provider",
+  "@jerome-benoit/sap-ai-provider-v2",
+  "ai-gateway-provider",
+  "merge-gateway-ai-sdk-provider",
+])
+
 type CustomModelLoader = (sdk: any, modelID: string, options?: Record<string, any>, model?: Model) => Promise<any>
 type CustomVarsLoader = (options: Record<string, any>) => Record<string, string>
 type CustomDiscoverModels = () => Promise<Record<string, Model>>
@@ -1405,10 +1416,12 @@ function fromModelsDevModel(provider: ModelsDev.Provider, model: ModelsDev.Model
 export function fromModelsDevProvider(provider: ModelsDev.Provider): Info {
   const models: Record<string, Model> = {}
   for (const [key, model] of Object.entries(provider.models)) {
-    models[key] = fromModelsDevModel(provider, model)
+    const parsed = fromModelsDevModel(provider, model)
+    if (!CATALOG_PROVIDER_PACKAGES.has(parsed.api.npm)) continue
+    models[key] = parsed
     for (const [mode, opts] of Object.entries(model.experimental?.modes ?? {})) {
       const id = `${model.id}-${mode}`
-      const base = fromModelsDevModel(provider, model)
+      const base = parsed
       models[id] = {
         ...base,
         id: ModelV2.ID.make(id),

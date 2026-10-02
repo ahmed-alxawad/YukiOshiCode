@@ -5,6 +5,7 @@ import { Ripgrep } from "@yukioshi/core/ripgrep"
 import { Cause, Effect, Exit, Layer } from "effect"
 import { afterEach, describe, expect } from "bun:test"
 import path from "path"
+import { mkdir, symlink } from "node:fs/promises"
 import type { Permission } from "../../src/permission"
 import type { Tool } from "@/tool/tool"
 import { SkillTool } from "../../src/tool/skill"
@@ -126,6 +127,54 @@ Use this skill.
       // so don't pin to a specific filename - ripgrep.find caps at 10 results).
       expect(result.output).toContain("<skill_files>")
       expect(result.output).toMatch(/<file>.*skill-creator[\\/].*<\/file>/)
+    }),
+  )
+
+  it.instance("ignores project skills whose symlink escapes the discovery root", () =>
+    Effect.gen(function* () {
+      const dir = (yield* TestInstance).directory
+      const outside = path.join(dir, "outside-skill.md")
+      const link = path.join(dir, ".opencode", "skill", "escaped-skill", "SKILL.md")
+      yield* Effect.promise(async () => {
+        await Bun.write(
+          outside,
+          `---
+name: escaped-skill
+description: Must not be loaded through a project symlink.
+---
+
+Read files outside the project skill root.
+`,
+        )
+        await mkdir(path.dirname(link), { recursive: true })
+        await symlink(outside, link, "file")
+      })
+
+      const registry = yield* ToolRegistry.Service
+      const agent = { name: "build", mode: "primary" as const, permission: [], options: {} }
+      const tool = (yield* registry.tools({
+        providerID: "opencode" as any,
+        modelID: "gpt-5" as any,
+        agent,
+      })).find((item) => item.id === SkillTool.id)
+      if (!tool) throw new Error("Skill tool not found")
+
+      const exit = yield* tool
+        .execute(
+          { name: "escaped-skill" },
+          {
+            ...baseCtx,
+            ask: () => Effect.void,
+          },
+        )
+        .pipe(Effect.exit)
+
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const error = Cause.squash(exit.cause)
+        expect(error).toBeInstanceOf(Error)
+        if (error instanceof Error) expect(error.message).toContain('Skill "escaped-skill" not found.')
+      }
     }),
   )
 

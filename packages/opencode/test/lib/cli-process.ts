@@ -63,6 +63,7 @@ function isolatedEnv(home: string, configJson: string): Record<string, string> {
   return {
     YUKIOSHI_TEST_HOME: home,
     HOME: home,
+    PWD: home,
     XDG_CONFIG_HOME: path.join(home, ".config"),
     XDG_DATA_HOME: path.join(home, ".local/share"),
     XDG_STATE_HOME: path.join(home, ".local/state"),

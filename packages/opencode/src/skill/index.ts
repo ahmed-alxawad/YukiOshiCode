@@ -173,7 +173,21 @@ const scan = Effect.fnUntraced(function* (
     }),
   )
 
+  const resolvedRoot = FSUtil.resolve(root)
   for (const match of matches) {
+    const resolvedMatch = yield* Effect.try({
+      try: () => FSUtil.resolve(match),
+      catch: (error) => error,
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.logWarning("failed to resolve discovered skill", { path: match, error }).pipe(Effect.as(undefined)),
+      ),
+    )
+    if (!resolvedMatch) continue
+    if (!FSUtil.contains(resolvedRoot, resolvedMatch)) {
+      yield* Effect.logWarning("ignored skill outside discovery root", { root, path: match, resolved: resolvedMatch })
+      continue
+    }
     state.matches.add(match)
     state.dirs.add(path.dirname(match))
   }

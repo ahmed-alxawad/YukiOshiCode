@@ -154,6 +154,28 @@ describe("ModelsDev Service", () => {
     }),
   )
 
+  it.live("get() degrades to an empty catalog when the first network fetch fails", () =>
+    Effect.gen(function* () {
+      const state = yield* Ref.make({ ...initialState, status: 503, body: "unavailable" })
+      // Build while fetching is disabled so the background refresh does not
+      // race this first-read assertion, then enable it for get().
+      const context = yield* Layer.build(buildLayer(state))
+      const result = yield* Effect.acquireUseRelease(
+        Effect.sync(() => {
+          Flag.YUKIOSHI_DISABLE_MODELS_FETCH = false
+        }),
+        () => ModelsDev.Service.use((service) => service.get()).pipe(Effect.provide(context)),
+        () =>
+          Effect.sync(() => {
+            Flag.YUKIOSHI_DISABLE_MODELS_FETCH = true
+          }),
+      )
+
+      expect(result).toEqual({})
+      expect((yield* Ref.get(state)).calls.length).toBeGreaterThanOrEqual(1)
+    }),
+  )
+
   it.live("get() recovers from a corrupted cache file by fetching a fresh catalog", () =>
     Effect.gen(function* () {
       yield* writeCacheText("{")

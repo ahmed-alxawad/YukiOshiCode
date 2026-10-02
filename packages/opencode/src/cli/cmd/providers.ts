@@ -387,13 +387,15 @@ export const ProvidersLoginCommand = effectCmd({
     const cfgSvc = yield* Config.Service
     const pluginSvc = yield* Plugin.Service
     const modelsDev = yield* ModelsDev.Service
-    yield* Effect.ignore(modelsDev.refresh(true))
 
     const config = yield* cfgSvc.get()
 
     const disabled = new Set(config.disabled_providers ?? [])
     const enabled = config.enabled_providers ? new Set(config.enabled_providers) : undefined
 
+    // Login only needs the cached/bundled catalog. ModelsDev already refreshes
+    // stale data in the background; awaiting a forced refresh here made an
+    // otherwise-local credential flow depend on current network health.
     const allProviders = yield* modelsDev.get()
     const providers: Record<string, (typeof allProviders)[string]> = {}
     for (const [key, value] of Object.entries(allProviders)) {

@@ -889,14 +889,16 @@ export const RunCommand = effectCmd({
               return
             }
             await finish()
-            await executePostTurnVerification({
-              cwd,
-              client,
-              sessionID,
-              promptResult: result,
-              emit,
-              skip: Boolean(args["skip-verify"] || args.verify === false),
-            })
+            if (args.verify || args["skip-verify"]) {
+              await executePostTurnVerification({
+                cwd,
+                client,
+                sessionID,
+                promptResult: result,
+                emit,
+                skip: Boolean(args["skip-verify"]),
+              })
+            }
             return
           }
 
@@ -914,14 +916,16 @@ export const RunCommand = effectCmd({
             return
           }
           await finish()
-          await executePostTurnVerification({
-            cwd,
-            client,
-            sessionID,
-            promptResult: result,
-            emit,
-            skip: Boolean(args["skip-verify"] || args.verify === false),
-          })
+          if (args.verify || args["skip-verify"]) {
+            await executePostTurnVerification({
+              cwd,
+              client,
+              sessionID,
+              promptResult: result,
+              emit,
+              skip: Boolean(args["skip-verify"]),
+            })
+          }
           return
         }
 
