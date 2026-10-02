@@ -250,9 +250,32 @@ describe("installation", () => {
         expect(error.message).toBe(error.stderr)
         expect(error.stderr).not.toContain("secret")
         expect(error.stderr).not.toContain("script output")
-        expect(curlCalls).toContain(
+        expect(curlCalls).toContain("https://raw.githubusercontent.com/ahmed-alxawad/YukiOshiCode/v9.9.9/install")
+        expect(curlCalls).not.toContain("https://raw.githubusercontent.com/ahmed-alxawad/YukiOshiCode/main/install")
+      }),
+    )
+
+    const fallbackCalls: string[] = []
+    testEffect(
+      testLayer(
+        (request) => {
+          fallbackCalls.push(request.url)
+          if (request.url.endsWith("/v8.8.8/install")) return new Response("missing", { status: 404 })
+          return new Response("legacy-compatible install script", { status: 200 })
+        },
+        (cmd, args) => {
+          if (cmd === "bash" && args[0] === "--version") return "GNU bash"
+          if (cmd === "bash") return "ok"
+          return ""
+        },
+      ),
+    ).effect("falls back to the main installer when an older release has no tagged installer", () =>
+      Effect.gen(function* () {
+        yield* Installation.use.upgrade("curl", "v8.8.8")
+        expect(fallbackCalls).toEqual([
+          "https://raw.githubusercontent.com/ahmed-alxawad/YukiOshiCode/v8.8.8/install",
           "https://raw.githubusercontent.com/ahmed-alxawad/YukiOshiCode/main/install",
-        )
+        ])
       }),
     )
 

@@ -69,7 +69,7 @@ const BrewInfoV2 = Schema.Struct({
 
 const GITHUB_REPOSITORY = "ahmed-alxawad/YukiOshiCode"
 const GITHUB_RELEASES_API = `https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/latest`
-const INSTALL_SCRIPT_URL = `https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/install`
+const MAIN_INSTALL_SCRIPT_URL = `https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/install`
 const NPM_PACKAGE = "yukioshi-ai"
 const BREW_FORMULA = "yukioshi"
 const BREW_TAP_FORMULA = "ahmed-alxawad/tap/yukioshi"
@@ -89,7 +89,8 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
   Service,
   Effect.gen(function* () {
     const http = yield* HttpClient.HttpClient
-    const httpOk = HttpClient.filterStatusOk(withTransientReadRetry(http))
+    const httpRead = withTransientReadRetry(http)
+    const httpOk = HttpClient.filterStatusOk(httpRead)
     const appProcess = yield* AppProcess.Service
 
     const text = Effect.fnUntraced(
@@ -146,7 +147,13 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
 
     const upgradeCurl = Effect.fnUntraced(
       function* (target: string) {
-        const response = yield* httpOk.execute(HttpClientRequest.get(INSTALL_SCRIPT_URL))
+        const version = target.replace(/^v/, "")
+        const releaseUrl = `https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/v${version}/install`
+        const releaseResponse = yield* httpRead.execute(HttpClientRequest.get(releaseUrl))
+        const response =
+          releaseResponse.status === 404
+            ? yield* httpOk.execute(HttpClientRequest.get(MAIN_INSTALL_SCRIPT_URL))
+            : yield* HttpClientResponse.filterStatusOk(releaseResponse)
         const body = yield* response.text
         const bodyBytes = new TextEncoder().encode(body)
         const shell = yield* upgradeScriptShell()

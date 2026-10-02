@@ -2,6 +2,7 @@
 
 # This installer needs bash. When it is piped to `sh` (dash on Debian/Ubuntu),
 # re-run it under bash instead of failing on bash-only syntax.
+# Test-only: YUKIOSHI_INSTALL_SHA256SUMS_URL overrides the release checksum URL.
 if [ -z "${BASH_VERSION:-}" ]; then
     if command -v bash >/dev/null 2>&1; then
         if [ -f "$0" ] && grep -q "YukiOshi Code Installer" "$0" 2>/dev/null; then
@@ -199,6 +200,7 @@ else
 
     if [ -z "$requested_version" ]; then
         url="$GITHUB_URL/releases/latest/download/$filename"
+        checksum_url="$GITHUB_URL/releases/latest/download/SHA256SUMS"
         specific_version=$(curl -s "https://api.github.com/repos/$GITHUB_REPO/releases/latest" | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p')
 
         if [[ $? -ne 0 || -z "$specific_version" ]]; then
@@ -209,6 +211,7 @@ else
         # Strip leading 'v' if present
         requested_version="${requested_version#v}"
         url="$GITHUB_URL/releases/download/v${requested_version}/$filename"
+        checksum_url="$GITHUB_URL/releases/download/v${requested_version}/SHA256SUMS"
         specific_version=$requested_version
 
         # Verify the release exists before downloading
@@ -218,6 +221,10 @@ else
             echo -e "${MUTED}Available releases: $GITHUB_URL/releases${NC}"
             exit 1
         fi
+    fi
+
+    if [ -n "${YUKIOSHI_INSTALL_SHA256SUMS_URL:-}" ]; then
+        checksum_url="$YUKIOSHI_INSTALL_SHA256SUMS_URL"
     fi
 fi
 
@@ -237,8 +244,6 @@ print_message() {
 
 check_version() {
     if command -v yukioshi >/dev/null 2>&1; then
-        yukioshi_path=$(which yukioshi)
-
         ## Check the installed version
         installed_version=$(yukioshi --version 2>/dev/null || echo "")
 
@@ -257,7 +262,8 @@ unbuffered_sed() {
     elif echo | sed -l -e "" >/dev/null 2>&1; then
         sed -nl "$@"
     else
-        local pad="$(printf "\n%512s" "")"
+        local pad
+        pad="$(printf "\n%512s" "")"
         sed -ne "s/$/\\${pad}/" "$@"
     fi
 }
@@ -273,9 +279,11 @@ print_progress() {
     local on=$(( percent * width / 100 ))
     local off=$(( width - on ))
 
-    local filled=$(printf "%*s" "$on" "")
+    local filled
+    filled=$(printf "%*s" "$on" "")
     filled=${filled// /■}
-    local empty=$(printf "%*s" "$off" "")
+    local empty
+    empty=$(printf "%*s" "$off" "")
     empty=${empty// /･}
 
     printf "\r${ORANGE}%s%s %3d%%${NC}" "$filled" "$empty" "$percent" >&4
@@ -301,10 +309,10 @@ download_with_progress() {
     # Hide cursor
     printf "\033[?25l" >&4
 
-    trap "trap - RETURN; rm -f \"$tracefile\"; printf '\033[?25h' >&4; exec 4>&-" RETURN
+    trap 'trap - RETURN; rm -f "$tracefile"; printf "\033[?25h" >&4; exec 4>&-' RETURN
 
     (
-        curl --trace-ascii "$tracefile" -s -L -o "$output" "$url"
+        curl --trace-ascii "$tracefile" -s -f -L -o "$output" "$url"
     ) &
     local curl_pid=$!
 
@@ -341,14 +349,109 @@ download_with_progress() {
     return $ret
 }
 
+verify_archive_checksum() {
+    local archive_path="$1"
+    local checksum_path="$2"
+    local selected_checksum="$3"
+    local checksum_line=""
+    local found=false
+
+    while IFS= read -r checksum_line || [ -n "$checksum_line" ]; do
+        if [[ "$checksum_line" =~ ^([[:xdigit:]]{64})[[:space:]]+\*?(.+)$ ]] && [ "${BASH_REMATCH[2]}" = "$filename" ]; then
+            printf '%s  %s\n' "${BASH_REMATCH[1]}" "$filename" > "$selected_checksum"
+            found=true
+            break
+        fi
+    done < "$checksum_path"
+
+    if [ "$found" != "true" ]; then
+        print_message error "Error: ${filename} is not listed in SHA256SUMS; refusing to install it."
+        return 1
+    fi
+
+    local archive_dir
+    archive_dir=$(dirname "$archive_path")
+    if command -v sha256sum >/dev/null 2>&1; then
+        if ! (cd "$archive_dir" && sha256sum -c "$selected_checksum"); then
+            print_message error "Error: Checksum verification failed for ${filename}; the archive was not installed."
+            return 1
+        fi
+    elif command -v shasum >/dev/null 2>&1; then
+        if ! (cd "$archive_dir" && shasum -a 256 -c "$selected_checksum"); then
+            print_message error "Error: Checksum verification failed for ${filename}; the archive was not installed."
+            return 1
+        fi
+    else
+        print_message error "Error: SHA256SUMS is available, but neither sha256sum nor shasum is installed."
+        return 1
+    fi
+}
+
+install_candidate() {
+    local source="$1"
+    local destination="${INSTALL_DIR}/yukioshi"
+    local backup="${INSTALL_DIR}/yukioshi.old"
+    local staged="${INSTALL_DIR}/.yukioshi.new.$$"
+    local candidate_version=""
+    local had_previous=false
+
+    rm -f "$staged"
+    if ! cp "$source" "$staged" || ! chmod 755 "$staged"; then
+        rm -f "$staged"
+        print_message error "Error: Failed to stage the new YukiOshi binary."
+        return 1
+    fi
+
+    if ! candidate_version=$("$staged" --version 2>&1); then
+        rm -f "$staged"
+        print_message error "Error: The new YukiOshi binary failed its --version health check; the existing installation was not changed."
+        return 1
+    fi
+    print_message info "${MUTED}Verified new binary version: ${NC}${candidate_version}"
+
+    if [ -e "$destination" ]; then
+        rm -f "$backup"
+        mv "$destination" "$backup"
+        had_previous=true
+    fi
+
+    if ! mv "$staged" "$destination"; then
+        rm -f "$staged"
+        if [ "$had_previous" = "true" ]; then
+            mv "$backup" "$destination"
+        fi
+        print_message error "Error: Failed to install the new YukiOshi binary; the previous binary was restored."
+        return 1
+    fi
+}
+
+install_tmp_dir=""
+cleanup_install_tmp() {
+    if [ -n "$install_tmp_dir" ]; then
+        rm -rf "$install_tmp_dir"
+    fi
+}
+
 download_and_install() {
     print_message info "\n${MUTED}Installing ${NC}yukioshi ${MUTED}version: ${NC}$specific_version"
     local tmp_dir="${TMPDIR:-/tmp}/yukioshi_install_$$"
     mkdir -p "$tmp_dir"
+    install_tmp_dir="$tmp_dir"
+    trap cleanup_install_tmp EXIT
 
     if [[ "$os" == "windows" ]] || ! [ -t 2 ] || ! download_with_progress "$url" "$tmp_dir/$filename"; then
         # Fallback to standard curl on Windows, non-TTY environments, or if custom progress fails
-        curl -# -L -o "$tmp_dir/$filename" "$url"
+        curl -# -f -L -o "$tmp_dir/$filename" "$url"
+    fi
+
+    local checksum_path="$tmp_dir/SHA256SUMS"
+    local selected_checksum="$tmp_dir/SHA256SUMS.selected"
+    if curl -fsSL -o "$checksum_path" "$checksum_url" 2>/dev/null; then
+        print_message info "${MUTED}Verifying checksum for ${NC}${filename}"
+        verify_archive_checksum "$tmp_dir/$filename" "$checksum_path" "$selected_checksum"
+    else
+        rm -f "$checksum_path"
+        print_message warning "Warning: SHA256SUMS not found for this release (${checksum_url}). Continuing without checksum verification."
     fi
 
     if [ "$os" = "linux" ]; then
@@ -361,15 +464,21 @@ download_and_install() {
     if [ "$os" = "windows" ] && [ -f "$tmp_dir/yukioshi.exe" ]; then
         extracted_binary="$tmp_dir/yukioshi.exe"
     fi
-    mv "$extracted_binary" "${INSTALL_DIR}/yukioshi"
-    chmod 755 "${INSTALL_DIR}/yukioshi"
-    rm -rf "$tmp_dir"
+
+    if [ ! -f "$extracted_binary" ]; then
+        print_message error "Error: The downloaded archive does not contain a YukiOshi binary."
+        return 1
+    fi
+
+    install_candidate "$extracted_binary"
+    cleanup_install_tmp
+    install_tmp_dir=""
+    trap - EXIT
 }
 
 install_from_binary() {
     print_message info "\n${MUTED}Installing ${NC}yukioshi ${MUTED}from: ${NC}$binary_path"
-    cp "$binary_path" "${INSTALL_DIR}/yukioshi"
-    chmod 755 "${INSTALL_DIR}/yukioshi"
+    install_candidate "$binary_path"
 }
 
 if [ -n "$binary_path" ]; then
@@ -460,7 +569,7 @@ if [[ "$no_modify_path" != "true" ]]; then
 fi
 
 if [ -n "${GITHUB_ACTIONS-}" ] && [ "${GITHUB_ACTIONS}" == "true" ]; then
-    echo "$INSTALL_DIR" >> $GITHUB_PATH
+    echo "$INSTALL_DIR" >> "$GITHUB_PATH"
     print_message info "Added $INSTALL_DIR to \$GITHUB_PATH"
 fi
 
