@@ -14,7 +14,8 @@ workflow. Most opencode setups work after a few renames.
 | `opencode` command               | `yukioshi`                             |
 | `@opencode-ai/*` packages        | `@yukioshi/*`                          |
 | `OPENCODE_*` environment variables | `YUKIOSHI_*`                         |
-| `opencode.json`, `.opencode/`    | `yukioshi.json`, `.yukioshi/` (old names still read) |
+| `opencode.json`, `.opencode/`    | `yukioshi.json`, `.yukioshi/` (old names still read; `.jsonc` supported) |
+| `.opencodeignore`                | `.yukioshiignore` (old name still read) |
 | `~/.config/opencode/`            | `~/.config/yukioshi/`                  |
 | data, cache, and state in `opencode` directories | the same locations under `yukioshi` |
 
@@ -26,6 +27,9 @@ workflow. Most opencode setups work after a few renames.
   `write` and `edit` tools (`sandbox`).
 - Repository trust: a repository's hooks and plugins run only after
   `yukioshi trust`.
+- Project trust records a fingerprint of the repository's executable config (hooks, plugins, MCP/LSP/formatter commands) and lapses when that config changes.
+- Untrusted repositories can't start local MCP servers or custom LSP/formatter commands.
+- Installers verify release checksums, and Windows has `install.ps1`.
 - API keys and OAuth tokens stored in the OS keychain.
 - Claude Code-compatible hooks for six events (`hooks`).
 - Project memory (`memory`), semantic code search (`indexing`), and a code
@@ -52,13 +56,15 @@ terminal application.
 3. Copy your global configuration from `~/.config/opencode/` to
    `~/.config/yukioshi/` (rename `opencode.json` to `yukioshi.json` if you
    like). YukiOshi does not read opencode's global directories.
-4. Project files need no immediate change: `opencode.json` and `.opencode/`
-   are still read. When both names exist in the same place, the YukiOshi file
-   wins. Rename them when convenient.
+4. Project files need no immediate change: `opencode.json`,
+   `opencode.jsonc`, `.opencode/`, and `.opencodeignore` are still read. When
+   both names exist in the same place, the YukiOshi file wins. Rename them
+   when convenient.
 5. Sign in to your providers again with `yukioshi providers login`.
    Credentials are not copied from opencode.
-6. If a repository uses hooks or plugins, run `yukioshi trust .` in it once
-   you have reviewed them.
+6. If a repository uses hooks, plugins, local MCP servers, or custom
+   LSP/formatter commands, run `yukioshi trust .` in it once you have reviewed
+   them. Re-run it if that executable configuration changes.
 7. In code that imports the SDK or plugin API, replace `@opencode-ai/*` with
    `@yukioshi/*`. Leave third-party names such as `opencode-gitlab-auth`
    unchanged.

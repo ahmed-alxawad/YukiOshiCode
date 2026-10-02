@@ -93,7 +93,7 @@ Environment variables are checked left-to-right.
 | Claude (Anthropic)         | `anthropic`                                                 | `ANTHROPIC_API_KEY`                                                                             |
 | Codex (OpenAI)             | `openai`                                                    | Built-in ChatGPT Plus/Pro OAuth, or `OPENAI_API_KEY`                                            |
 | Antigravity OAuth (Google) | `google`                                                    | Antigravity OAuth plugin, or `GOOGLE_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `GEMINI_API_KEY` |
-| Grok (xAI)                 | `xai`                                                       | `XAI_API_KEY`                                                                                   |
+| Grok (xAI)                 | `xai`                                                       | Built-in SuperGrok OAuth, or `XAI_API_KEY`                                                      |
 | OpenRouter                 | `openrouter`                                                | `OPENROUTER_API_KEY`                                                                            |
 | AgentRouter                | `agentrouter`                                               | `AGENTROUTER_API_KEY`                                                                           |
 | OpenCode                   | `opencode`                                                  | Public zero-cost models or normal OpenCode authentication                                       |
@@ -147,6 +147,17 @@ override that external service policy.
 The exact model list and metadata can change when the catalog refreshes, but
 the provider picker remains restricted to the IDs above.
 
+## Compatible presets
+
+YukiOshi bundles two OpenAI-compatible presets in the model catalog:
+
+| Preset | Provider ID | Default base URL | Environment-variable precedence |
+| --- | --- | --- | --- |
+| Google AI Studio | `google-ai-studio` | `https://generativelanguage.googleapis.com/v1beta/openai/` | `GOOGLE_API_KEY`, `GEMINI_API_KEY`, `YUKIOSHI_API_KEY` |
+| OpenCode Zen | `opencode-zen` | `https://opencode.ai/zen/v1` | `OPENCODE_API_KEY`, `YUKIOSHI_API_KEY` |
+
+These presets autoload when any of their environment variables are set. `google-ai-studio` mirrors the models from the `google` provider through Google's OpenAI-compatible endpoint. `opencode-zen` routes paid models to OpenCode's Zen endpoint using an API key, keeping them separate from the native zero-cost `opencode` provider.
+
 ## OAuth providers
 
 ### OpenAI Codex / ChatGPT
@@ -162,6 +173,20 @@ yukioshi auth login --provider openai --method "ChatGPT Pro/Plus (browser)"
 For SSH or another headless environment, select `ChatGPT Pro/Plus (headless)`
 instead. After login, choose one of the OAuth-enabled `openai/<model>` entries.
 An OpenAI API key remains a separate login method.
+
+### xAI Grok
+
+Grok OAuth is built in. It uses the RFC 8628 device-code flow, which works in
+headless environments, SSH sessions, and containers without running a local
+callback server. Start the login flow with:
+
+```sh
+yukioshi auth login --provider xai --method "SuperGrok Subscription"
+```
+
+The CLI prints a verification URL and a short code to enter in any browser.
+Access tokens refresh automatically before expiration. An xAI API key remains
+available through the `Manually enter API Key` method or `XAI_API_KEY`.
 
 ### Google Antigravity
 
