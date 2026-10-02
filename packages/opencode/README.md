@@ -1,15 +1,12 @@
-# js
+# yukioshi
 
-To install dependencies:
-
-```bash
-bun install
-```
-
-To run:
+The YukiOshi Code CLI: the agent loop, tools, sessions, permission handling,
+headless server, and built-in skills (`skills/`).
 
 ```bash
-bun run index.ts
+bun run dev                    # from the repository root: run the CLI from source
+bun test test/tool/edit.test.ts
+bun run script/build.ts --single --skip-embed-web-ui   # build a binary for this platform
 ```
 
-This project was created using `bun init` in bun v1.2.12. [Bun](https://bun.sh) is a fast all-in-one JavaScript runtime.
+See the [repository README](../../README.md) for usage and configuration.

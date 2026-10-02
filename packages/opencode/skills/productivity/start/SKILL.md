@@ -23,7 +23,7 @@ Check the working directory for:
 
 **If `TASKS.md` doesn't exist:** Create it with the standard template (see task-management skill). Place it in the current working directory.
 
-**If `dashboard.html` doesn't exist:** Create it from this skill's `dashboard.html` supporting file (in YukiOshi Code: read it with `use_skill` and `file: "dashboard.html"`, then write it to the current working directory).
+**If `dashboard.html` doesn't exist:** Create it from this skill's `dashboard.html` supporting file (in YukiOshi Code: read `dashboard.html` from this skill's base directory, then write it to the current working directory).
 
 **If `CLAUDE.md` and `memory/` don't exist:** This is a fresh setup — after opening the dashboard, begin the memory bootstrap workflow (see below). Place these in the current working directory.
 

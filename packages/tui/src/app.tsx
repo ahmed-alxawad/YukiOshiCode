@@ -821,7 +821,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         name: "docs.open",
         title: "Open docs",
         run: () => {
-          openUrl("https://github.com/ahmed-alxawad/YukiOshiCode/tree/opencode-foundation/docs").catch(() => {})
+          openUrl("https://github.com/ahmed-alxawad/YukiOshiCode/tree/main/docs").catch(() => {})
           dialog.clear()
         },
         category: "System",

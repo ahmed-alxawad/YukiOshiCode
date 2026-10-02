@@ -1,6 +1,8 @@
 import { LayerNode } from "@yukioshi/core/effect/layer-node"
 import path from "path"
+import fs from "fs/promises"
 import { fileURLToPath } from "url"
+import { InstallationVersion } from "@yukioshi/core/installation/version"
 import { Effect, Layer, Context, Schema } from "effect"
 import { NamedError } from "@yukioshi/core/util/error"
 import type { Agent } from "@/agent/agent"
@@ -31,9 +33,43 @@ const BUILTIN_SKILL_PATTERN = "**/SKILL.md"
 // Bundled, Apache-2.0-licensed skills shipped with YukiOshi Code (design, engineering,
 // productivity, skill-creator, web-artifacts-builder, bugfix, disaster, nightmare -
 // see skills/NOTICE for provenance). Resolved relative to this source file so it
-// works for `bun run src/index.ts`; a packaged/dist build needs to carry
-// packages/opencode/skills alongside the built entrypoint.
+// works for `bun run src/index.ts`. Compiled binaries embed the same files via the
+// build-generated `yukioshi-skills.gen.ts` module and extract them to the cache.
 export const BUILTIN_SKILLS_DIR = fileURLToPath(new URL("../../skills", import.meta.url))
+
+// Set once the embedded skills of a compiled binary are extracted, so isBuiltin() recognizes them.
+let extractedSkillsDir: string | undefined
+
+const extractEmbeddedSkills = Effect.fnUntraced(function* (cache: string) {
+  const embedded = yield* Effect.promise(() =>
+    // @ts-expect-error - generated file at build time
+    import("yukioshi-skills.gen.ts")
+      .then((module) => module.default as Record<string, string>)
+      .catch(() => undefined),
+  )
+  if (!embedded) return undefined
+  const target = path.join(cache, "skills", InstallationVersion)
+  const marker = path.join(target, ".extracted")
+  const extracted = yield* Effect.promise(async () => {
+    if (await Bun.file(marker).exists()) return true
+    // Extract into a private directory, then rename, so concurrent instances never see a partial tree.
+    const staging = `${target}.${process.pid}.tmp`
+    await fs.rm(staging, { recursive: true, force: true })
+    for (const [file, source] of Object.entries(embedded)) {
+      const dest = path.join(staging, file)
+      await fs.mkdir(path.dirname(dest), { recursive: true })
+      await Bun.write(dest, Bun.file(source))
+      if (/\.(sh|py)$/.test(file)) await fs.chmod(dest, 0o755)
+    }
+    await Bun.write(path.join(staging, ".extracted"), InstallationVersion)
+    await fs.rm(target, { recursive: true, force: true })
+    await fs.rename(staging, target).catch(() => fs.rm(staging, { recursive: true, force: true }))
+    return Bun.file(marker).exists()
+  }).pipe(Effect.catchCause((cause) => Effect.logWarning("failed to extract built-in skills", { cause }).pipe(Effect.as(false))))
+  if (!extracted) return undefined
+  extractedSkillsDir = target
+  return target
+})
 
 // Built-in skill that ships with YukiOshi Code. The model's intuition for what a
 // yukioshi.json (or legacy opencode.json) should look like is often wrong, and YukiOshi hard-fails on
@@ -226,8 +262,11 @@ const discoverSkills = Effect.fnUntraced(function* (
 ) {
   const state: ScanState = { matches: new Map(), dirs: new Set() }
 
-  if (yield* fsys.isDir(BUILTIN_SKILLS_DIR)) {
-    yield* scan(state, BUILTIN_SKILLS_DIR, BUILTIN_SKILL_PATTERN, { scope: "builtin" })
+  const builtinDir = (yield* fsys.isDir(BUILTIN_SKILLS_DIR))
+    ? BUILTIN_SKILLS_DIR
+    : yield* extractEmbeddedSkills(global.cache)
+  if (builtinDir) {
+    yield* scan(state, builtinDir, BUILTIN_SKILL_PATTERN, { scope: "builtin" })
   }
 
   const externalDirs: string[] = []
@@ -383,7 +422,11 @@ const layer = Layer.effect(
 
 /** True for the hardcoded customize-opencode skill and everything discovered from the bundled skills/ directory. */
 export function isBuiltin(info: Pick<Info, "location">): boolean {
-  return info.location === "<built-in>" || FSUtil.contains(BUILTIN_SKILLS_DIR, info.location)
+  return (
+    info.location === "<built-in>" ||
+    FSUtil.contains(BUILTIN_SKILLS_DIR, info.location) ||
+    (extractedSkillsDir !== undefined && FSUtil.contains(extractedSkillsDir, info.location))
+  )
 }
 
 export function fmt(list: Info[], opts: { verbose: boolean }) {

@@ -1,66 +1,55 @@
 # Built-in skills
 
-Skills are folders with a `SKILL.md` file (YAML front matter with `name` and
-`description`, then Markdown instructions) plus optional supporting files. They
-use the same format as Claude Code and Claude plugins. YukiOshi lists every
-skill by name and description in the system prompt and loads the full
-instructions only when a task needs them (the `use_skill` tool). In a session
-you can also call one directly: `/nightmare src/auth`.
+A skill is a folder with a `SKILL.md` file (YAML front matter with `name` and
+`description`, then Markdown instructions) plus optional supporting files. The
+format is the same one Claude Code and Claude plugins use.
 
-## Purpose
+YukiOshi lists every available skill by name and description, and the model
+loads a skill's full instructions with the `skill` tool only when a task needs
+it. Every skill is also a slash command in the TUI, for
+example `/nightmare src/auth` or `/engineering:code-review`.
 
-The skills shipped with YukiOshi Code, copied next to the CLI and the VS Code
-extension at build time (`dist/skills`) and loaded as the `builtin` source.
-
-## Owns
+## What ships here
 
 | Folder                               | Skills                                                                                                                                                                                                                                                                                | Origin and license                                                                                                          |
 | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `design/`                            | `design:accessibility-review`, `design:design-critique`, `design:design-handoff`, `design:design-system`, `design:research-synthesis`, `design:user-research`, `design:ux-copy`                                                                                                       | [anthropics/knowledge-work-plugins](https://github.com/anthropics/knowledge-work-plugins) (design plugin 1.2.0), Apache-2.0 |
-| `engineering/`                       | `engineering:architecture`, `engineering:code-review`, `engineering:debug`, `engineering:deploy-checklist`, `engineering:documentation`, `engineering:incident-response`, `engineering:standup`, `engineering:system-design`, `engineering:tech-debt`, `engineering:testing-strategy` | knowledge-work-plugins (engineering plugin 1.2.0), Apache-2.0                                                               |
-| `productivity/`                      | `productivity:memory-management`, `productivity:start`, `productivity:task-management`, `productivity:update`                                                                                                                                                                         | knowledge-work-plugins (productivity plugin 1.3.1), Apache-2.0; two path references adapted (see `NOTICE`)                  |
+| `nightmare/`, `disaster/`, `bugfix/` | `nightmare`, `disaster`, `bugfix`                                                                                                                                                                                                                                                     | Written for YukiOshi Code, Apache-2.0                                                                                       |
+| `engineering/`                       | `engineering:architecture`, `engineering:code-review`, `engineering:debug`, `engineering:deploy-checklist`, `engineering:documentation`, `engineering:incident-response`, `engineering:standup`, `engineering:system-design`, `engineering:tech-debt`, `engineering:testing-strategy` | [anthropics/knowledge-work-plugins](https://github.com/anthropics/knowledge-work-plugins) (engineering 1.2.0), Apache-2.0   |
+| `design/`                            | `design:accessibility-review`, `design:design-critique`, `design:design-handoff`, `design:design-system`, `design:research-synthesis`, `design:user-research`, `design:ux-copy`                                                                                                       | knowledge-work-plugins (design 1.2.0), Apache-2.0                                                                           |
+| `productivity/`                      | `productivity:memory-management`, `productivity:start`, `productivity:task-management`, `productivity:update`                                                                                                                                                                         | knowledge-work-plugins (productivity 1.3.1), Apache-2.0; two file references adapted (see `NOTICE`)                         |
 | `skill-creator/`                     | `skill-creator`                                                                                                                                                                                                                                                                       | Anthropic example skill, Apache-2.0 (`skill-creator/LICENSE.txt`)                                                           |
 | `web-artifacts-builder/`             | `web-artifacts-builder`                                                                                                                                                                                                                                                               | Anthropic example skill, Apache-2.0 (`web-artifacts-builder/LICENSE.txt`)                                                   |
-| `nightmare/`, `disaster/`, `bugfix/` | `nightmare`, `disaster`, `bugfix`                                                                                                                                                                                                                                                     | Written for YukiOshi Code, Apache-2.0 (this repository's license)                                                           |
 
-`LICENSES/Apache-2.0.txt` holds the license text; `NOTICE` holds attributions.
+`customize-opencode` (help with editing YukiOshi's own configuration) is also
+built in, but its content lives in `packages/core/src/plugin/skill`.
 
-### Not bundled, but usable
+`LICENSES/Apache-2.0.txt` holds the license text and `NOTICE` holds the
+attributions. `CONNECTORS.md` explains the `~~connector` placeholders used by
+the plugin-derived skills: YukiOshi has no connectors, so those skills fall
+back to local tools or ask the user.
 
-- **Anthropic document skills** (`docx`, `pdf`, `pptx`, `xlsx`) are proprietary
-  and may not be redistributed. If you have them (for example in
-  `~/.claude/skills`), YukiOshi reads them from there automatically
-  (`skills.claudeInterop`), or install a copy you are licensed to use with
-  `yukioshi skills add <folder>`.
-- **Plugin skills from other vendors** (for example Qodo) are read from
-  `~/.claude/plugins` when installed there.
-- **Claude app–specific skills** (Claude Docs, memory import, morning brief)
-  depend on claude.ai connectors and do not apply to a coding agent.
+## How the binary carries them
 
-## Does Not Own
+When running from source, skills are read from this folder directly. The
+release build (`script/build.ts`) embeds every file here into the binary, and
+on first use they are extracted to `<cache>/yukioshi/skills/<version>/`
+(for example `~/.cache/yukioshi/skills/0.3.0/` on Linux).
 
-Skill discovery, precedence, and loading (`packages/skills`), the `use_skill`
-tool (`packages/tooling`), and user or repository skills
-(`<user data>/skills`, `.yukioshi/skills`, `.claude/skills`).
+## Adding your own skills
 
-## Public Boundary
+Skills are discovered from, in order:
 
-Folder layout: `<skill>/SKILL.md` or `<namespace>/<skill>/SKILL.md` (namespace
-folders become `namespace:skill`). A user skill with the same name replaces a
-built-in one; disable any skill with `skills.disabled`.
+1. this built-in folder;
+2. `~/.claude/skills/` and `~/.agents/skills/`;
+3. `.claude/skills/` and `.agents/skills/` in the project and its parent
+   directories up to the repository root;
+4. `skill/` or `skills/` inside YukiOshi config directories
+   (`~/.config/yukioshi/`, the project's `.yukioshi/`);
+5. extra folders listed in `skills.paths` and remote indexes in `skills.urls`
+   in `yukioshi.json`.
 
-## Dependencies
-
-None at runtime. `scripts/build.mjs` copies this folder into each bundle.
-
-## Testing
-
-`packages/skills/test` covers parsing and discovery; `apps/cli/test` checks that
-the bundle contains these skills.
-
-## Maintainer Notes
-
-Only add skills whose license allows redistribution, keep their license file
-inside the skill folder or in `LICENSES/`, and record the origin in the table
-above and in `NOTICE`. Keep `SKILL.md` front matter valid: `yukioshi skills
-issues` reports problems.
+Skills that belong to the current repository are exposed with a `project:`
+prefix (`project:deploy`), so a repository can never shadow a built-in or
+personal skill. Set `YUKIOSHI_DISABLE_CLAUDE_CODE_SKILLS=1` to skip the
+`.claude` folders. Loading a skill goes through the `skill` permission, so it
+can be set to `ask` or `deny` like any other tool.

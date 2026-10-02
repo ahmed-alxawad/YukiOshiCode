@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - name: Build native binary and smoke test it
+        working-directory: packages/opencode
+        env:
+          YUKIOSHI_CHANNEL: ci
+          YUKIOSHI_VERSION: 0.0.0-ci
+        run: bun run script/build.ts --single --skip-embed-web-ui --skip-install
+      - name: Check the binary carries the built-in skills
+        working-directory: packages/opencode
+        run: |
+          home="$(mktemp -d)"
+          HOME="$home" XDG_CACHE_HOME="$home/cache" XDG_CONFIG_HOME="$home/config" XDG_DATA_HOME="$home/data" \
+            ./dist/yukioshi-linux-x64/bin/yukioshi debug skill > skills.json
+          grep -q '"name": "engineering:code-review"' skills.json
+          grep -q '"name": "nightmare"' skills.json

@@ -251,7 +251,7 @@ describe("installation", () => {
         expect(error.stderr).not.toContain("secret")
         expect(error.stderr).not.toContain("script output")
         expect(curlCalls).toContain(
-          "https://raw.githubusercontent.com/ahmed-alxawad/YukiOshiCode/opencode-foundation/install",
+          "https://raw.githubusercontent.com/ahmed-alxawad/YukiOshiCode/main/install",
         )
       }),
     )

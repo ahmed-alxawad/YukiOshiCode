@@ -13,7 +13,6 @@ have lower precedence when both names exist at the same location:
 
 ```json
 {
-  "$schema": "https://opencode.ai/config.json",
   "model": "openai/gpt-5",
   "provider": {
     "openai": {

@@ -1,4 +1,19 @@
 #!/usr/bin/env bash
+
+# This installer needs bash. When it is piped to `sh` (dash on Debian/Ubuntu),
+# re-run it under bash instead of failing on bash-only syntax.
+if [ -z "${BASH_VERSION:-}" ]; then
+    if command -v bash >/dev/null 2>&1; then
+        if [ -f "$0" ] && grep -q "YukiOshi Code Installer" "$0" 2>/dev/null; then
+            exec bash "$0" "$@"
+        fi
+        curl -fsSL "https://raw.githubusercontent.com/${YUKIOSHI_GITHUB_REPO:-ahmed-alxawad/YukiOshiCode}/main/install" | bash -s -- "$@"
+        exit $?
+    fi
+    echo "The YukiOshi Code installer requires bash." >&2
+    exit 1
+fi
+
 set -euo pipefail
 APP=yukioshi
 GITHUB_REPO=${YUKIOSHI_GITHUB_REPO:-ahmed-alxawad/YukiOshiCode}
@@ -13,17 +28,17 @@ usage() {
     cat <<EOF
 YukiOshi Code Installer
 
-Usage: install.sh [options]
+Usage: install [options]
 
 Options:
     -h, --help              Display this help message
-    -v, --version <version> Install a specific version (e.g., 1.0.180)
+    -v, --version <version> Install a specific version (e.g., 0.3.0)
     -b, --binary <path>     Install from a local binary instead of downloading
         --no-modify-path    Don't modify shell config files (.zshrc, .bashrc, etc.)
 
 Examples:
-    curl -fsSL https://raw.githubusercontent.com/ahmed-alxawad/YukiOshiCode/opencode-foundation/install | bash
-    curl -fsSL https://raw.githubusercontent.com/ahmed-alxawad/YukiOshiCode/opencode-foundation/install | bash -s -- --version 1.0.180
+    curl -fsSL https://raw.githubusercontent.com/ahmed-alxawad/YukiOshiCode/main/install | bash
+    curl -fsSL https://raw.githubusercontent.com/ahmed-alxawad/YukiOshiCode/main/install | bash -s -- --version 0.3.0
     ./install --binary /path/to/yukioshi
 EOF
 }

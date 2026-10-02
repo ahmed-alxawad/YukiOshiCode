@@ -196,7 +196,7 @@ Options:
 exports[`yukioshi CLI help-text snapshots every documented command emits stable help text: yukioshi uninstall --help 1`] = `
 "yukioshi uninstall
 
-uninstall opencode and remove all related files
+uninstall yukioshi and remove all related files
 
 Options:
   -h, --help         show help                                                             [boolean]

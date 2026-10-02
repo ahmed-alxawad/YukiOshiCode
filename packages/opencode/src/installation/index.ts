@@ -69,7 +69,7 @@ const BrewInfoV2 = Schema.Struct({
 
 const GITHUB_REPOSITORY = "ahmed-alxawad/YukiOshiCode"
 const GITHUB_RELEASES_API = `https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/latest`
-const INSTALL_SCRIPT_URL = `https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/opencode-foundation/install`
+const INSTALL_SCRIPT_URL = `https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/install`
 const NPM_PACKAGE = "yukioshi-ai"
 const BREW_FORMULA = "yukioshi"
 const BREW_TAP_FORMULA = "ahmed-alxawad/tap/yukioshi"

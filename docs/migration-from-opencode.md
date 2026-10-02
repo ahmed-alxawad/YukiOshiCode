@@ -1,57 +1,73 @@
-# Migrating from upstream opencode
+# Migrating from opencode
 
-YukiOshi Code's `opencode-foundation` branch is a performance-oriented fork of upstream opencode. It keeps opencode's Bun workspace, Effect-TS services, model/runtime architecture, and simultaneous multi-provider foundation, then adds features that are useful for a more opinionated coding-agent workflow.
+YukiOshi Code is a fork of [opencode](https://github.com/anomalyco/opencode).
+It keeps opencode's architecture, configuration format, and multi-provider
+model system, and adds features aimed at a more controlled coding-agent
+workflow. Most opencode setups work after a few renames.
 
-This guide reflects the completed YukiOshi rename. The executable, workspace package scope, runtime directories, and application environment-variable prefix have changed; selected upstream compatibility identifiers remain intentionally unchanged.
+## What is different
 
-## Why this fork exists
+**Renamed**
 
-The separate `main` implementation of YukiOshi Code demonstrated a useful product direction, but it was built from scratch on Node.js built-ins and was slower than opencode for the workloads that matter here. This fork keeps opencode as the foundation and ports the features that improve safety, retrieval, automation, and provider choice without replacing opencode's core architecture.
+| opencode                         | YukiOshi Code                          |
+| -------------------------------- | -------------------------------------- |
+| `opencode` command               | `yukioshi`                             |
+| `@opencode-ai/*` packages        | `@yukioshi/*`                          |
+| `OPENCODE_*` environment variables | `YUKIOSHI_*`                         |
+| `opencode.json`, `.opencode/`    | `yukioshi.json`, `.yukioshi/` (old names still read) |
+| `~/.config/opencode/`            | `~/.config/yukioshi/`                  |
+| data, cache, and state in `opencode` directories | the same locations under `yukioshi` |
 
-The two branches are intentionally separate implementations for now. Upstream opencode remains the reference for the foundation; this fork is the place where YukiOshi-specific features are integrated and verified.
+**Added**
 
-## What is added or changed
+- Permission modes (`manual`, `auto`, `auto-all`, `plan`) and hard safety
+  blocks that no rule or mode can override.
+- An optional OS-level sandbox for shell commands, also enforced by the
+  `write` and `edit` tools (`sandbox`).
+- Repository trust: a repository's hooks and plugins run only after
+  `yukioshi trust`.
+- API keys and OAuth tokens stored in the OS keychain.
+- Claude Code-compatible hooks for six events (`hooks`).
+- Project memory (`memory`), semantic code search (`indexing`), and a code
+  graph tool (`code_graph`), all off by default.
+- Parallel subagents in isolated git worktrees (`task_parallel`, experimental).
+- Post-turn verification that runs the project's typecheck, lint, and test
+  commands and reports the evidence.
+- Bundled skills (`nightmare`, `disaster`, `bugfix`, and the `engineering:*`,
+  `design:*`, and `productivity:*` families). Project skills are namespaced
+  `project:<name>`.
+- Google AI Studio and OpenCode Zen provider presets and built-in ChatGPT /
+  Codex sign-in. See [providers.md](providers.md).
 
-### More provider profiles over the native provider system
-
-The fork adds Google AI Studio and OpenCode Zen presets alongside opencode's existing providers, including OpenRouter and NVIDIA NIM. These profiles use opencode's native models.dev-backed, multi-provider system and shared SDK transports rather than introducing a separate single-provider HTTP client. Existing Anthropic, OpenAI, Gemini/Google, Bedrock, and other catalogued providers remain available. OpenCode's zero-cost models remain exclusive to the native `opencode` provider rather than being duplicated into the `opencode-zen` API-key alias.
-
-Provider selection and configuration continue to use the fork's opencode-compatible configuration format. See [provider configuration](providers.md) for the provider names, environment-key precedence, endpoint overrides, and generic OpenAI-compatible setup.
-
-### Kilo Code features integrated with opencode services
-
-- OS-level sandboxing for shell execution, with write/edit path enforcement when the sandbox is enabled.
-- Explicit cross-session project memory through `memory_recall` and `memory_save`.
-- Parallel, optionally worktree-isolated subagents through `task_parallel`.
-- Semantic code retrieval through `code_search`, backed by the `packages/indexing` service.
-- Claude Code-compatible hooks for PreToolUse, PostToolUse, UserPromptSubmit, SessionStart, Stop, and Notification.
-
-These additions are wired into opencode's Effect and `LayerNode` graphs. They are not parallel application frameworks, so existing opencode plugins and services remain the integration points.
-
-### Verification and repository-structure signals
-
-The fork includes an evidence-based verification pipeline for reporting whether checks were verified, partially verified, failed, unavailable, or skipped. It also includes a provider-neutral code graph with Graphify and local/null fallbacks. Code-graph answers are retrieval signals only: they do not replace reading files, checking symbols with LSP, or verifying facts with grep/glob before editing.
-
-### Features deliberately not copied
-
-The Kimi Code investigation found that Moonshot/Kimi access already works through the existing models.dev catalog and that opencode's compaction and output-truncation systems already cover the relevant long-context behavior. No separate Kimi client was added.
+**Not included**: opencode's web and desktop apps. YukiOshi Code is a
+terminal application.
 
 ## Migration checklist
 
-1. Replace the `opencode` command with `yukioshi` in shell aliases, editor tasks, CI jobs, and scripts.
-2. Replace imports from `@opencode-ai/*` with the corresponding `@yukioshi/*` package. Third-party package names such as `opencode-gitlab-auth` are external names and must not be rewritten.
-3. Replace application environment variables named `OPENCODE_*` with `YUKIOSHI_*`. Provider-owned variables remain provider-specific: for example, OpenCode Zen still accepts `OPENCODE_API_KEY`; see [provider configuration](providers.md) for each credential chain.
-4. Rename configuration to `yukioshi.json` and `.yukioshi/` when convenient. The loader reads both the YukiOshi names and legacy `opencode.json`/`.opencode/` names; at the same location, YukiOshi-named files take precedence. The default global root is the platform's `yukioshi` XDG/config directory—for example, `~/.config/yukioshi/yukioshi.json` on a typical Linux setup—so copy or deliberately recreate any global upstream configuration there.
-5. Review stateful integrations separately. YukiOshi uses `yukioshi` under the platform's data, cache, state, config, and temporary roots; it does not treat upstream opencode runtime directories as its current storage locations.
-6. Decide whether to enable optional features such as indexing, memory, hooks, sandboxing, verification, and code graph. Optional tools are gated and do not become active merely because their package exists.
-7. Treat code-search, code-graph, and verification output as assistance for retrieval and reporting. Continue to re-read files and run the checks that matter before accepting an edit.
+1. Install YukiOshi Code and replace `opencode` with `yukioshi` in shell
+   aliases, editor tasks, CI jobs, and scripts.
+2. Replace application environment variables named `OPENCODE_*` with
+   `YUKIOSHI_*`. Provider credentials keep their own names: OpenCode Zen, for
+   example, still reads `OPENCODE_API_KEY`.
+3. Copy your global configuration from `~/.config/opencode/` to
+   `~/.config/yukioshi/` (rename `opencode.json` to `yukioshi.json` if you
+   like). YukiOshi does not read opencode's global directories.
+4. Project files need no immediate change: `opencode.json` and `.opencode/`
+   are still read. When both names exist in the same place, the YukiOshi file
+   wins. Rename them when convenient.
+5. Sign in to your providers again with `yukioshi providers login`.
+   Credentials are not copied from opencode.
+6. If a repository uses hooks or plugins, run `yukioshi trust .` in it once
+   you have reviewed them.
+7. In code that imports the SDK or plugin API, replace `@opencode-ai/*` with
+   `@yukioshi/*`. Leave third-party names such as `opencode-gitlab-auth`
+   unchanged.
+8. Turn on the optional features you want in `yukioshi.json`: `sandbox`,
+   `memory`, `indexing`, `code_graph`, and `hooks`.
 
-## Renamed surfaces and preserved compatibility
+## Names that intentionally stay "opencode"
 
-The repository-wide rename is complete: the executable is `yukioshi`, workspace packages use `@yukioshi/*`, application-owned environment variables use `YUKIOSHI_*`, and current runtime directories use `yukioshi`.
-
-Not every occurrence of “opencode” is stale branding. The fork deliberately preserves upstream attribution, third-party package/provider names, protocol or plugin compatibility fields, upstream service URLs, and legacy `opencode.json`/`.opencode` discovery. Use the migration checklist above rather than blindly replacing text.
-
-## Attribution and upstream relationship
-
-This project remains recognizably based on opencode and retains upstream components where they are the best foundation. Ported or rebuilt features, dropped components, licenses, and known gaps are documented in the repository's `NOTICE.md`. Upstream opencode references in attribution or historical notes remain distinguishable from current YukiOshi branding.
+Not every remaining `opencode` is a missed rename. The `opencode` and
+`opencode-zen` provider IDs, opencode service URLs, third-party plugin
+packages, plugin compatibility fields, and the built-in `customize-opencode`
+skill keep their names so existing integrations keep working.

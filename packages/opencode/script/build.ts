@@ -47,7 +47,21 @@ const createEmbeddedWebUIBundle = async () => {
   ].join("\n")
 }
 
+// Built-in skills ship inside the binary; src/skill/index.ts extracts them to the cache on first use.
+const createEmbeddedSkillsBundle = async () => {
+  const skillsDir = path.join(dir, "skills")
+  const files = (await Array.fromAsync(new Bun.Glob("**/*").scan({ cwd: skillsDir })))
+    .map((file) => file.replaceAll("\\", "/"))
+    .sort()
+  const imports = files.map(
+    (file, i) => `import file_${i} from ${JSON.stringify(`./skills/${file}`)} with { type: "file" };`,
+  )
+  const entries = files.map((file, i) => `  ${JSON.stringify(file)}: file_${i},`)
+  return [...imports, `export default {`, ...entries, `}`].join("\n")
+}
+
 const embeddedFileMap = skipEmbedWebUi ? null : await createEmbeddedWebUIBundle()
+const embeddedSkills = await createEmbeddedSkillsBundle()
 const treeSitterWorker = await Bun.file(fileURLToPath(import.meta.resolve("@opentui/core/parser.worker"))).text()
 
 const allTargets: {
@@ -181,12 +195,14 @@ for (const item of targets) {
     },
     files: {
       [treeSitterWorkerPath]: treeSitterWorker,
+      "yukioshi-skills.gen.ts": embeddedSkills,
       ...(embeddedFileMap ? { "opencode-web-ui.gen.ts": embeddedFileMap } : {}),
     },
     entrypoints: [
       "./src/index.ts",
       workerPath,
       treeSitterWorkerPath,
+      "yukioshi-skills.gen.ts",
       ...(embeddedFileMap ? ["opencode-web-ui.gen.ts"] : []),
     ],
     define: {

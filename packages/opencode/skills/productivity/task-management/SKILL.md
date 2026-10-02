@@ -20,7 +20,7 @@ Tasks are tracked in a simple `TASKS.md` file that both you and the user can edi
 A visual dashboard is available for managing tasks and memory. **On first interaction with tasks:**
 
 1. Check if `dashboard.html` exists in the current working directory
-2. If not, create it from this skill's `dashboard.html` supporting file (in YukiOshi Code: read it with `use_skill` and `file: "dashboard.html"`, then write it to the current working directory)
+2. If not, create it from this skill's `dashboard.html` supporting file (in YukiOshi Code: read `dashboard.html` from this skill's base directory, then write it to the current working directory)
 3. Inform the user: "I've added the dashboard. Run `/productivity:start` to set up the full system."
 
 The task board:
