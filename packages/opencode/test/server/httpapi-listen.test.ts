@@ -293,7 +293,7 @@ describe("HttpApi Server.listen", () => {
       return true
     }) as typeof process.stderr.write
     try {
-      const response = await Server.Default().app.request("/status")
+      const response = await Server.Default().app.request("/global/health")
       expect(response.status).toBe(200)
     } finally {
       process.stderr.write = original
@@ -304,6 +304,7 @@ describe("HttpApi Server.listen", () => {
 
   test("plugin client requests reuse the listening server instance", async () => {
     await using tmp = await tmpdir({
+      trusted: true,
       init: async (directory) => {
         const plugin = path.join(directory, "plugin.ts")
         const initialized = path.join(directory, "initialized.txt")

@@ -178,7 +178,7 @@ describe("v2 pty HttpApi", () => {
     "applies plugin shell environment before forced PTY values",
     () =>
       Effect.gen(function* () {
-        const dir = yield* tmpdirScoped({ git: true, config: { formatter: false, lsp: false } })
+        const dir = yield* tmpdirScoped({ git: true, trusted: true, config: { formatter: false, lsp: false } })
         const plugin = path.join(dir, "plugin.ts")
         const cwd = path.join(dir, "child")
         yield* Effect.promise(() => mkdir(cwd))

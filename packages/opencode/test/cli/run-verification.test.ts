@@ -313,7 +313,7 @@ describe("run verification post-turn", () => {
     it("derives VERIFIED when behavioral test check passes", async () => {
       const dir = mkdtempSync(join(tmpdir(), "yk-verify-test-pass-"))
       try {
-        writeFileSync(join(dir, "file.txt"), "hello")
+        writeFileSync(join(dir, "file.ts"), "export const hello = 1\n")
         const output: string[] = []
         const mockClient: any = { session: {} }
 
@@ -321,7 +321,7 @@ describe("run verification post-turn", () => {
           cwd: dir,
           client: mockClient,
           sessionID: "ses-1",
-          changedFilesOverride: [{ path: "file.txt", kind: "modified" }],
+          changedFilesOverride: [{ path: "file.ts", kind: "modified" }],
           commandsOverride: [
             {
               kind: "test",
@@ -387,13 +387,13 @@ describe("run verification post-turn", () => {
           reply()
             .text("starting")
             .tool("bash", {
-              command: `printf '%s\\n' '{"version":"1.0"}' > ${JSON.stringify(join(home, "app-config.json"))}`,
-              description: "Create app-config.json",
+              command: `printf '%s\\n' 'export const version = "1.0"' > ${JSON.stringify(join(home, "version.ts"))}`,
+              description: "Create version.ts",
             }),
         )
-        yield* llm.text("Created app-config.json")
+        yield* llm.text("Created version.ts")
 
-        const result = yield* opencode.run("create the config file", {
+        const result = yield* opencode.run("create the version file", {
           extraArgs: ["--dangerously-skip-permissions", "--verify"],
           env: {
             HTTP_PROXY: "",
@@ -408,7 +408,7 @@ describe("run verification post-turn", () => {
 
         opencode.expectExit(result, 0)
         // Verify that the turn response was output
-        expect(result.stdout).toContain("Created app-config.json")
+        expect(result.stdout).toContain("Created version.ts")
         // Verify that verification was executed and printed matching main's UX
         expect(result.stdout).toMatch(/Verification: VERIFIED/)
       }),

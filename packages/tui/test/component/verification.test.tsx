@@ -209,7 +209,7 @@ describe("TUI verification integration", () => {
         cwd: process.cwd(),
         client: mockClient,
         sessionID: "ses_verified_test",
-        changedFilesOverride: [{ path: "sample.json", kind: "modified" }],
+        changedFilesOverride: [{ path: "sample.ts", kind: "modified" }],
         commandsOverride: [
           {
             kind: "test",

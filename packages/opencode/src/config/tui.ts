@@ -16,7 +16,6 @@ import { FSUtil } from "@yukioshi/core/fs-util"
 import { CurrentWorkingDirectory } from "./tui-cwd"
 import { ConfigPlugin } from "@/config/plugin"
 import { TuiKeybind } from "@yukioshi/tui/config/keybind"
-import { InstallationLocal, InstallationVersion } from "@yukioshi/core/installation/version"
 import { makeRuntime } from "@yukioshi/core/effect/runtime"
 import { Filesystem } from "@/util/filesystem"
 import { ConfigVariable } from "@/config/variable"
@@ -276,23 +275,14 @@ const layer = Layer.effect(
     const directory = yield* CurrentWorkingDirectory
     const npm = yield* Npm.Service
     const data = yield* loadState({ directory })
-    const deps = yield* Effect.forEach(
-      data.dirs,
-      (dir) =>
-        npm
-          .install(dir, {
-            add: [
-              {
-                name: "@yukioshi/plugin",
-                version: InstallationLocal ? undefined : InstallationVersion,
-              },
-            ],
-          })
-          .pipe(Effect.forkScoped),
-      {
-        concurrency: "unbounded",
-      },
+    // Install only what a config directory declares for its local plugins; the plugin API
+    // package is not published to npm, so it is never added here.
+    const dirs = yield* Effect.filter(data.dirs, (dir) =>
+      Effect.promise(() => Filesystem.exists(path.join(dir, "package.json"))),
     )
+    const deps = yield* Effect.forEach(dirs, (dir) => npm.install(dir, { add: [] }).pipe(Effect.forkScoped), {
+      concurrency: "unbounded",
+    })
 
     const get = Effect.fn("TuiConfig.get")(() => Effect.succeed(data.config))
     const pluginOrigins = Effect.fn("TuiConfig.pluginOrigins")(() => Effect.succeed(data.pluginOrigins))

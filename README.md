@@ -339,6 +339,7 @@ replace a built-in or personal skill. See
 | `yukioshi github install\|run`         | Set up and run the GitHub Actions agent              |
 | `yukioshi pr <number>`                 | Check out a GitHub PR branch and start a session     |
 | `yukioshi acp`                         | Start an Agent Client Protocol server                |
+| `yukioshi completion`                  | Print a shell completion script                      |
 | `yukioshi upgrade [target]`            | Upgrade to the latest or a specific version          |
 | `yukioshi uninstall`                   | Remove YukiOshi Code and its files                   |
 | `yukioshi debug …`                     | Inspect config, skills, paths, LSP, and more         |

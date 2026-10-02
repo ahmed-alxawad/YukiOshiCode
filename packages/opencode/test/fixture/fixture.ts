@@ -79,6 +79,7 @@ async function stop(dir: string) {
 
 type TmpDirOptions<T> = {
   git?: boolean
+  trusted?: boolean
   config?: Partial<ConfigV1.Info>
   init?: (dir: string) => Promise<T>
   dispose?: (dir: string) => Promise<T>
@@ -104,12 +105,14 @@ export async function tmpdir<T>(options?: TmpDirOptions<T>) {
     )
   }
   const realpath = sanitizePath(await fs.realpath(dirpath))
+  if (options?.trusted) await ProjectTrust.set(realpath, true)
   const extra = await options?.init?.(realpath)
   const result = {
     [Symbol.asyncDispose]: async () => {
       try {
         await options?.dispose?.(realpath)
       } finally {
+        if (options?.trusted) await ProjectTrust.set(realpath, false).catch(() => undefined)
         if (options?.git) await stop(realpath).catch(() => undefined)
         await clean(realpath).catch(() => undefined)
       }

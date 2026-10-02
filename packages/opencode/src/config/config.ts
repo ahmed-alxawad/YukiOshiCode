@@ -11,7 +11,6 @@ import { Flag } from "@yukioshi/core/flag/flag"
 import { Auth } from "../auth"
 import { Env } from "../env"
 import { applyEdits, modify } from "jsonc-parser"
-import { InstallationLocal, InstallationVersion } from "@yukioshi/core/installation/version"
 import { existsSync } from "fs"
 import { Account } from "@/account/account"
 import { isRecord } from "@/util/record"
@@ -501,16 +500,11 @@ const layer = Layer.effect(
             yield* ensureGitignore(dir).pipe(Effect.orDie)
           }
 
-          if (!isProject || projectTrusted) {
+          // Install the dependencies a config directory declares for its local plugins. The plugin
+          // API package is not published to npm, so it is never added here.
+          if ((!isProject || projectTrusted) && (yield* fs.existsSafe(path.join(dir, "package.json")))) {
             const dep = yield* npmSvc
-              .install(dir, {
-                add: [
-                  {
-                    name: "@yukioshi/plugin",
-                    version: InstallationLocal ? undefined : InstallationVersion,
-                  },
-                ],
-              })
+              .install(dir, { add: [] })
               .pipe(
                 Effect.exit,
                 Effect.tap((exit) =>

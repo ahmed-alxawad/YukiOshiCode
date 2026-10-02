@@ -2053,7 +2053,7 @@ const provideMultiInstance = <A, E, R>(eff: Effect.Effect<A, E, R>) =>
 
 it.effect("plugin config providers persist after instance dispose", () =>
   Effect.gen(function* () {
-    const dir = yield* tmpdirScoped()
+    const dir = yield* tmpdirScoped({ trusted: true })
     const configDir = path.join(dir, ".opencode")
     const root = path.join(configDir, "plugin")
     yield* Effect.promise(() => mkdir(root, { recursive: true }))

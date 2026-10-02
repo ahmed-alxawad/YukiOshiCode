@@ -27,7 +27,7 @@ describe("opencode acp skills subprocess", () => {
             params.sessionId === session.sessionId &&
             params.update.sessionUpdate === "available_commands_update" &&
             params.update.availableCommands.some(
-              (command) => command.name === "verifier-skill" && command.description.length > 0,
+              (command) => command.name === "project:verifier-skill" && command.description.length > 0,
             ),
         )
 
