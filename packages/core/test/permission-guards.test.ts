@@ -153,8 +153,12 @@ describe("SafetyGuards", () => {
       "dd if=/dev/zero of=/dev/sda",
       ":(){ :|:& };:",
       "git push --force origin main",
+      "git push -f origin main",
+      "git push origin +main",
       "git branch -D main",
       "chmod -R 000 /",
+      'rm -rf "$HOME"',
+      'rm -rf "${HOME}/"',
     ]
     for (const command of commands) {
       expect(SafetyGuards.check("bash", [command])?.reason).toMatch(/destructive command/)
@@ -168,6 +172,9 @@ describe("SafetyGuards", () => {
     expect(SafetyGuards.check("bash", ["git push --force origin feature-branch"])).toBeUndefined()
     expect(SafetyGuards.check("bash", ['echo "git push --force origin main"'])).toBeUndefined()
     expect(SafetyGuards.check("bash", ['echo "rm -rf /"'])).toBeUndefined()
+    expect(SafetyGuards.check("bash", ["git push -f origin feature-branch"])).toBeUndefined()
+    expect(SafetyGuards.check("bash", ["git push -u origin main"])).toBeUndefined()
+    expect(SafetyGuards.check("bash", ["rm -rf '$HOME'"])).toBeUndefined()
   })
 })
 

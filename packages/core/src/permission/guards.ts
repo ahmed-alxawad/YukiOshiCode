@@ -83,6 +83,8 @@ function isProtectedPath(resource: string): boolean {
 interface ShellWord {
   readonly value: string
   readonly plain: boolean
+  /** Part of the word was single-quoted, so `$` inside it does not expand. */
+  readonly singleQuoted: boolean
 }
 
 type ShellCommand = ShellWord[]
@@ -95,14 +97,16 @@ function shellCommands(source: string): ShellCommand[] {
     let words: ShellWord[] = []
     let value = ""
     let plain = true
+    let singleQuoted = false
     let started = false
     let quote: "'" | '"' | undefined
 
     const finishWord = () => {
       if (!started) return
-      words.push({ value, plain })
+      words.push({ value, plain, singleQuoted })
       value = ""
       plain = true
+      singleQuoted = false
       started = false
     }
 
@@ -163,6 +167,7 @@ function shellCommands(source: string): ShellCommand[] {
       }
       if (char === "'" || char === '"') {
         quote = char
+        if (char === "'") singleQuoted = true
         plain = false
         started = true
         index++
@@ -289,6 +294,8 @@ function executable(command: ShellCommand): { name: string; index: number } | un
 const POWER_COMMANDS = new Set(["shutdown", "reboot", "halt", "poweroff"])
 const DANGEROUS_RM_LITERAL_TARGETS = new Set(["/", ".", "./"])
 const DANGEROUS_RM_EXPANDING_TARGETS = new Set(["/*", "~", "~/", "~/*", "$HOME", "${HOME}", "$HOME/", "*"])
+// `$HOME` still expands inside double quotes, unlike `~` and globs.
+const DANGEROUS_RM_HOME_TARGETS = new Set(["$HOME", "${HOME}", "$HOME/", "${HOME}/"])
 
 function isDangerousRm(command: ShellCommand, programIndex: number): boolean {
   let destructiveFlag = false
@@ -316,7 +323,8 @@ function isDangerousRm(command: ShellCommand, programIndex: number): boolean {
   return targets.some(
     (target) =>
       DANGEROUS_RM_LITERAL_TARGETS.has(target.value) ||
-      (target.plain && DANGEROUS_RM_EXPANDING_TARGETS.has(target.value)),
+      (target.plain && DANGEROUS_RM_EXPANDING_TARGETS.has(target.value)) ||
+      (!target.singleQuoted && DANGEROUS_RM_HOME_TARGETS.has(target.value)),
   )
 }
 
@@ -327,7 +335,10 @@ function isProtectedBranch(value: string): boolean {
 function isDestructiveGit(command: ShellCommand, programIndex: number): boolean {
   const args = command.slice(programIndex + 1).map((word) => word.value)
   if (args[0] === "push") {
-    return args.some((arg) => /^--force(?:-with-lease)?(?:=|$)/.test(arg)) && args.some(isProtectedBranch)
+    // `-f`, `--force`, `--force-with-lease`, or a `+branch` refspec all force the update.
+    const forced = args.some((arg) => /^--force(?:-with-lease)?(?:=|$)/.test(arg) || /^-[a-zA-Z]*f[a-zA-Z]*$/.test(arg))
+    if (args.some((arg) => arg.startsWith("+") && isProtectedBranch(arg.slice(1)))) return true
+    return forced && args.some(isProtectedBranch)
   }
   if (args[0] === "branch") {
     return args.includes("-D") && args.some(isProtectedBranch)
