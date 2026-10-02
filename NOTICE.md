@@ -1,12 +1,14 @@
 # Notice
 
-YukiOshi Code is released under the MIT License (see [LICENSE](LICENSE)). It
-includes work from the following projects.
+YukiOshi Code is proprietary, source-available software (see
+[LICENSE](LICENSE)). It includes work from the following projects, which keep
+their own licenses.
 
 ## opencode
 
 - Source: <https://github.com/anomalyco/opencode>
 - License: MIT, Copyright (c) 2025 opencode
+  ([licenses/opencode-kilocode-MIT.txt](licenses/opencode-kilocode-MIT.txt))
 
 YukiOshi Code is a fork of opencode and keeps its Bun workspace, Effect-TS
 services, agent loop, tool system, terminal UI, server, and models.dev-based
@@ -21,6 +23,7 @@ URLs. opencode's web and desktop apps are not part of this repository.
 
 - Source: <https://github.com/Kilo-Org/kilocode>
 - License: MIT, Copyright (c) 2026 Kilo Code
+  ([licenses/opencode-kilocode-MIT.txt](licenses/opencode-kilocode-MIT.txt))
 
 - `packages/sandbox` is ported from Kilo Code's sandbox package (bubblewrap
   on Linux, `sandbox-exec` on macOS), with identifiers renamed.

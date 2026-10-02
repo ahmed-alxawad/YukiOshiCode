@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "description": "Provider-neutral repository structure signals with optional Graphify and local fallbacks.",
   "exports": {
     ".": "./src/index.ts"

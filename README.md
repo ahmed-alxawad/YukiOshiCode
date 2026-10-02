@@ -3,14 +3,14 @@
 </p>
 
 <p align="center">
-  <strong>An open-source AI coding agent for the terminal.</strong><br>
+  <strong>An AI coding agent for the terminal.</strong><br>
   Bring any model, keep control of what it can do, and see the evidence before you accept the work.
 </p>
 
 <p align="center">
   <a href="https://github.com/ahmed-alxawad/YukiOshiCode/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/ahmed-alxawad/YukiOshiCode?label=release"></a>
   <a href="https://github.com/ahmed-alxawad/YukiOshiCode/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/ahmed-alxawad/YukiOshiCode/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-blue"></a>
+  <a href="LICENSE"><img alt="License: proprietary" src="https://img.shields.io/badge/license-proprietary-lightgrey"></a>
 </p>
 
 ---
@@ -249,7 +249,7 @@ earlier ones:
 {
   "model": "anthropic/claude-sonnet-4-5",
   "small_model": "anthropic/claude-haiku-4-5",
-  "instructions": ["CONTRIBUTING.md"],
+  "instructions": ["docs/style-guide.md"],
   "permission": { "bash": "ask" },
   "mcp": {
     "docs": { "type": "remote", "url": "https://example.com/mcp" }
@@ -387,8 +387,14 @@ when a `v*` tag is pushed.
 
 ## License and attribution
 
-YukiOshi Code is released under the [MIT License](LICENSE). It is based on
-[opencode](https://github.com/anomalyco/opencode) (MIT), and its sandbox and
-code-indexing packages are ported from [Kilo Code](https://github.com/Kilo-Org/kilocode)
-(MIT). The bundled third-party skills are licensed under Apache-2.0. See
+YukiOshi Code is source-available, not open source. The repository is
+public so you can read it and install the official releases, but YukiOshi
+Code's own code, skills, and brand assets are © 2026 Ahmed Alxawad, all rights
+reserved. See [LICENSE](LICENSE) for what you may do.
+
+YukiOshi Code is based on [opencode](https://github.com/anomalyco/opencode),
+and its sandbox and code-indexing packages are ported from
+[Kilo Code](https://github.com/Kilo-Org/kilocode). Those portions remain under
+their MIT license ([licenses/opencode-kilocode-MIT.txt](licenses/opencode-kilocode-MIT.txt)),
+and the bundled third-party skills remain under Apache-2.0. See
 [NOTICE.md](NOTICE.md) for details.

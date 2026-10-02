@@ -3,7 +3,7 @@
   "name": "@yukioshi/sandbox",
   "version": "0.0.0",
   "type": "module",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "private": true,
   "description": "OS-level sandbox profiles and launch preparation for bash/shell tool execution (ported from Kilo Code's @kilocode/sandbox, itself MIT-licensed)",
   "exports": {

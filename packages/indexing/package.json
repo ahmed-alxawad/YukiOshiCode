@@ -3,7 +3,7 @@
   "name": "@yukioshi/indexing",
   "version": "0.0.0",
   "type": "module",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "private": true,
   "description": "Semantic code search/indexing engine, ported from Kilo Code's @kilocode/kilo-indexing (itself MIT-licensed). The Kilo-hosted managed-indexing embedder was dropped as inapplicable outside Kilo's own infrastructure.",
   "keywords": [

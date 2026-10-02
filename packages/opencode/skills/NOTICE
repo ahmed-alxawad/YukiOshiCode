@@ -1,8 +1,8 @@
 YukiOshi Code — built-in skills
 ===============================
 
-This folder contains third-party skills distributed under the Apache License,
-Version 2.0 (see LICENSES/Apache-2.0.txt and the LICENSE.txt files inside the
+Except for nightmare/, disaster/, and bugfix/, this folder contains
+third-party skills distributed under the Apache License, Version 2.0 (see LICENSES/Apache-2.0.txt and the LICENSE.txt files inside the
 individual skill folders).
 
 design/, engineering/, productivity/
@@ -21,5 +21,5 @@ skill-creator/, web-artifacts-builder/
   Not modified.
 
 nightmare/, disaster/, bugfix/
-  Written for YukiOshi Code. Licensed under the Apache License, Version 2.0,
-  like the other skills in this folder (the rest of the repository is MIT).
+  Written for YukiOshi Code. Copyright (c) 2026 Ahmed Alxawad, all rights
+  reserved; covered by the repository's LICENSE, not by the Apache License.
