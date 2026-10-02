@@ -354,3 +354,8 @@ Verification: snapshot-race passes 1/1, structured-output integration passes 1/1
 The isolated Cerebras replay failure was a stale test expectation, not a runtime defect: the actual OpenAI-compatible request correctly emits `reasoning_content: "thinking"`, while the test expected a non-existent `reasoning` field. Updated the assertion to match the protocol field and explicitly guard against the wrong field. The MCP-instructions test's hanging mock response was also removed: the test verifies prompt construction, so a completed local response is sufficient and avoids an existing AI SDK/test-harness interaction that prevented request observation.
 
 Verification: the focused Cerebras replay test passes; the MCP-instructions test passes deterministically with its local response; both `packages/core` and `packages/opencode` typechecks are clean.
+
+**2026-10-02 — Console compatibility headers and YukiOshi TUI wordmark**
+Restored the upstream `x-opencode-*` wire headers alongside the existing parent-session header so the OpenCode Console provider receives the session, request, client, and project metadata it requires. These are protocol compatibility headers, not visible product branding. Replaced the TUI's duplicated OpenCode ASCII wordmark with the YukiOshi Code wordmark and added regression coverage.
+
+Verification: the OpenCode-provider header integration test passes, the TUI presentation test passes, and both `packages/opencode` and `packages/tui` typechecks pass. The Console service may still reject free-tier requests from a forked harness by policy; paid/service-account access and other providers remain supported.
