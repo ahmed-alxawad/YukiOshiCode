@@ -57,7 +57,13 @@ curl -fsSL https://raw.githubusercontent.com/ahmed-alxawad/YukiOshiCode/main/ins
 curl -fsSL https://raw.githubusercontent.com/ahmed-alxawad/YukiOshiCode/main/install | bash -s -- --no-modify-path
 ```
 
-**Windows, or manual install**: download the archive for your platform from
+**Windows**
+
+```powershell
+irm https://raw.githubusercontent.com/ahmed-alxawad/YukiOshiCode/main/install.ps1 | iex
+```
+
+**Manual install**: download the archive for your platform from
 the [releases page](https://github.com/ahmed-alxawad/YukiOshiCode/releases),
 extract it, and put `yukioshi` (`yukioshi.exe` on Windows) on your `PATH`.
 
