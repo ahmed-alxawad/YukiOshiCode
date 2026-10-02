@@ -9,7 +9,6 @@ import type * as Scope from "effect/Scope"
 import { CrossSpawnSpawner } from "@yukioshi/core/cross-spawn-spawner"
 import { AppNodeBuilder } from "@yukioshi/core/effect/app-node-builder"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
-import type { Config } from "@/config/config"
 import { LayerNode } from "@yukioshi/core/effect/layer-node"
 import { InstanceRef } from "../../src/effect/instance-ref"
 import { InstanceBootstrap } from "../../src/project/bootstrap-service"
@@ -17,6 +16,7 @@ import type { InstanceContext } from "../../src/project/instance-context"
 import { InstanceRuntime } from "../../src/project/instance-runtime"
 import { InstanceStore } from "../../src/project/instance-store"
 import { TestLLMServer } from "../lib/llm-server"
+import { ProjectTrust } from "../../src/project/trust"
 
 const noopBootstrap = Layer.succeed(InstanceBootstrap.Service, InstanceBootstrap.Service.of({ run: Effect.void }))
 // Reusable replacement tuple for any LayerNode.compile(..., replacements) call whose graph pulls
@@ -123,6 +123,7 @@ export async function tmpdir<T>(options?: TmpDirOptions<T>) {
 /** Effectful scoped tmpdir. Cleaned up when the scope closes. Make sure these stay in sync */
 export function tmpdirScoped<E = never, R = never>(options?: {
   git?: boolean
+  trusted?: boolean
   config?: Partial<ConfigV1.Info> | (() => Partial<ConfigV1.Info>)
   init?: (directory: string) => Effect.Effect<void, E, R>
 }) {
@@ -163,6 +164,11 @@ export function tmpdirScoped<E = never, R = never>(options?: {
 
     if (options?.init) yield* options.init(dir)
 
+    if (options?.trusted) {
+      yield* Effect.promise(() => ProjectTrust.set(dir, true))
+      yield* Effect.addFinalizer(() => Effect.promise(() => ProjectTrust.set(dir, false)).pipe(Effect.ignore))
+    }
+
     return dir
   })
 }
@@ -184,10 +190,14 @@ export const disposeAllInstancesEffect = InstanceStore.Service.use((store) => st
 
 export function provideTmpdirInstance<A, E, R>(
   self: (path: string) => Effect.Effect<A, E, R>,
-  options?: { git?: boolean; config?: Partial<ConfigV1.Info> | (() => Partial<ConfigV1.Info>) },
+  options?: {
+    git?: boolean
+    trusted?: boolean
+    config?: Partial<ConfigV1.Info> | (() => Partial<ConfigV1.Info>)
+  },
 ) {
   return Effect.gen(function* () {
-    const path = yield* tmpdirScoped(options)
+    const path = yield* tmpdirScoped({ ...options, trusted: options?.trusted ?? true })
     return yield* self(path).pipe(provideInstance(path))
   }).pipe(Effect.provide(testInstanceStoreLayer))
 }
@@ -203,12 +213,15 @@ export const requireInstance = Effect.gen(function* () {
 export const withTmpdirInstance =
   <E2 = never, R2 = never>(options?: {
     git?: boolean
+    trusted?: boolean
     config?: Partial<ConfigV1.Info> | (() => Partial<ConfigV1.Info>)
     init?: (directory: string) => Effect.Effect<void, E2, R2>
   }) =>
   <A, E, R>(self: Effect.Effect<A, E, R>) =>
     Effect.gen(function* () {
-      const directory = yield* tmpdirScoped(options)
+      // Instance fixtures are created by the test itself, so treat them as explicitly trusted by
+      // default. Security tests opt out with `trusted: false` to exercise first-open behavior.
+      const directory = yield* tmpdirScoped({ ...options, trusted: options?.trusted ?? true })
       return yield* self.pipe(Effect.provideService(TestInstance, { directory }), provideInstanceEffect(directory))
     }).pipe(Effect.provide(testInstanceStoreLayer), Effect.provide(AppNodeBuilder.build(CrossSpawnSpawner.node)))
 

@@ -407,3 +407,13 @@ Ran a focused /design, /design:ux-copy, and /design:design-system review against
 - **`"don't show again"` casing**: `dialog-retry-action.tsx` uses all-lowercase `"don't show again"` as a button label while other TUI buttons use sentence case. Minor inconsistency — easy to fix if consistency is enforced.
 
 Verification: `bunx tsgo --noEmit` in `packages/tui` passes 0 errors. TUI tests 209/209 pass (1 skip).
+
+**2026-10-03 — Project trust and skill isolation close the security-review policies**
+
+Implemented the three owner-approved outcomes from the Nightmare/Disaster/Bugfix review. Full post-turn `typecheck`, `lint`, and `test` commands now require a source-file change; documentation/configuration-only edits keep applicable JSON syntax and editor-diagnostic checks, while mixed and deleted-source turns still schedule the full command sequence.
+
+Added a fail-closed, canonical-path project trust store under YukiOshi's external state directory plus `yukioshi trust [directory]`, `--status`, and `--revoke`. Until a repository is explicitly trusted, server hooks, server plugins, TUI plugins, auto-discovered plugins, and their project-local dependency installation are withheld while declarative project settings continue to load. Explicit/inline config cannot bypass the boundary, and a real bootstrap test proves an untrusted plugin is not executed.
+
+Project-owned skills now use `project:<name>` across `.yukioshi`, legacy `.opencode`, `.claude`, `.agents`, project-declared paths/URLs, and explicit in-repository config directories. Bundled/global names remain stable, same-named project skills cannot replace built-ins, and realpath containment continues to reject symlink escapes. Updated the three audit reports so every finding is marked fixed and documented the user-facing trust/namespace behavior in the README.
+
+Verification: `bunx tsgo --noEmit` passes in both `packages/core` and `packages/opencode`; 212 focused tests pass with 3 Windows-only skips across verification planning, server/TUI config, trust storage/CLI, skill discovery/tool execution, and instance bootstrap; all 8 changed production source files pass oxlint with 0 warnings and 0 errors; Prettier and `git diff --check` are clean. No targeted run failed or hung.

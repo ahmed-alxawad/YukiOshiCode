@@ -6,7 +6,6 @@ import {
   planVerification,
   summarizeVerification,
   VerificationEngine,
-  type PlannedCheck,
   type ProjectCommandInput,
   type ToolExecutionResult,
 } from "../src/verification"
@@ -51,17 +50,11 @@ describe("Verification status and results", () => {
   })
 
   it("returns FAILED when any check fails or errors", () => {
-    const failedCheck = summarizeVerification([
-      check("typecheck", "passed"),
-      check("test", "failed", "Run unit tests"),
-    ])
+    const failedCheck = summarizeVerification([check("typecheck", "passed"), check("test", "failed", "Run unit tests")])
     expect(failedCheck.status).toBe("FAILED")
     expect(failedCheck.explanation).toBe("Run unit tests failed.")
 
-    const errorCheck = summarizeVerification([
-      check("lint", "error", "ESLint"),
-      check("test", "passed"),
-    ])
+    const errorCheck = summarizeVerification([check("lint", "error", "ESLint"), check("test", "passed")])
     expect(errorCheck.status).toBe("FAILED")
     expect(errorCheck.explanation).toBe("ESLint failed.")
 
@@ -94,10 +87,7 @@ describe("Verification status and results", () => {
   })
 
   it("returns PARTIALLY_VERIFIED when tests pass but some checks were skipped", () => {
-    const summary = summarizeVerification([
-      check("test", "passed", "Test suite"),
-      check("lint", "skipped", "Linter"),
-    ])
+    const summary = summarizeVerification([check("test", "passed", "Test suite"), check("lint", "skipped", "Linter")])
     expect(summary.status).toBe("PARTIALLY_VERIFIED")
     expect(summary.explanation).toBe("Test suite passed; Linter not run.")
   })
@@ -141,6 +131,64 @@ describe("Verification planning", () => {
     const kinds = planned.map((c) => c.kind)
     expect(kinds).toEqual(["typecheck", "lint", "test"])
   })
+
+  it("skips project commands for documentation-only changes", () => {
+    const commands: ProjectCommandInput[] = [
+      { kind: "typecheck", label: "tsc --noEmit" },
+      { kind: "lint", label: "eslint" },
+      { kind: "test", label: "bun test" },
+    ]
+
+    const planned = planVerification(
+      [
+        { path: "README.md", kind: "modified" },
+        { path: "docs/providers.mdx", kind: "created" },
+        { path: "CHANGELOG.txt", kind: "deleted" },
+      ],
+      commands,
+      false,
+    )
+
+    expect(planned).toEqual([])
+  })
+
+  it("runs project commands when a source file is mixed with documentation", () => {
+    const commands: ProjectCommandInput[] = [
+      { kind: "typecheck", label: "tsc --noEmit" },
+      { kind: "test", label: "bun test" },
+    ]
+
+    const planned = planVerification(
+      [
+        { path: "docs/usage.md", kind: "modified" },
+        { path: "src/index.ts", kind: "modified" },
+      ],
+      commands,
+      false,
+    )
+
+    expect(planned.map((check) => check.kind)).toEqual(["typecheck", "test"])
+  })
+
+  it("runs project commands when source code is deleted", () => {
+    const planned = planVerification(
+      [{ path: "src/obsolete.py", kind: "deleted" }],
+      [{ kind: "test", label: "pytest" }],
+      false,
+    )
+
+    expect(planned.map((check) => check.kind)).toEqual(["test"])
+  })
+
+  it("keeps lightweight syntax checks for non-source configuration changes", () => {
+    const planned = planVerification(
+      [{ path: "config/settings.json", kind: "modified" }],
+      [{ kind: "test", label: "bun test" }],
+      false,
+    )
+
+    expect(planned.map((check) => check.kind)).toEqual(["syntax"])
+  })
 })
 
 describe("VerificationEngine execution", () => {
@@ -157,7 +205,10 @@ describe("VerificationEngine execution", () => {
       commands: [],
     })
 
-    const passSummary = await engine.verify([{ path: "valid.json", kind: "modified" }, { path: "bom.json", kind: "modified" }])
+    const passSummary = await engine.verify([
+      { path: "valid.json", kind: "modified" },
+      { path: "bom.json", kind: "modified" },
+    ])
     expect(passSummary.status).toBe("PARTIALLY_VERIFIED")
     expect(passSummary.checks[0]?.status).toBe("passed")
     expect(passSummary.checks[0]?.evidence).toBe("All JSON files parse.")

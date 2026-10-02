@@ -11,6 +11,7 @@ import { SkillPlugin } from "@yukioshi/core/plugin/skill"
 import { Permission } from "@/permission"
 import { FSUtil } from "@yukioshi/core/fs-util"
 import { Config } from "@/config/config"
+import { ConfigPaths } from "@/config/paths"
 import { FrontmatterError } from "@yukioshi/core/v1/config/error"
 import { ConfigMarkdown } from "@/config/markdown"
 import { RuntimeFlags } from "@/effect/runtime-flags"
@@ -18,6 +19,7 @@ import { Glob } from "@yukioshi/core/util/glob"
 import { Discovery } from "./discovery"
 import { isRecord } from "@/util/record"
 import { escapeHtml } from "@/util/html"
+import { Filesystem } from "@/util/filesystem"
 
 const CLAUDE_EXTERNAL_DIR = ".claude"
 const AGENTS_EXTERNAL_DIR = ".agents"
@@ -93,15 +95,24 @@ type State = {
   dirs: Set<string>
 }
 
+type SkillScope = "builtin" | "global" | "project" | "configured" | "remote"
+
+type DiscoveredSkill = {
+  path: string
+  scope: SkillScope
+}
+
 type DiscoveryState = {
-  matches: string[]
+  matches: DiscoveredSkill[]
   dirs: string[]
 }
 
 type ScanState = {
-  matches: Set<string>
+  matches: Map<string, SkillScope>
   dirs: Set<string>
 }
+
+export const PROJECT_NAMESPACE = "project:"
 
 export interface Interface {
   readonly get: (name: string) => Effect.Effect<Info | undefined>
@@ -111,7 +122,12 @@ export interface Interface {
   readonly available: (agent?: Agent.Info) => Effect.Effect<Info[]>
 }
 
-const add = Effect.fnUntraced(function* (state: State, match: string, events: EventV2Bridge.Service["Service"]) {
+const add = Effect.fnUntraced(function* (
+  state: State,
+  discovered: DiscoveredSkill,
+  events: EventV2Bridge.Service["Service"],
+) {
+  const match = discovered.path
   const md = yield* Effect.tryPromise({
     try: () => ConfigMarkdown.parse(match),
     catch: (err) => err,
@@ -131,17 +147,20 @@ const add = Effect.fnUntraced(function* (state: State, match: string, events: Ev
 
   if (!isSkillFrontmatter(md.data)) return
 
-  if (state.skills[md.data.name]) {
+  const name = discovered.scope === "project" ? `${PROJECT_NAMESPACE}${md.data.name}` : md.data.name
+
+  if (state.skills[name]) {
     yield* Effect.logWarning("duplicate skill name", {
-      name: md.data.name,
-      existing: state.skills[md.data.name].location,
+      name,
+      declared: md.data.name,
+      existing: state.skills[name].location,
       duplicate: match,
     })
   }
 
   state.dirs.add(path.dirname(match))
-  state.skills[md.data.name] = {
-    name: md.data.name,
+  state.skills[name] = {
+    name,
     description: md.data.description,
     location: match,
     content: md.content,
@@ -152,7 +171,7 @@ const scan = Effect.fnUntraced(function* (
   state: ScanState,
   root: string,
   pattern: string,
-  opts?: { dot?: boolean; scope?: string },
+  opts: { dot?: boolean; scope: SkillScope; label?: string },
 ) {
   const matches = yield* Effect.tryPromise({
     try: () =>
@@ -166,8 +185,7 @@ const scan = Effect.fnUntraced(function* (
     catch: (error) => error,
   }).pipe(
     Effect.catch((error) => {
-      if (!opts?.scope) return Effect.die(error)
-      return Effect.logError(`failed to scan ${opts.scope} skills`, { dir: root, error: error }).pipe(
+      return Effect.logError(`failed to scan ${opts.label ?? opts.scope} skills`, { dir: root, error: error }).pipe(
         Effect.as([] as string[]),
       )
     }),
@@ -188,7 +206,10 @@ const scan = Effect.fnUntraced(function* (
       yield* Effect.logWarning("ignored skill outside discovery root", { root, path: match, resolved: resolvedMatch })
       continue
     }
-    state.matches.add(match)
+    const previous = state.matches.get(match)
+    // If one physical path is reachable from both a global and a project search root, retain the
+    // more restrictive project identity. This prevents an alias/symlink from escaping namespacing.
+    if (!previous || opts.scope === "project") state.matches.set(match, opts.scope)
     state.dirs.add(path.dirname(match))
   }
 })
@@ -203,7 +224,7 @@ const discoverSkills = Effect.fnUntraced(function* (
   directory: string,
   worktree: string,
 ) {
-  const state: ScanState = { matches: new Set(), dirs: new Set() }
+  const state: ScanState = { matches: new Map(), dirs: new Set() }
 
   if (yield* fsys.isDir(BUILTIN_SKILLS_DIR)) {
     yield* scan(state, BUILTIN_SKILLS_DIR, BUILTIN_SKILL_PATTERN, { scope: "builtin" })
@@ -229,9 +250,19 @@ const discoverSkills = Effect.fnUntraced(function* (
     }
   }
 
-  const configDirs = yield* config.directories()
-  for (const dir of configDirs) {
-    yield* scan(state, dir, YUKIOSHI_SKILL_PATTERN)
+  const configDirs = yield* ConfigPaths.directoryEntries(directory, worktree).pipe(
+    Effect.provideService(FSUtil.Service, fsys),
+    Effect.orDie,
+  )
+  const boundary = worktree === "/" ? directory : worktree
+  for (const entry of configDirs) {
+    const projectOwned =
+      entry.scope === "project" ||
+      (entry.scope === "explicit" && FSUtil.contains(Filesystem.resolve(boundary), Filesystem.resolve(entry.path)))
+    yield* scan(state, entry.path, YUKIOSHI_SKILL_PATTERN, {
+      scope: projectOwned ? "project" : "global",
+      label: entry.scope,
+    })
   }
 
   const cfg = yield* config.get()
@@ -243,18 +274,23 @@ const discoverSkills = Effect.fnUntraced(function* (
       continue
     }
 
-    yield* scan(state, dir, SKILL_PATTERN)
+    const lexical = path.resolve(dir)
+    const scope =
+      cfg.project_skill_paths?.includes(item) || FSUtil.contains(boundary, lexical) ? "project" : "configured"
+    yield* scan(state, dir, SKILL_PATTERN, { scope })
   }
 
   for (const url of cfg.skills?.urls ?? []) {
     const pulledDirs = yield* discovery.pull(url)
     for (const dir of pulledDirs) {
-      yield* scan(state, dir, SKILL_PATTERN)
+      yield* scan(state, dir, SKILL_PATTERN, {
+        scope: cfg.project_skill_urls?.includes(url) ? "project" : "remote",
+      })
     }
   }
 
   return {
-    matches: Array.from(state.matches),
+    matches: Array.from(state.matches, ([path, scope]) => ({ path, scope })),
     dirs: Array.from(state.dirs),
   }
 })
@@ -300,8 +336,8 @@ const layer = Layer.effect(
     const state = yield* InstanceState.make(
       Effect.fn("Skill.state")(function* () {
         const s: State = { skills: {}, dirs: new Set() }
-        // Register the built-in skill BEFORE disk discovery so a user-disk
-        // skill with the same name can override it.
+        // Register the hardcoded built-in before disk discovery. Project skills use a separate
+        // `project:` namespace, so a same-named project skill can never replace this entry.
         s.skills[CUSTOMIZE_YUKIOSHI_SKILL_NAME] = {
           name: CUSTOMIZE_YUKIOSHI_SKILL_NAME,
           description: CUSTOMIZE_YUKIOSHI_SKILL_DESCRIPTION,
@@ -347,7 +383,7 @@ const layer = Layer.effect(
 
 /** True for the hardcoded customize-opencode skill and everything discovered from the bundled skills/ directory. */
 export function isBuiltin(info: Pick<Info, "location">): boolean {
-  return info.location === "<built-in>" || info.location.startsWith(BUILTIN_SKILLS_DIR)
+  return info.location === "<built-in>" || FSUtil.contains(BUILTIN_SKILLS_DIR, info.location)
 }
 
 export function fmt(list: Info[], opts: { verbose: boolean }) {

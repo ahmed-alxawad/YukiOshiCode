@@ -43,6 +43,20 @@ Run the core typecheck separately from `packages/core` with `bunx tsgo --noEmit`
 - [Repository structure and branch status](documentation.md)
 - [Feature attribution, adaptations, and known gaps](NOTICE.md)
 
+## Project trust and skills
+
+YukiOshi loads declarative project configuration on first open, but it does not run repository-owned shell hooks, server plugins, or TUI plugins until that repository is explicitly trusted:
+
+```sh
+yukioshi trust .
+yukioshi trust . --status
+yukioshi trust . --revoke
+```
+
+Trust is stored outside the repository and applies to the canonical repository root. Project skills remain available without executable trust, but use the `project:<name>` namespace; bundled and global skills keep their normal names. Skill symlinks that escape their declared discovery root are ignored.
+
+Post-turn `typecheck`, `lint`, and `test` commands run only when source files changed. Documentation/configuration-only edits retain applicable lightweight checks, such as JSON syntax and editor diagnostics, without launching the full project command sequence.
+
 ## Attribution
 
 This project is MIT-licensed and retains substantial upstream opencode architecture and code. Some features were adapted from Kilo Code or rebuilt from YukiOshi Code's original `main` implementation. See [NOTICE.md](NOTICE.md) and [LICENSE](LICENSE) for details.

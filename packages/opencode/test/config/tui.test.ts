@@ -797,6 +797,35 @@ it.instance("supports tuple plugin specs with options in tui.json", () =>
   ),
 )
 
+it.instance(
+  "keeps project TUI plugins disabled until the project is trusted",
+  () =>
+    withCleanState(
+      Effect.gen(function* () {
+        const fs = yield* FSUtil.Service
+        const test = yield* TestInstance
+        yield* fs.writeJson(path.join(Global.Path.config, "tui.json"), { plugin: ["global-plugin@1.0.0"] })
+        yield* fs.writeJson(path.join(test.directory, "tui.json"), {
+          theme: "project-theme",
+          plugin: ["project-plugin@2.0.0"],
+        })
+
+        const config = yield* getTuiConfig(test.directory)
+        const origins = yield* getTuiPluginOrigins(test.directory)
+        expect(config.theme).toBe("project-theme")
+        expect(config.plugin).toEqual(["global-plugin@1.0.0"])
+        expect(origins).toEqual([
+          {
+            spec: "global-plugin@1.0.0",
+            scope: "global",
+            source: path.join(Global.Path.config, "tui.json"),
+          },
+        ])
+      }),
+    ),
+  { trusted: false },
+)
+
 it.instance("deduplicates tuple plugin specs by name with higher precedence winning", () =>
   withCleanState(
     Effect.gen(function* () {

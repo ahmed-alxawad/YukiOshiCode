@@ -1,7 +1,7 @@
 export * as TuiConfig from "./tui"
 
 import path from "path"
-import { mergeDeep, unique } from "remeda"
+import { mergeDeep } from "remeda"
 import { AppNodeBuilder } from "@yukioshi/core/effect/app-node-builder"
 import { LayerNode } from "@yukioshi/core/effect/layer-node"
 import { Cause, Context, Effect, Fiber, Layer } from "effect"
@@ -23,6 +23,7 @@ import { ConfigVariable } from "@/config/variable"
 import { Npm } from "@yukioshi/core/npm"
 import { FormatError, FormatUnknownError } from "@/cli/error"
 import { TuiConfig } from "@yukioshi/tui/config"
+import { ProjectTrust } from "@/project/trust"
 
 export const Info = TuiConfig.Info
 export type Info = TuiConfig.Info
@@ -46,9 +47,8 @@ export interface Interface {
 
 export class Service extends Context.Service<Service, Interface>()("@yukioshi/TuiConfig") {}
 
-function pluginScope(file: string, ctx: { directory: string }): ConfigPlugin.Scope {
-  if (Filesystem.contains(ctx.directory, file)) return "local"
-  // if (ctx.worktree !== "/" && Filesystem.contains(ctx.worktree, file)) return "local"
+function pluginScope(file: string, projectRoot: string): ConfigPlugin.Scope {
+  if (Filesystem.contains(projectRoot, file)) return "local"
   return "global"
 }
 
@@ -83,6 +83,16 @@ function dropUnknownKeybinds(input: Record<string, unknown>) {
 const loadState = Effect.fn("TuiConfig.loadState")(function* (ctx: { directory: string }) {
   const afs = yield* FSUtil.Service
   let appliedOrder = 0
+  const trustRoot = yield* Effect.promise(() => ProjectTrust.resolveRoot(ctx.directory))
+  const projectTrusted = yield* Effect.tryPromise(() => ProjectTrust.isTrusted(trustRoot)).pipe(
+    Effect.catch((error) =>
+      Effect.logWarning("failed to read project trust; project TUI plugins remain disabled", {
+        project: trustRoot,
+        error,
+      }).pipe(Effect.as(false)),
+    ),
+  )
+  const blockedPlugins = new Set<string>()
 
   const resolvePlugins = (config: Info, configFilepath: string): Effect.Effect<Info> =>
     Effect.gen(function* () {
@@ -91,7 +101,7 @@ const loadState = Effect.fn("TuiConfig.loadState")(function* (ctx: { directory: 
       return {
         ...config,
         plugin: yield* Effect.forEach(plugins, (plugin) =>
-          Effect.promise(() => ConfigPlugin.resolvePluginSpec(plugin as ConfigPlugin.Origin["spec"], configFilepath)),
+          Effect.promise(() => ConfigPlugin.resolvePluginSpec(plugin, configFilepath)),
         ),
       }
     })
@@ -146,9 +156,14 @@ const loadState = Effect.fn("TuiConfig.loadState")(function* (ctx: { directory: 
       return yield* load(text, filepath)
     })
 
-  const mergeFile = (acc: Acc, file: string) =>
+  const mergeFile = (acc: Acc, file: string, options?: { project?: boolean; scope?: ConfigPlugin.Scope }) =>
     Effect.gen(function* () {
-      const data = yield* loadFile(file)
+      let data = yield* loadFile(file)
+      if (options?.project && !projectTrusted && data.plugin?.length) {
+        blockedPlugins.add(file)
+        const { plugin: _plugin, ...safe } = data
+        data = safe as Info
+      }
       if (Object.keys(data).length) {
         appliedOrder += 1
         yield* Effect.logInfo("applying tui config", { path: file, order: appliedOrder })
@@ -156,10 +171,10 @@ const loadState = Effect.fn("TuiConfig.loadState")(function* (ctx: { directory: 
       acc.result = mergeDeep(acc.result, data)
       if (!data.plugin?.length) return
 
-      const scope = pluginScope(file, ctx)
+      const scope = options?.scope ?? pluginScope(file, trustRoot)
       const plugins = ConfigPlugin.deduplicatePluginOrigins([
         ...acc.plugin_origins,
-        ...data.plugin.map((spec) => ({ spec: spec as ConfigPlugin.Origin["spec"], scope, source: file })),
+        ...data.plugin.map((spec) => ({ spec, scope, source: file })),
       ])
       acc.result = {
         ...acc.result,
@@ -170,7 +185,8 @@ const loadState = Effect.fn("TuiConfig.loadState")(function* (ctx: { directory: 
 
   // Every config dir we may read from: global config dir, any `.yukioshi` / `.opencode`
   // folders between cwd and home, and YUKIOSHI_CONFIG_DIR.
-  const directories = yield* ConfigPaths.directories(ctx.directory)
+  const directoryEntries = yield* ConfigPaths.directoryEntries(ctx.directory)
+  const directories = directoryEntries.map((entry) => entry.path)
   yield* Effect.promise(() => migrateTuiConfig({ directories, cwd: ctx.directory }))
 
   const projectFiles = Flag.YUKIOSHI_DISABLE_PROJECT_CONFIG ? [] : yield* ConfigPaths.files("tui", ctx.directory)
@@ -182,33 +198,51 @@ const loadState = Effect.fn("TuiConfig.loadState")(function* (ctx: { directory: 
 
   // 1. Global tui config (lowest precedence).
   for (const file of ConfigPaths.fileInDirectory(Global.Path.config, "tui")) {
-    yield* mergeFile(acc, file)
+    yield* mergeFile(acc, file, { scope: "global" })
   }
 
   // 2. Explicit YUKIOSHI_TUI_CONFIG override, if set.
   if (Flag.YUKIOSHI_TUI_CONFIG) {
     const configFile = Flag.YUKIOSHI_TUI_CONFIG
-    yield* mergeFile(acc, configFile)
+    yield* mergeFile(acc, configFile, {
+      project: FSUtil.contains(trustRoot, ProjectTrust.canonical(configFile)),
+    })
     yield* Effect.logDebug("loaded custom tui config", { path: configFile })
   }
 
   // 3. Project tui files, applied root-first so the closest file wins.
   for (const file of projectFiles) {
-    yield* mergeFile(acc, file)
+    yield* mergeFile(acc, file, { project: true, scope: "local" })
   }
 
   // 4. `.yukioshi` / `.opencode` directories (and YUKIOSHI_CONFIG_DIR) discovered while
   // walking up the tree. Also returned below so callers can install plugin
   // dependencies from each location.
-  const dirs = unique(directories).filter(
-    (dir) => dir.endsWith(".opencode") || dir.endsWith(".yukioshi") || dir === Flag.YUKIOSHI_CONFIG_DIR,
+  const dirs = directoryEntries.filter(
+    (entry) =>
+      entry.path.endsWith(".opencode") || entry.path.endsWith(".yukioshi") || entry.path === Flag.YUKIOSHI_CONFIG_DIR,
   )
 
-  for (const dir of dirs) {
+  for (const entry of dirs) {
+    const dir = entry.path
+    const isProject =
+      entry.scope === "project" ||
+      (entry.scope === "explicit" && FSUtil.contains(trustRoot, ProjectTrust.canonical(dir)))
     if (!dir.endsWith(".opencode") && !dir.endsWith(".yukioshi") && dir !== Flag.YUKIOSHI_CONFIG_DIR) continue
     for (const file of ConfigPaths.fileInDirectory(dir, "tui")) {
-      yield* mergeFile(acc, file)
+      yield* mergeFile(acc, file, {
+        project: isProject,
+        scope: entry.scope === "global" ? "global" : entry.scope === "project" ? "local" : undefined,
+      })
     }
+  }
+
+  if (blockedPlugins.size > 0) {
+    yield* Effect.logWarning("project TUI plugins are disabled until this project is explicitly trusted", {
+      project: trustRoot,
+      blocked: Array.from(blockedPlugins),
+      command: `yukioshi trust ${JSON.stringify(trustRoot)}`,
+    })
   }
 
   const result = TuiConfig.resolve(
@@ -223,7 +257,16 @@ const loadState = Effect.fn("TuiConfig.loadState")(function* (ctx: { directory: 
   return {
     config: result,
     pluginOrigins: acc.plugin_origins,
-    dirs: result.plugin?.length ? dirs : [],
+    dirs: result.plugin?.length
+      ? dirs
+          .filter(
+            (entry) =>
+              projectTrusted ||
+              (entry.scope !== "project" &&
+                !(entry.scope === "explicit" && FSUtil.contains(trustRoot, ProjectTrust.canonical(entry.path)))),
+          )
+          .map((entry) => entry.path)
+      : [],
   }
 })
 

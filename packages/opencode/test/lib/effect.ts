@@ -5,13 +5,13 @@ import * as Scope from "effect/Scope"
 import * as TestClock from "effect/testing/TestClock"
 import * as TestConsole from "effect/testing/TestConsole"
 import { memoMap } from "@yukioshi/core/effect/memo-map"
-import type { Config } from "@/config/config"
 import { TestInstance, withTmpdirInstance } from "../fixture/fixture"
 import { InstanceStore } from "@/project/instance-store"
 
 type Body<A, E, R> = Effect.Effect<A, E, R> | (() => Effect.Effect<A, E, R>)
 type InstanceOptions<E, R> = {
   git?: boolean
+  trusted?: boolean
   config?: Partial<ConfigV1.Info> | (() => Partial<ConfigV1.Info>)
   init?: (directory: string) => Effect.Effect<void, E, R>
 }
@@ -19,7 +19,11 @@ type InstanceOptions<E, R> = {
 function isInstanceOptions<E, R>(
   options: InstanceOptions<E, R> | number | TestOptions | undefined,
 ): options is InstanceOptions<E, R> {
-  return !!options && typeof options === "object" && ("git" in options || "config" in options || "init" in options)
+  return (
+    !!options &&
+    typeof options === "object" &&
+    ("git" in options || "trusted" in options || "config" in options || "init" in options)
+  )
 }
 
 function instanceArgs<E, R>(

@@ -19,8 +19,7 @@ import type { ConsoleState } from "@yukioshi/core/v1/config/console-state"
 import { FSUtil } from "@yukioshi/core/fs-util"
 import { InstanceState } from "@/effect/instance-state"
 import { Context, Duration, Effect, Exit, Fiber, Layer, Option, Schema } from "effect"
-import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/unstable/http"
-import { EffectFlock } from "@yukioshi/core/util/effect-flock"
+import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import { containsPath, type InstanceContext } from "../project/instance-context"
 import { ConfigV1 } from "@yukioshi/core/v1/config/config"
 import { RemoteAuthError } from "@yukioshi/core/v1/config/error"
@@ -36,6 +35,7 @@ import { ConfigVariable } from "./variable"
 import { ConfigV2Compat } from "./v2-compat"
 import { Npm } from "@yukioshi/core/npm"
 import { withTransientReadRetry } from "@/util/effect-http-client"
+import { ProjectTrust } from "@/project/trust"
 
 // Custom merge function that concatenates array fields instead of replacing them
 // Keep remeda's deep conditional merge type out of hot config-loading paths; TS profiling showed it dominates here.
@@ -113,6 +113,10 @@ type Info = ConfigV1.Info & {
   // plugin_origins is derived state, not a persisted config field. It keeps each winning plugin spec together
   // with the file and scope it came from so later runtime code can make location-sensitive decisions.
   plugin_origins?: ConfigPlugin.Origin[]
+  // Project-declared skill sources keep provenance after config merging so the skill loader can place
+  // them in the project namespace instead of allowing them to shadow built-ins.
+  project_skill_paths?: string[]
+  project_skill_urls?: string[]
 }
 
 type State = {
@@ -165,7 +169,12 @@ function patchJsonc(input: string, patch: unknown, path: string[] = []): string 
 }
 
 function writable(info: Info) {
-  const { plugin_origins: _plugin_origins, ...next } = info
+  const {
+    plugin_origins: _plugin_origins,
+    project_skill_paths: _project_skill_paths,
+    project_skill_urls: _project_skill_urls,
+    ...next
+  } = info
   return next
 }
 
@@ -337,6 +346,30 @@ const layer = Layer.effect(
         const authEnv: Record<string, string> = {}
         const consoleManagedProviders = new Set<string>()
         let activeOrgName: string | undefined
+        const projectSkillPaths = new Set<string>()
+        const projectSkillUrls = new Set<string>()
+        const trustRoot = ProjectTrust.root(ctx)
+        const projectTrusted = yield* Effect.tryPromise(() => ProjectTrust.isTrusted(trustRoot)).pipe(
+          Effect.catch((error) =>
+            Effect.logWarning("failed to read project trust; executable project config remains disabled", {
+              project: trustRoot,
+              error,
+            }).pipe(Effect.as(false)),
+          ),
+        )
+        const blockedExecutables = new Set<string>()
+
+        const projectConfig = (source: string, next: Info) => {
+          for (const item of next.skills?.paths ?? []) projectSkillPaths.add(item)
+          for (const item of next.skills?.urls ?? []) projectSkillUrls.add(item)
+          if (projectTrusted) return next
+          const { hooks, plugin, ...safe } = next
+          if (plugin?.length) blockedExecutables.add(`${source} (plugins)`)
+          if (hooks && Object.values(hooks).some((entries) => entries.length > 0)) {
+            blockedExecutables.add(`${source} (hooks)`)
+          }
+          return safe as Info
+        }
 
         const pluginScopeForSource = Effect.fnUntraced(function* (source: string) {
           if (source.startsWith("http://") || source.startsWith("https://")) return "global"
@@ -417,13 +450,16 @@ const layer = Layer.effect(
         yield* merge(Global.Path.config, global, "global")
 
         if (Flag.YUKIOSHI_CONFIG) {
-          yield* merge(Flag.YUKIOSHI_CONFIG, yield* loadFile(Flag.YUKIOSHI_CONFIG, authEnv))
+          const source = Flag.YUKIOSHI_CONFIG
+          const next = yield* loadFile(source, authEnv)
+          const isProject = FSUtil.contains(trustRoot, ProjectTrust.canonical(source))
+          yield* merge(source, isProject ? projectConfig(source, next) : next)
           yield* Effect.logDebug("loaded custom config", { path: Flag.YUKIOSHI_CONFIG })
         }
 
         if (!Flag.YUKIOSHI_DISABLE_PROJECT_CONFIG) {
           for (const file of yield* ConfigPaths.files(CONFIG_NAMES, ctx.directory, ctx.worktree).pipe(Effect.orDie)) {
-            yield* merge(file, yield* loadFile(file, authEnv), "local")
+            yield* merge(file, projectConfig(file, yield* loadFile(file, authEnv)), "local")
           }
         }
 
@@ -431,7 +467,8 @@ const layer = Layer.effect(
         result.mode = result.mode || {}
         result.plugin = result.plugin || []
 
-        const directories = yield* ConfigPaths.directories(ctx.directory, ctx.worktree)
+        const directoryEntries = yield* ConfigPaths.directoryEntries(ctx.directory, ctx.worktree)
+        const directories = directoryEntries.map((entry) => entry.path)
 
         if (Flag.YUKIOSHI_CONFIG_DIR) {
           yield* Effect.logDebug("loading config from YUKIOSHI_CONFIG_DIR", { path: Flag.YUKIOSHI_CONFIG_DIR })
@@ -439,40 +476,53 @@ const layer = Layer.effect(
 
         const deps: Fiber.Fiber<void>[] = []
 
-        for (const dir of directories) {
+        for (const entry of directoryEntries) {
+          const dir = entry.path
+          const isProject =
+            entry.scope === "project" ||
+            (entry.scope === "explicit" && FSUtil.contains(trustRoot, ProjectTrust.canonical(dir)))
           if (dir.endsWith(".opencode") || dir.endsWith(".yukioshi") || dir === Flag.YUKIOSHI_CONFIG_DIR) {
             for (const file of CONFIG_FILES) {
               const source = path.join(dir, file)
               yield* Effect.logDebug(`loading config from ${source}`)
-              yield* merge(source, yield* loadFile(source, authEnv))
+              const next = yield* loadFile(source, authEnv)
+              yield* merge(
+                source,
+                isProject ? projectConfig(source, next) : next,
+                entry.scope === "global" ? "global" : entry.scope === "project" ? "local" : undefined,
+              )
               result.agent ??= {}
               result.mode ??= {}
               result.plugin ??= []
             }
           }
 
-          yield* ensureGitignore(dir).pipe(Effect.orDie)
+          if (!isProject || projectTrusted || entry.scope === "explicit") {
+            yield* ensureGitignore(dir).pipe(Effect.orDie)
+          }
 
-          const dep = yield* npmSvc
-            .install(dir, {
-              add: [
-                {
-                  name: "@yukioshi/plugin",
-                  version: InstallationLocal ? undefined : InstallationVersion,
-                },
-              ],
-            })
-            .pipe(
-              Effect.exit,
-              Effect.tap((exit) =>
-                Exit.isFailure(exit)
-                  ? Effect.logWarning("background dependency install failed", { dir, error: String(exit.cause) })
-                  : Effect.void,
-              ),
-              Effect.asVoid,
-              Effect.forkDetach,
-            )
-          deps.push(dep)
+          if (!isProject || projectTrusted) {
+            const dep = yield* npmSvc
+              .install(dir, {
+                add: [
+                  {
+                    name: "@yukioshi/plugin",
+                    version: InstallationLocal ? undefined : InstallationVersion,
+                  },
+                ],
+              })
+              .pipe(
+                Effect.exit,
+                Effect.tap((exit) =>
+                  Exit.isFailure(exit)
+                    ? Effect.logWarning("background dependency install failed", { dir, error: String(exit.cause) })
+                    : Effect.void,
+                ),
+                Effect.asVoid,
+                Effect.forkDetach,
+              )
+            deps.push(dep)
+          }
 
           result.command = mergeDeep(result.command ?? {}, yield* Effect.promise(() => ConfigCommand.load(dir)))
           result.agent = mergeDeep(result.agent ?? {}, yield* Effect.promise(() => ConfigAgent.load(dir)))
@@ -480,7 +530,11 @@ const layer = Layer.effect(
           // Auto-discovered plugins under `.yukioshi/plugin(s)` (or legacy `.opencode/plugin(s)`) are already local files, so ConfigPlugin.load
           // returns normalized Specs and we only need to attach origin metadata here.
           const list = yield* Effect.promise(() => ConfigPlugin.load(dir))
-          yield* mergePluginOrigins(dir, list)
+          if (isProject && !projectTrusted) {
+            if (list.length) blockedExecutables.add(`${dir} (plugins)`)
+          } else {
+            yield* mergePluginOrigins(dir, list, entry.scope === "global" ? "global" : undefined)
+          }
         }
 
         if (process.env.YUKIOSHI_CONFIG_CONTENT) {
@@ -489,7 +543,7 @@ const layer = Layer.effect(
             dir: ctx.directory,
             source,
           })
-          yield* merge(source, next, "local")
+          yield* merge(source, projectConfig(source, next), "local")
           yield* Effect.logDebug("loaded custom config from YUKIOSHI_CONFIG_CONTENT")
         }
 
@@ -601,6 +655,16 @@ const layer = Layer.effect(
         if (Flag.YUKIOSHI_DISABLE_PRUNE) {
           result.compaction = { ...result.compaction, prune: false }
         }
+
+        if (blockedExecutables.size > 0) {
+          yield* Effect.logWarning("project hooks and plugins are disabled until this project is explicitly trusted", {
+            project: trustRoot,
+            blocked: Array.from(blockedExecutables),
+            command: `yukioshi trust ${JSON.stringify(trustRoot)}`,
+          })
+        }
+        if (projectSkillPaths.size > 0) result.project_skill_paths = Array.from(projectSkillPaths)
+        if (projectSkillUrls.size > 0) result.project_skill_urls = Array.from(projectSkillUrls)
 
         return {
           config: result,

@@ -3,9 +3,11 @@ export * as ConfigPaths from "./paths"
 import path from "path"
 import { Flag } from "@yukioshi/core/flag/flag"
 import { Global } from "@yukioshi/core/global"
-import { unique } from "remeda"
 import * as Effect from "effect/Effect"
 import { FSUtil } from "@yukioshi/core/fs-util"
+
+export type DirectoryScope = "global" | "project" | "explicit"
+export type DirectoryEntry = { path: string; scope: DirectoryScope }
 
 export const files = Effect.fn("ConfigPaths.projectFiles")(function* (
   name: string | readonly string[],
@@ -21,24 +23,39 @@ export const files = Effect.fn("ConfigPaths.projectFiles")(function* (
   })).toReversed()
 })
 
-export const directories = Effect.fn("ConfigPaths.directories")(function* (directory: string, worktree?: string) {
+export const directoryEntries = Effect.fn("ConfigPaths.directoryEntries")(function* (
+  directory: string,
+  worktree?: string,
+) {
   const afs = yield* FSUtil.Service
-  return unique([
-    Global.Path.config,
-    ...(!Flag.YUKIOSHI_DISABLE_PROJECT_CONFIG
-      ? yield* afs.up({
-          targets: [".opencode", ".yukioshi"],
-          start: directory,
-          stop: worktree,
-        })
-      : []),
-    ...(yield* afs.up({
-      targets: [".opencode", ".yukioshi"],
-      start: Global.Path.home,
-      stop: Global.Path.home,
-    })),
-    ...(Flag.YUKIOSHI_CONFIG_DIR ? [Flag.YUKIOSHI_CONFIG_DIR] : []),
-  ])
+  const project = !Flag.YUKIOSHI_DISABLE_PROJECT_CONFIG
+    ? yield* afs.up({
+        targets: [".opencode", ".yukioshi"],
+        start: directory,
+        stop: worktree,
+      })
+    : []
+  const home = yield* afs.up({
+    targets: [".opencode", ".yukioshi"],
+    start: Global.Path.home,
+    stop: Global.Path.home,
+  })
+  const candidates: DirectoryEntry[] = [
+    { path: Global.Path.config, scope: "global" },
+    ...project.map((path): DirectoryEntry => ({ path, scope: "project" })),
+    ...home.map((path): DirectoryEntry => ({ path, scope: "global" })),
+    ...(Flag.YUKIOSHI_CONFIG_DIR ? [{ path: Flag.YUKIOSHI_CONFIG_DIR, scope: "explicit" as const }] : []),
+  ]
+  const seen = new Set<string>()
+  return candidates.filter((entry) => {
+    if (seen.has(entry.path)) return false
+    seen.add(entry.path)
+    return true
+  })
+})
+
+export const directories = Effect.fn("ConfigPaths.directories")(function* (directory: string, worktree?: string) {
+  return (yield* directoryEntries(directory, worktree)).map((entry) => entry.path)
 })
 
 export function fileInDirectory(dir: string, name: string) {

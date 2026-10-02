@@ -43,6 +43,7 @@ import { ConfigPluginV1 } from "@yukioshi/core/v1/config/plugin"
 import { AccountTest } from "../fake/account"
 import { AuthTest } from "../fake/auth"
 import { NpmTest } from "../fake/npm"
+import { ProjectTrust } from "@/project/trust"
 
 const unexpectedHttp = HttpClient.make((request) =>
   Effect.die(`unexpected http request: ${request.method} ${request.url}`),
@@ -193,7 +194,7 @@ const withGlobalConfig = <A, E, R>(
   })
 
 const withConfigTree = <A, E, R>(
-  input: { global?: object; project?: object; local?: object },
+  input: { global?: object; project?: object; local?: object; trusted?: boolean },
   effect: Effect.Effect<A, E, R>,
 ) =>
   Effect.gen(function* () {
@@ -208,6 +209,10 @@ const withConfigTree = <A, E, R>(
       ].filter((effect): effect is Effect.Effect<void, FSUtil.Error, FSUtil.Service> => effect !== undefined),
       { concurrency: "unbounded" },
     )
+    if (input.trusted !== false) {
+      yield* Effect.promise(() => ProjectTrust.set(directory, true))
+      yield* Effect.addFinalizer(() => Effect.promise(() => ProjectTrust.set(directory, false)).pipe(Effect.ignore))
+    }
     return yield* withGlobalConfigDir(global, withInstanceDir(directory, effect))
   })
 
@@ -1232,6 +1237,61 @@ it.effect("merges plugin arrays from global and local configs", () =>
   ),
 )
 
+it.effect("blocks project hooks and plugins until the project is trusted", () =>
+  withConfigTree(
+    {
+      trusted: false,
+      global: {
+        plugin: ["global-plugin@1.0.0"],
+        hooks: { preToolUse: [{ command: "echo global" }] },
+      },
+      project: {
+        model: "project/model",
+        plugin: ["project-plugin@1.0.0"],
+        hooks: { preToolUse: [{ command: "echo project" }] },
+      },
+      local: {
+        username: "project-user",
+        plugin: ["local-plugin@1.0.0"],
+        hooks: { stop: [{ command: "echo local" }] },
+      },
+    },
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      yield* FSUtil.use.writeWithDirs(
+        path.join(test.directory, ".opencode", "plugin", "auto-plugin.js"),
+        "export default {}",
+      )
+
+      const config = yield* Config.use.get()
+      const plugins = (config.plugin ?? []).map((item) => ConfigPlugin.pluginSpecifier(item))
+      expect(config.model).toBe("project/model")
+      expect(config.username).toBe("project-user")
+      expect(plugins).toEqual(["global-plugin@1.0.0"])
+      expect(config.hooks).toEqual({ preToolUse: [{ command: "echo global" }] })
+    }),
+  ),
+)
+
+it.effect("loads project hooks and plugins after explicit trust is persisted", () =>
+  withConfigTree(
+    {
+      global: { plugin: ["global-plugin@1.0.0"] },
+      project: {
+        plugin: ["project-plugin@1.0.0"],
+        hooks: { preToolUse: [{ command: "echo trusted" }] },
+      },
+    },
+    Effect.gen(function* () {
+      const config = yield* Config.use.get()
+      const plugins = (config.plugin ?? []).map((item) => ConfigPlugin.pluginSpecifier(item))
+      expect(plugins).toContain("global-plugin@1.0.0")
+      expect(plugins).toContain("project-plugin@1.0.0")
+      expect(config.hooks?.preToolUse).toEqual([{ command: "echo trusted" }])
+    }),
+  ),
+)
+
 it.effect("global config remains global when project config is disabled", () =>
   withConfigTree(
     {
@@ -2146,6 +2206,26 @@ describe("YUKIOSHI_PERMISSION env var", () => {
 })
 
 describe("YUKIOSHI_CONFIG_CONTENT token substitution", () => {
+  it.instance(
+    "does not let inline config bypass project trust for hooks or plugins",
+    () =>
+      withProcessEnv(
+        "YUKIOSHI_CONFIG_CONTENT",
+        JSON.stringify({
+          username: "inline-user",
+          plugin: ["inline-plugin@1.0.0"],
+          hooks: { sessionStart: [{ command: "echo unsafe" }] },
+        }),
+        Effect.gen(function* () {
+          const config = yield* Config.use.get()
+          expect(config.username).toBe("inline-user")
+          expect(config.plugin).toEqual([])
+          expect(config.hooks).toBeUndefined()
+        }),
+      ),
+    { trusted: false },
+  )
+
   it.instance("substitutes {env:} tokens in YUKIOSHI_CONFIG_CONTENT", () =>
     withProcessEnv(
       "TEST_CONFIG_VAR",

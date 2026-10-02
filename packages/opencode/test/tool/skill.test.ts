@@ -2,17 +2,21 @@ import { PermissionV1 } from "@yukioshi/core/v1/permission"
 import { CrossSpawnSpawner } from "@yukioshi/core/cross-spawn-spawner"
 import { LayerNode } from "@yukioshi/core/effect/layer-node"
 import { Ripgrep } from "@yukioshi/core/ripgrep"
-import { Cause, Effect, Exit, Layer } from "effect"
+import { Cause, Effect, Exit } from "effect"
 import { afterEach, describe, expect } from "bun:test"
 import path from "path"
 import { mkdir, symlink } from "node:fs/promises"
-import type { Permission } from "../../src/permission"
 import type { Tool } from "@/tool/tool"
 import { SkillTool } from "../../src/tool/skill"
 import { ToolRegistry } from "@/tool/registry"
 import { disposeAllInstances, noopBootstrapReplacement, TestInstance } from "../fixture/fixture"
 import { SessionID, MessageID } from "../../src/session/schema"
 import { testEffect } from "../lib/effect"
+import { ProviderV2 } from "@yukioshi/core/provider"
+import { ModelV2 } from "@yukioshi/core/model"
+
+const providerID = ProviderV2.ID.make("opencode")
+const modelID = ModelV2.ID.make("gpt-5")
 
 const baseCtx: Omit<Tool.Context, "ask"> = {
   sessionID: SessionID.make("ses_test"),
@@ -66,8 +70,8 @@ Use this skill.
       const registry = yield* ToolRegistry.Service
       const agent = { name: "build", mode: "primary" as const, permission: [], options: {} }
       const tool = (yield* registry.tools({
-        providerID: "opencode" as any,
-        modelID: "gpt-5" as any,
+        providerID,
+        modelID,
         agent,
       })).find((tool) => tool.id === SkillTool.id)
       if (!tool) throw new Error("Skill tool not found")
@@ -84,17 +88,54 @@ Use this skill.
           }),
       }
 
-      const result = yield* tool.execute({ name: "tool-skill" }, ctx)
+      const result = yield* tool.execute({ name: "project:tool-skill" }, ctx)
       const file = path.resolve(skill, "scripts", "demo.txt")
 
       expect(requests.length).toBe(1)
       expect(requests[0].permission).toBe("skill")
-      expect(requests[0].patterns).toContain("tool-skill")
-      expect(requests[0].always).toContain("tool-skill")
+      expect(requests[0].patterns).toContain("project:tool-skill")
+      expect(requests[0].always).toContain("project:tool-skill")
       expect(result.metadata.dir).toBe(skill)
-      expect(result.output).toContain(`<skill_content name="tool-skill">`)
+      expect(result.output).toContain(`<skill_content name="project:tool-skill">`)
       expect(result.output).toContain(`Base directory for this skill: ${skill}`)
       expect(result.output).toContain(`<file>${file}</file>`)
+    }),
+  )
+
+  it.instance("keeps a same-named project skill separate from the bundled skill", () =>
+    Effect.gen(function* () {
+      const dir = (yield* TestInstance).directory
+      const skill = path.join(dir, ".opencode", "skill", "skill-creator")
+      yield* Effect.promise(() =>
+        Bun.write(
+          path.join(skill, "SKILL.md"),
+          `---
+name: skill-creator
+description: Project-local collision fixture.
+---
+
+PROJECT COLLISION CONTENT
+`,
+        ),
+      )
+
+      const registry = yield* ToolRegistry.Service
+      const agent = { name: "build", mode: "primary" as const, permission: [], options: {} }
+      const tool = (yield* registry.tools({
+        providerID,
+        modelID,
+        agent,
+      })).find((item) => item.id === SkillTool.id)
+      if (!tool) throw new Error("Skill tool not found")
+      const ctx: Tool.Context = { ...baseCtx, ask: () => Effect.void }
+
+      const bundled = yield* tool.execute({ name: "skill-creator" }, ctx)
+      const project = yield* tool.execute({ name: "project:skill-creator" }, ctx)
+
+      expect(bundled.output).not.toContain("PROJECT COLLISION CONTENT")
+      expect(bundled.metadata.dir).toContain(path.join("skills", "skill-creator"))
+      expect(project.output).toContain("PROJECT COLLISION CONTENT")
+      expect(project.metadata.dir).toBe(skill)
     }),
   )
 
@@ -103,8 +144,8 @@ Use this skill.
       const registry = yield* ToolRegistry.Service
       const agent = { name: "build", mode: "primary" as const, permission: [], options: {} }
       const tool = (yield* registry.tools({
-        providerID: "opencode" as any,
-        modelID: "gpt-5" as any,
+        providerID,
+        modelID,
         agent,
       })).find((tool) => tool.id === SkillTool.id)
       if (!tool) throw new Error("Skill tool not found")
@@ -153,15 +194,15 @@ Read files outside the project skill root.
       const registry = yield* ToolRegistry.Service
       const agent = { name: "build", mode: "primary" as const, permission: [], options: {} }
       const tool = (yield* registry.tools({
-        providerID: "opencode" as any,
-        modelID: "gpt-5" as any,
+        providerID,
+        modelID,
         agent,
       })).find((item) => item.id === SkillTool.id)
       if (!tool) throw new Error("Skill tool not found")
 
       const exit = yield* tool
         .execute(
-          { name: "escaped-skill" },
+          { name: "project:escaped-skill" },
           {
             ...baseCtx,
             ask: () => Effect.void,
@@ -173,7 +214,7 @@ Read files outside the project skill root.
       if (Exit.isFailure(exit)) {
         const error = Cause.squash(exit.cause)
         expect(error).toBeInstanceOf(Error)
-        if (error instanceof Error) expect(error.message).toContain('Skill "escaped-skill" not found.')
+        if (error instanceof Error) expect(error.message).toContain('Skill "project:escaped-skill" not found.')
       }
     }),
   )
@@ -192,8 +233,8 @@ Read files outside the project skill root.
       const registry = yield* ToolRegistry.Service
       const agent = { name: "build", mode: "primary" as const, permission: [], options: {} }
       const tool = (yield* registry.tools({
-        providerID: "opencode" as any,
-        modelID: "gpt-5" as any,
+        providerID,
+        modelID,
         agent,
       })).find((tool) => tool.id === SkillTool.id)
       if (!tool) throw new Error("Skill tool not found")
