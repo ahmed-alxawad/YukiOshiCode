@@ -1,0 +1,31 @@
+#!/bin/sh
+# Runs YukiOshi Code from this source checkout, from any directory.
+#
+# The TUI's Solid JSX is compiled by a Bun preload that packages/opencode/bunfig.toml declares, and
+# Bun reads bunfig.toml only from its working directory. Running `bun .../src/index.ts` anywhere
+# else fails with "Cannot find package 'react'". This script passes the preload explicitly and keeps
+# the caller's working directory, which YukiOshi opens as the project.
+#
+# To use the checkout as your `yukioshi` command:
+#   ln -s "$(pwd)/packages/opencode/bin/yukioshi-dev" ~/.local/bin/yukioshi
+set -e
+
+self=$0
+while [ -L "$self" ]; do
+  link=$(readlink "$self")
+  case "$link" in
+    /*) self=$link ;;
+    *) self=$(dirname "$self")/$link ;;
+  esac
+done
+package=$(cd "$(dirname "$self")/.." && pwd)
+
+preload="$package/node_modules/@opentui/solid/scripts/preload.js"
+if [ ! -f "$preload" ]; then
+  preload=$(cd "$package" && bun -e 'console.log(Bun.resolveSync("@opentui/solid/preload", process.cwd()))' 2>/dev/null) || {
+    echo "yukioshi-dev: dependencies are missing; run 'bun install' in $(dirname "$(dirname "$package")")" >&2
+    exit 1
+  }
+fi
+
+exec bun --preload "$preload" "$package/src/index.ts" "$@"

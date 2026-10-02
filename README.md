@@ -375,8 +375,17 @@ Requires [Bun](https://bun.sh) 1.3 or newer.
 git clone https://github.com/ahmed-alxawad/YukiOshiCode.git
 cd YukiOshiCode
 bun install
-bun run dev              # run the CLI from source
+bun run dev              # run the CLI from source in this folder
 bun run typecheck        # typecheck every package
+```
+
+To use your checkout as the `yukioshi` command in any folder, link the source
+launcher onto your `PATH`. Run the source only through this launcher or
+`bun run dev`: starting `src/index.ts` with plain `bun` from another folder
+skips the TUI's Solid JSX setup and fails with `Cannot find package 'react'`.
+
+```bash
+ln -s "$PWD/packages/opencode/bin/yukioshi-dev" ~/.local/bin/yukioshi
 ```
 
 Run tests from the package that owns them, for example:
