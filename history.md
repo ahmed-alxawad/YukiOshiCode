@@ -380,3 +380,30 @@ Ran the supplied Nightmare, Disaster, and Bugfix workflows against startup, prov
 Remote catalog adapters are restricted to reviewed packages while explicit local provider configuration remains available. Two architectural policies remain proposed rather than silently imposed: file/package-aware verification scope and a persisted trust gate for executable project hooks/plugins. Realpath containment is complete for project skills; whether project skills may shadow built-ins remains an explicit product decision. Findings, evidence, outcomes, and open items are recorded in `YukiOshiCode.nightmare.md`, `YukiOshiCode.disaster.md`, and `YukiOshiCode.bugfix.md`.
 
 Verification: core models/verification tests pass 30/30; the focused opencode critical-path batch passes 105/105; the full provider suite passes 106/106; the full non-interactive CLI subprocess suite passes 13/13; TUI verification/keymap tests pass 11/11. The real tool-modifying CLI round trip reports `VERIFIED`, the timeout test proves descendants cannot write after cleanup, and the symlink test uses a directly matched `SKILL.md` file link. `bunx tsgo --noEmit` is clean in both `packages/core` and `packages/opencode`; formatting and `git diff --check` are clean. A concurrent unknown-model timing check exceeded its exact 15-second test deadline under shared load, then passed alone in 3.0 seconds and passed in the final 13-test sequential file run.
+
+**2026-10-02 — Design/UX-copy/design-system pass across TUI and web UI**
+
+Ran a focused /design, /design:ux-copy, and /design:design-system review against `packages/tui/`, `packages/ui/`, and `packages/session-ui/` — first systematic pass since the rename work completed.
+
+**Fixed (2 committed changes):**
+- `dialog-provider.tsx` line 62: provider picker showed `"Antigravity OAuth or API key"` as the Google provider description — factual error (Google OAuth is Google's own auth, not ours). Changed to `"Google OAuth or API key"`.
+- `tips-view.tsx` line 170: `/share` tip mentioned `opencode.ai` by name, pointing users at the upstream domain. Reworded to `"create a public shareable session link"` — accurate for both upstream-backed and future self-hosted sharing.
+- `tips-view.tsx` line 278: `"OpenCode Zen"` tip named the upstream product directly. Reworded to describe the capability ("Zen provider for curated, tested coding models via one key") without the upstream brand.
+
+**Intentionally preserved (upstream service references):**
+- All i18n locale files' `"OpenCode Go"` strings — refer to upstream's $10/month subscription service that this fork's `opencode`/`opencode-go` providers route through.
+- `dialog-provider.tsx` OpenCode Zen and OpenCode Go descriptions (lines 319-335) — describe the upstream services users are subscribing to.
+- `dialog-retry-action.tsx` `GO_URL = "https://opencode.ai/go"` — links to the upstream billing page.
+- `parsers-config.ts` `anomalyco/` GitHub URLs — third-party tree-sitter WASM releases; unrelated to product naming.
+- `marked-parser.test.ts` and `markdown-inline-code-kind.test.ts` `opencode.ai` — test fixture data for URL parsing behavior, not product copy.
+
+**Design system findings (systemic, recorded here rather than mass-diffed):**
+- **Verification badge copy is good**: `"⟳ Verifying changes..."` and the `▣ STATUS — explanation` format are concise and consistent. The `getVerificationColor()` function maps cleanly to the theme semantic palette (success/error/warning/muted). No change needed.
+- **i18n coverage is partial**: The `packages/ui/src/i18n/` directory has 30+ locale files, but `packages/tui/` strings are not internationalized at all — all TUI copy is hardcoded in English in TSX files. This is consistent with upstream's design intent (TUI is primarily Western developer-focused, while web UI targets a broader audience) but means TUI tips, dialog titles, error messages, and keybind descriptions can't be localized without a larger refactor. Not a bug, but noted for if/when international TUI support is planned.
+- **Copy tone is consistent**: TUI strings use imperative-present ("Run X", "Use Y", "Type Z") uniformly. Web UI (en.ts) uses sentence-case labels ("Session changes", "Filter files") consistently. No mixing found.
+- **Verification status display**: `VERIFIED`, `PARTIALLY_VERIFIED`, `FAILED`, `SKIPPED_BY_USER`, `UNAVAILABLE` are shown as raw enum strings in the TUI badge. These are functional but not user-friendly — a follow-up could map them to friendly copy ("Verified", "Partially verified", "Tests failed", "Skipped", "Unavailable"). Not fixed in this pass to avoid touching the shared verification schema contract.
+- **`⟳` vs Spinner component**: Verification running indicator uses a Unicode arrow, not the `Spinner` component. Acceptable in this context (it's a one-shot indicator, not a long-running progress element), but if the design system centralizes spinner usage, this would need updating.
+- **Missing no-model tip**: The `NO_MODELS_TIP` path shows `"Connect a provider to get started →"` which is good. The tips rotation already filters by whether models are connected. Design is sound.
+- **`"don't show again"` casing**: `dialog-retry-action.tsx` uses all-lowercase `"don't show again"` as a button label while other TUI buttons use sentence case. Minor inconsistency — easy to fix if consistency is enforced.
+
+Verification: `bunx tsgo --noEmit` in `packages/tui` passes 0 errors. TUI tests 209/209 pass (1 skip).

@@ -59,7 +59,7 @@ export function providerOptions(list: { id: string; name: string }[]): ProviderO
         opencode: "Free models",
         anthropic: "API key",
         openai: "ChatGPT Plus/Pro OAuth or API key",
-        google: "Antigravity OAuth or API key",
+        google: "Google OAuth or API key",
       }[provider.id],
       category: "Providers",
     })),
