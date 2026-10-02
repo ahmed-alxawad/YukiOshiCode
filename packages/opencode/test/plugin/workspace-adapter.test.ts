@@ -12,7 +12,7 @@ import { Plugin } from "../../src/plugin/index"
 import { InstanceBootstrap } from "../../src/project/bootstrap"
 import { InstanceStore } from "../../src/project/instance-store"
 import { InstanceState } from "../../src/effect/instance-state"
-import { disposeAllInstances, TestInstance } from "../fixture/fixture"
+import { disposeAllInstances, TestInstance, trustProject } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 import { AccountTest } from "../fake/account"
 import { AuthTest } from "../fake/auth"
@@ -82,6 +82,7 @@ describe("plugin.workspace", () => {
           ),
         ),
       )
+      yield* trustProject(dir)
 
       const plugin = yield* Plugin.Service
       yield* plugin.init()

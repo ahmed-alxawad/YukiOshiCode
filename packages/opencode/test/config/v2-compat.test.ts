@@ -17,7 +17,7 @@ import { Env } from "../../src/env"
 import { AccountTest } from "../fake/account"
 import { AuthTest } from "../fake/auth"
 import { NpmTest } from "../fake/npm"
-import { TestInstance } from "../fixture/fixture"
+import { TestInstance, trustProject } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 import { snapshot } from "./snapshot"
 
@@ -386,6 +386,7 @@ describe("V2 configuration loading", () => {
           },
         }),
       )
+      yield* trustProject(instance.directory)
 
       const config = yield* Config.use.get()
 

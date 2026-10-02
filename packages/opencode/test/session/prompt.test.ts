@@ -50,7 +50,7 @@ import { Truncate } from "@/tool/truncate"
 import { CrossSpawnSpawner } from "@yukioshi/core/cross-spawn-spawner"
 import { Ripgrep } from "@yukioshi/core/ripgrep"
 import { Format } from "../../src/format"
-import { TestInstance, noopBootstrapReplacement } from "../fixture/fixture"
+import { TestInstance, noopBootstrapReplacement, trustProject } from "../fixture/fixture"
 import os from "os"
 import fs from "fs"
 import { awaitWithTimeout, pollWithTimeout, testEffect } from "../lib/effect"
@@ -322,6 +322,7 @@ const useServerConfig = Effect.fn("test.useServerConfig")(function* (config: (ur
   const { directory: dir } = yield* TestInstance
   const llm = yield* TestLLMServer
   yield* writeConfig(dir, config(llm.url))
+  yield* trustProject(dir)
   return { dir, llm }
 })
 

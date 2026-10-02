@@ -367,6 +367,20 @@ const layer = Layer.effect(
           if (hooks && Object.values(hooks).some((entries) => entries.length > 0)) {
             blockedExecutables.add(`${source} (hooks)`)
           }
+          // Local MCP servers and custom LSP/formatter commands run programs too, so an
+          // untrusted project may only reference remote servers and disable built-ins.
+          const runsCommand = (entry: unknown) => isRecord(entry) && Array.isArray(entry["command"])
+          const withoutCommands = <T,>(label: string, entries: Record<string, T>) =>
+            Object.fromEntries(
+              Object.entries(entries).filter(([name, entry]) => {
+                if (!runsCommand(entry)) return true
+                blockedExecutables.add(`${source} (${label} ${name})`)
+                return false
+              }),
+            )
+          if (safe.mcp) safe.mcp = withoutCommands("MCP server", safe.mcp)
+          if (isRecord(safe.lsp)) safe.lsp = withoutCommands("LSP server", safe.lsp) as typeof safe.lsp
+          if (isRecord(safe.formatter)) safe.formatter = withoutCommands("formatter", safe.formatter) as typeof safe.formatter
           return safe as Info
         }
 

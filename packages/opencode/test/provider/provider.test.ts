@@ -8,7 +8,7 @@ import { ModelsDev } from "@yukioshi/core/models-dev"
 import { FSUtil } from "@yukioshi/core/fs-util"
 import { CrossSpawnSpawner } from "@yukioshi/core/cross-spawn-spawner"
 import { Global } from "@yukioshi/core/global"
-import { disposeAllInstances, provideInstanceEffect, tmpdirScoped, TestInstance } from "../fixture/fixture"
+import { disposeAllInstances, provideInstanceEffect, tmpdirScoped, TestInstance, trustProject } from "../fixture/fixture"
 import { markPluginDependenciesReady } from "../fixture/plugin"
 import { Auth } from "@/auth"
 import { Config } from "@/config/config"
@@ -2088,6 +2088,8 @@ it.effect("plugin config providers persist after instance dispose", () =>
       ),
     )
 
+    yield* trustProject(dir)
+
     const loadAndList = Effect.gen(function* () {
       const plugin = yield* Plugin.Service
       const provider = yield* Provider.Service
@@ -2133,6 +2135,7 @@ it.instance(
       ),
     )
 
+    yield* trustProject(instance.directory)
     yield* set("ANTHROPIC_API_KEY", "test-anthropic-key")
     yield* set("OPENAI_API_KEY", "test-openai-key")
     const providers = yield* list

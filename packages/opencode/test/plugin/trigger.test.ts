@@ -9,7 +9,7 @@ import { Auth } from "../../src/auth"
 import { RuntimeFlags } from "../../src/effect/runtime-flags"
 import { Plugin } from "../../src/plugin/index"
 
-import { TestInstance } from "../fixture/fixture"
+import { TestInstance, trustProject } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 import { AccountTest } from "../fake/account"
 import { AuthTest } from "../fake/auth"
@@ -52,6 +52,7 @@ function withProject<A, E, R>(source: string, self: Effect.Effect<A, E, R>) {
       ],
       { discard: true, concurrency: 2 },
     )
+    yield* trustProject(test.directory)
     return yield* self
   })
 }

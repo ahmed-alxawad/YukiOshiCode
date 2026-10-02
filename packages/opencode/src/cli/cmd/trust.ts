@@ -12,7 +12,7 @@ type Args = {
 
 export const TrustCommand = effectCmd({
   command: "trust [directory]",
-  describe: "allow this project to run its own hooks and plugins",
+  describe: "allow this project to run its own hooks, plugins, and commands",
   instance: false,
   builder: (yargs: Argv) =>
     yargs
@@ -37,12 +37,18 @@ export const TrustCommand = effectCmd({
     const root = yield* Effect.promise(() => ProjectTrust.resolveRoot(requested))
 
     if (args.status) {
-      const trusted = yield* Effect.promise(() => ProjectTrust.isTrusted(root))
-      UI.println(`${root}: ${trusted ? "trusted" : "untrusted"}`)
+      const status = yield* Effect.promise(() => ProjectTrust.status(root))
+      if (status === "changed") {
+        UI.println(`${root}: untrusted (its hooks, plugins, or MCP/LSP/formatter commands changed since it was trusted)`)
+        UI.println(`Review the changes, then run: yukioshi trust ${JSON.stringify(root)}`)
+      } else UI.println(`${root}: ${status}`)
     } else {
       yield* Effect.promise(() => ProjectTrust.set(root, !args.revoke))
       UI.println(args.revoke ? `Revoked trust for ${root}` : `Trusted ${root}`)
-      if (!args.revoke) UI.println("Project hooks and plugins will be enabled the next time this project is opened.")
+      if (!args.revoke) {
+        UI.println("Project hooks, plugins, and MCP/LSP/formatter commands will be enabled the next time this project is opened.")
+        UI.println("If they change later, for example after a pull or a PR checkout, trust lapses until you run this again.")
+      }
     }
   }),
 })

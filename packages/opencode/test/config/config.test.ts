@@ -27,6 +27,7 @@ import {
   withTestInstance,
   provideInstanceEffect,
   testInstanceStoreLayer,
+  trustProject,
 } from "../fixture/fixture"
 import { InstanceRuntime } from "@/project/instance-runtime"
 import { CrossSpawnSpawner } from "@yukioshi/core/cross-spawn-spawner"
@@ -1212,6 +1213,7 @@ it.instance("resolves scoped npm plugins in config", () =>
     )
     yield* FSUtil.use.writeWithDirs(path.join(pluginDir, "index.js"), "export default {}\n")
     yield* writeConfigEffect(test.directory, { plugin: ["@scope/plugin"] })
+    yield* trustProject(test.directory)
 
     const config = yield* Config.use.get()
     expect(config.plugin ?? []).toContain("@scope/plugin")
@@ -2102,6 +2104,7 @@ describe("deduplicatePluginOrigins", () => {
           path.join(test.directory, ".opencode", "plugin", "my-plugin.js"),
           "export default {}",
         )
+        yield* trustProject(test.directory)
 
         const plugins = (yield* Config.use.get()).plugin ?? []
         expect(plugins.some((p) => ConfigPlugin.pluginSpecifier(p) === "my-plugin@1.0.0")).toBe(true)

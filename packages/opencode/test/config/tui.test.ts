@@ -10,7 +10,7 @@ import { Config } from "@/config/config"
 import { ConfigPlugin } from "@/config/plugin"
 import { CurrentWorkingDirectory } from "@/config/tui-cwd"
 import { TuiConfig } from "../../src/config/tui"
-import { TestInstance } from "../fixture/fixture"
+import { TestInstance, trustProject } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 
 const it = testEffect(LayerNode.compile(LayerNode.group([Config.node, FSUtil.node])))
@@ -108,6 +108,7 @@ it.instance("keeps server and tui plugin merge semantics aligned", () =>
       yield* fs.writeJson(path.join(local, "tui.json"), {
         plugin: [["shared-plugin@2.0.0", { source: "local" }], "local-only@1.0.0"],
       })
+      yield* trustProject(test.directory)
 
       const server = yield* Config.use.get()
       const tui = yield* getTuiConfig(test.directory)
@@ -782,6 +783,7 @@ it.instance("supports tuple plugin specs with options in tui.json", () =>
       yield* fs.writeJson(path.join(test.directory, "tui.json"), {
         plugin: [["acme-plugin@1.2.3", { enabled: true, label: "demo" }]],
       })
+      yield* trustProject(test.directory)
 
       const config = yield* getTuiConfig(test.directory)
       const origins = yield* getTuiPluginOrigins(test.directory)
@@ -840,6 +842,7 @@ it.instance("deduplicates tuple plugin specs by name with higher precedence winn
           ["second-plugin@3.0.0", { source: "project" }],
         ],
       })
+      yield* trustProject(test.directory)
 
       const config = yield* getTuiConfig(test.directory)
       const origins = yield* getTuiPluginOrigins(test.directory)
@@ -870,6 +873,7 @@ it.instance("tracks global and local plugin metadata in merged tui config", () =
       const test = yield* TestInstance
       yield* fs.writeJson(path.join(Global.Path.config, "tui.json"), { plugin: ["global-plugin@1.0.0"] })
       yield* fs.writeJson(path.join(test.directory, "tui.json"), { plugin: ["local-plugin@2.0.0"] })
+      yield* trustProject(test.directory)
 
       const config = yield* getTuiConfig(test.directory)
       const origins = yield* getTuiPluginOrigins(test.directory)

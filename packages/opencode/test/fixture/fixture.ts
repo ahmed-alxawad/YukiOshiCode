@@ -105,8 +105,9 @@ export async function tmpdir<T>(options?: TmpDirOptions<T>) {
     )
   }
   const realpath = sanitizePath(await fs.realpath(dirpath))
-  if (options?.trusted) await ProjectTrust.set(realpath, true)
   const extra = await options?.init?.(realpath)
+  // Trust is bound to the project's executable config, so grant it after setup writes that config.
+  if (options?.trusted) await ProjectTrust.set(realpath, true)
   const result = {
     [Symbol.asyncDispose]: async () => {
       try {
@@ -175,6 +176,12 @@ export function tmpdirScoped<E = never, R = never>(options?: {
     return dir
   })
 }
+
+/**
+ * Re-grants trust after a test writes hooks, plugins, or MCP/LSP/formatter config into an already
+ * trusted directory. Trust records a fingerprint of that config, so later edits revoke it.
+ */
+export const trustProject = (directory: string) => Effect.promise(() => ProjectTrust.set(directory, true))
 
 export const provideInstance =
   (directory: string) =>

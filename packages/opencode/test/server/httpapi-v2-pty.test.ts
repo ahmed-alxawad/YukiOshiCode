@@ -11,7 +11,7 @@ import { Pty } from "@yukioshi/core/pty"
 import { PtyTicket } from "@yukioshi/core/pty/ticket"
 import { HttpApiApp } from "../../src/server/routes/instance/httpapi/server"
 import { resetDatabase } from "../fixture/db"
-import { disposeAllInstances, tmpdir, tmpdirScoped } from "../fixture/fixture"
+import { disposeAllInstances, tmpdir, tmpdirScoped, trustProject } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 
 const context = Context.empty() as Context.Context<unknown>
@@ -204,6 +204,7 @@ describe("v2 pty HttpApi", () => {
             JSON.stringify({ plugin: [pathToFileURL(plugin).href], formatter: false, lsp: false }),
           ),
         )
+        yield* trustProject(dir)
 
         const created = yield* HttpClientRequest.post("/api/pty").pipe(
           directoryHeader(dir),
