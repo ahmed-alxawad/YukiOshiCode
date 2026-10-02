@@ -24,6 +24,75 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
 
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        group:
+          - core
+          - tui
+          - sandbox
+          - opencode-session
+          - opencode-server
+          - opencode-cli
+          - opencode-tool
+          - opencode-provider
+          - opencode-config
+          - opencode-rest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - name: Configure Git identity
+        run: |
+          git config --global user.email ci@example.invalid
+          git config --global user.name CI
+      - run: bun install --frozen-lockfile
+      - name: Run ${{ matrix.group }} tests
+        shell: bash
+        run: |
+          case "${{ matrix.group }}" in
+            core)
+              cd packages/core
+              bun test
+              ;;
+            tui)
+              cd packages/tui
+              bun test
+              ;;
+            sandbox)
+              cd packages/sandbox
+              bun test
+              ;;
+            opencode-session|opencode-server|opencode-cli|opencode-tool|opencode-provider|opencode-config)
+              group="${{ matrix.group }}"
+              cd packages/opencode
+              bun test "test/${group#opencode-}"
+              ;;
+            opencode-rest)
+              cd packages/opencode
+              mapfile -t tests < <(
+                find test -mindepth 1 -maxdepth 1 \( -type d -o -type f -name '*.test.*' \) -printf '%f\n' |
+                  sort |
+                  while IFS= read -r entry; do
+                    case "$entry" in
+                      fake|fixtures|lib|session|server|cli|tool|provider|config) ;;
+                      *) printf 'test/%s\n' "$entry" ;;
+                    esac
+                  done
+              )
+              if [ "${#tests[@]}" -eq 0 ]; then
+                echo "No opencode remainder tests found" >&2
+                exit 1
+              fi
+              printf 'Running remainder tests:\n%s\n' "${tests[*]}"
+              bun test "${tests[@]}"
+              ;;
+          esac
+
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
