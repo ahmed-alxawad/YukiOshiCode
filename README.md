@@ -141,34 +141,48 @@ In the TUI, choose **Cycle permission mode** from the command palette
 {
   "permission": {
     "edit": "ask",
-    "bash": { "git push *": "deny", "npm test": "allow", "*": "ask" },
+    "bash": { "*": "ask", "git push *": "deny", "npm test": "allow" },
     "webfetch": "allow"
   }
 }
 ```
 
+Rules are checked in order and the last match wins, so put the catch-all `*` first.
+
 ## Safety
 
-- **Hard blocks.** Some actions are refused in every mode, whatever the
-  config says. That covers secret files (`.env*`, SSH keys, `.npmrc`,
-  `.netrc`, certificates, and anything under `.git`, `.ssh`, `.gnupg`, `.aws`,
-  or `.kube`) and irreversible commands such as recursive deletion of the
-  filesystem root, disk-level writes, fork bombs, and force-pushing or
-  deleting protected branches.
+- **Hard blocks.** YukiOshi's file tools (`read`, `edit`, `write`, `apply_patch`)
+  refuse secret files: `.env` and `.env.*` (except `.example`, `.sample`,
+  `.template`, and `.dist` templates), SSH keys, `.npmrc`, `.netrc`, certificate
+  and key files, anything under `.git`, `.ssh`, `.gnupg`, `.aws`, or `.kube`, and
+  shell startup files such as `~/.bashrc` when they are outside the project.
+  Shell commands are refused only for catastrophic patterns: recursive deletion
+  of `/`, `~`, `$HOME`, `*`, or `.`, formatting or overwriting disks, fork
+  bombs, force-pushing or deleting `main`, `master`, or `trunk`, and running
+  `shutdown`, `reboot`, `halt`, or `poweroff`. These checks apply in every mode
+  and can't be overridden. They're a backstop, not a sandbox: the shell itself
+  can still read files, so use the sandbox and permission rules for that.
 - **OS sandbox** (off by default). With `sandbox.enabled`, every shell command
   runs under bubblewrap (Linux) or `sandbox-exec` (macOS). Only the workspace,
   YukiOshi's own data directories, and paths you add to
   `sandbox.writablePaths` are writable, `.git` is protected, and
-  `sandbox.network: "deny"` cuts network access. The `write` and `edit` tools
-  enforce the same boundary.
+  `sandbox.network: "deny"` cuts network access. YukiOshi's file-editing tools
+  (`edit`, `write`, and `apply_patch`) enforce the same boundary.
+  `writablePaths` entries can start with `~`; relative entries are resolved from
+  the project root.
 
   ```json
   { "sandbox": { "enabled": true, "network": "deny", "writablePaths": ["~/.cache/my-tool"] } }
   ```
 
-- **Repository trust.** A repository's declarative config (models, rules,
-  agents) loads normally, but its shell hooks, server plugins, and TUI plugins
-  do not run until you trust it. Trust is stored outside the repository.
+- **Repository trust.** Until a repository is trusted, YukiOshi does not run its
+  hooks, server plugins, TUI plugins, local MCP servers, or custom LSP and
+  formatter commands. Trust is stored outside the repository and records a
+  fingerprint of that executable configuration. If it changes later (for example
+  after a `git pull` or `yukioshi pr`), the repository becomes untrusted again
+  until you review it and run `yukioshi trust .` again. Ordinary settings such
+  as `model` can change without affecting trust. `--status` reports
+  `untrusted (… changed since it was trusted)` in that case.
 
   ```bash
   yukioshi trust .            # trust the current repository
@@ -299,7 +313,8 @@ stdout of context hooks is added to the conversation.
 `edit`, `write`, `read`, `webfetch`, …); omit it to match every tool. Tool
 hooks receive `tool_name`, `tool_input`, and `session_id`, and every hook gets
 `YUKIOSHI_PROJECT_DIR` and `YUKIOSHI_HOOK_EVENT` in its environment. Hooks
-defined by a repository run only after `yukioshi trust`.
+defined by a repository run only after `yukioshi trust` and stop again if the
+repository's hooks change.
 
 ## Skills
 

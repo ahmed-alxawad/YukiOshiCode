@@ -22,7 +22,9 @@ it.
 
 - Bypassing permission rules, permission modes, or the hard safety blocks.
 - Escaping the sandbox or the workspace write boundary.
-- Running repository hooks or plugins without `yukioshi trust`.
+- Running a repository's MCP servers, LSP or formatter commands, hooks, or
+  plugins without `yukioshi trust`, or after they changed since trust was
+  granted.
 - Leaking API keys or OAuth tokens to logs, prompts, session exports, or
   child processes.
 - Prompt injection from repository content that leads to an action the
