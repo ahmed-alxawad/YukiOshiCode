@@ -4,8 +4,8 @@
 
 .DESCRIPTION
     Downloads and installs the YukiOshi Code CLI binary for Windows,
-    extracting yukioshi.exe into $env:USERPROFILE\.yukioshi\bin and adding
-    it to the user PATH.
+    verifying release checksums, extracting yukioshi.exe into
+    $env:USERPROFILE\.yukioshi\bin, and adding it to the user PATH.
 
 .PARAMETER Version
     Specific version to install (e.g., "0.3.0"). Defaults to latest.
@@ -14,7 +14,7 @@
     Do not modify the user PATH environment variable.
 
 .PARAMETER DryRun
-    Print the download URL and target folder without downloading or modifying the system.
+    Print the download URL, SHA256SUMS URL, and target folder without downloading or modifying the system.
 #>
 
 [CmdletBinding()]
@@ -120,8 +120,10 @@ if ($Version) {
         $cleanVersion = $cleanVersion.Substring(1)
     }
     $url = "https://github.com/$repo/releases/download/v$cleanVersion/$assetName"
+    $checksumUrl = "https://github.com/$repo/releases/download/v$cleanVersion/SHA256SUMS"
 } else {
     $url = "https://github.com/$repo/releases/latest/download/$assetName"
+    $checksumUrl = "https://github.com/$repo/releases/latest/download/SHA256SUMS"
 }
 
 $profileDir = if ($env:USERPROFILE) {
@@ -136,6 +138,7 @@ $targetFolder = Join-Path $profileDir ".yukioshi\bin"
 
 if ($DryRun) {
     Write-Output "URL: $url"
+    Write-Output "SHA256SUMS: $checksumUrl"
     Write-Output "Target folder: $targetFolder"
     return
 }
@@ -152,10 +155,50 @@ if (-not (Test-Path -Path $targetFolder)) {
 $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("yukioshi-install-" + [System.Guid]::NewGuid().ToString())
 New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
 $zipPath = Join-Path $tempDir $assetName
+$checksumPath = Join-Path $tempDir "SHA256SUMS"
 
 try {
     Write-Host "Downloading YukiOshi Code from $url..."
     Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing
+
+    # Download SHA256SUMS if available
+    $hasChecksum = $false
+    try {
+        Write-Host "Downloading checksums from $checksumUrl..."
+        Invoke-WebRequest -Uri $checksumUrl -OutFile $checksumPath -UseBasicParsing -ErrorAction Stop
+        $hasChecksum = $true
+    } catch {
+        Write-Warning "SHA256SUMS not found for this release ($checksumUrl). Skipping checksum verification."
+    }
+
+    if ($hasChecksum -and (Test-Path -Path $checksumPath)) {
+        Write-Host "Verifying checksum for $assetName..."
+        $fileHash = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        $expectedHash = $null
+
+        foreach ($line in (Get-Content -Path $checksumPath)) {
+            $trimmed = $line.Trim()
+            if ([string]::IsNullOrWhiteSpace($trimmed) -or $trimmed.StartsWith("#")) { continue }
+            if ($trimmed -match '^([a-fA-F0-9]{64})\s+[*]?(.+)$') {
+                $h = $Matches[1].ToLowerInvariant()
+                $f = $Matches[2].Trim()
+                if ($f -eq $assetName) {
+                    $expectedHash = $h
+                    break
+                }
+            }
+        }
+
+        if (-not $expectedHash) {
+            throw "Asset '$assetName' not found in SHA256SUMS."
+        }
+
+        if ($fileHash -ne $expectedHash) {
+            throw "Checksum verification failed for $assetName! Expected: $expectedHash, got: $fileHash"
+        }
+
+        Write-Host "Checksum verified: $fileHash"
+    }
 
     Write-Host "Extracting $assetName..."
     $extractedDir = Join-Path $tempDir "extracted"
@@ -171,7 +214,24 @@ try {
         throw "Could not find yukioshi.exe in the downloaded archive."
     }
 
+    # Before replacing an existing binary, test the new binary with --version
+    if ($isWindowsOS) {
+        Write-Host "Verifying new binary..."
+        $versionOutput = & $exeSource.FullName --version
+        if ($LASTEXITCODE -ne 0) {
+            throw "New binary failed verification with --version (exit code $LASTEXITCODE)."
+        }
+        Write-Host "Verified new binary version: $versionOutput"
+    }
+
     $destPath = Join-Path $targetFolder "yukioshi.exe"
+    $oldBackupPath = Join-Path $targetFolder "yukioshi.exe.old"
+
+    if (Test-Path -Path $destPath) {
+        Write-Host "Backing up existing binary to yukioshi.exe.old..."
+        Move-Item -Path $destPath -Destination $oldBackupPath -Force
+    }
+
     Copy-Item -Path $exeSource.FullName -Destination $destPath -Force
 } finally {
     Remove-Item -Recurse -Force -Path $tempDir -ErrorAction SilentlyContinue

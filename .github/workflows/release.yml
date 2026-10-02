@@ -10,17 +10,16 @@ on:
         description: "Existing tag to (re)build and publish, e.g. v0.3.0"
         required: true
 
-permissions:
-  contents: write
-
 concurrency:
   group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
-  release:
+  build:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    permissions:
+      contents: write
     env:
       TAG: ${{ inputs.tag || github.ref_name }}
       GH_TOKEN: ${{ github.token }}
@@ -65,5 +64,115 @@ jobs:
           export YUKIOSHI_VERSION="${TAG#v}"
           bun run script/build.ts --skip-embed-web-ui
 
+      - name: Generate and upload SHA256SUMS
+        working-directory: packages/opencode/dist
+        run: |
+          sha256sum yukioshi-*.tar.gz yukioshi-*.zip > SHA256SUMS
+          gh release upload "$TAG" SHA256SUMS --clobber
+
+  verify:
+    needs: build
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            archive: yukioshi-darwin-arm64.zip
+            binary: yukioshi
+          - os: macos-13
+            archive: yukioshi-darwin-x64.zip
+            binary: yukioshi
+          - os: windows-latest
+            archive: yukioshi-windows-x64.zip
+            binary: yukioshi.exe
+          - os: ubuntu-24.04-arm
+            archive: yukioshi-linux-arm64.tar.gz
+            binary: yukioshi
+          - os: ubuntu-latest
+            archive: yukioshi-linux-x64-musl.tar.gz
+            binary: yukioshi
+            use_alpine: true
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      ARCHIVE: ${{ matrix.archive }}
+      BINARY: ${{ matrix.binary }}
+    steps:
+      - name: Download release archive and SHA256SUMS
+        shell: bash
+        run: gh release download "$TAG" -p "$ARCHIVE" -p SHA256SUMS
+
+      - name: Verify release binary
+        if: "!matrix.use_alpine"
+        shell: bash
+        run: |
+          if command -v sha256sum >/dev/null 2>&1; then
+            grep " ${ARCHIVE}\$" SHA256SUMS | sha256sum -c -
+          else
+            grep " ${ARCHIVE}\$" SHA256SUMS | shasum -a 256 -c -
+          fi
+
+          if [[ "$ARCHIVE" == *.zip ]]; then
+            unzip -q "$ARCHIVE"
+          else
+            tar -xzf "$ARCHIVE"
+          fi
+
+          BIN="./$BINARY"
+          if [ -f "$BIN" ]; then
+            chmod +x "$BIN"
+          fi
+
+          EXPECTED_VERSION="${TAG#v}"
+          ACTUAL_VERSION=$("$BIN" --version | tr -d '\r')
+          if [ "$ACTUAL_VERSION" != "$EXPECTED_VERSION" ]; then
+            echo "Version mismatch: got '$ACTUAL_VERSION', expected '$EXPECTED_VERSION'"
+            exit 1
+          fi
+
+          SKILLS=$("$BIN" debug skill)
+          if ! echo "$SKILLS" | grep -q '"name": "nightmare"'; then
+            echo "Expected skill list to contain '\"name\": \"nightmare\"'"
+            exit 1
+          fi
+
+      - name: Verify in Alpine container
+        if: matrix.use_alpine
+        run: |
+          docker run --rm -v "$PWD":/w -w /w -e TAG="$TAG" -e ARCHIVE="$ARCHIVE" -e BINARY="$BINARY" alpine:latest sh -eu -c '
+            apk add --no-cache libstdc++
+            grep " ${ARCHIVE}\$" SHA256SUMS | sha256sum -c -
+            tar -xzf "${ARCHIVE}"
+            BIN="./${BINARY}"
+            chmod +x "${BIN}"
+            EXPECTED_VERSION="${TAG#v}"
+            ACTUAL_VERSION=$("${BIN}" --version | tr -d "\r")
+            if [ "${ACTUAL_VERSION}" != "${EXPECTED_VERSION}" ]; then
+              echo "Version mismatch: got \"${ACTUAL_VERSION}\", expected \"${EXPECTED_VERSION}\""
+              exit 1
+            fi
+            SKILLS=$("${BIN}" debug skill)
+            if ! echo "${SKILLS}" | grep -q "\"name\": \"nightmare\""; then
+              echo "Expected skill list to contain \"name\": \"nightmare\""
+              exit 1
+            fi
+          '
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
       - name: Publish release
         run: gh release edit "$TAG" --draft=false --latest
