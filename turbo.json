@@ -1,0 +1,36 @@
+{
+  "$schema": "https://v2-8-13.turborepo.dev/schema.json",
+  "globalEnv": ["CI", "YUKIOSHI_DISABLE_SHARE"],
+  "globalPassThroughEnv": ["CI", "YUKIOSHI_DISABLE_SHARE"],
+  "tasks": {
+    "typecheck": {},
+    "build": {
+      "dependsOn": [],
+      "outputs": ["dist/**"]
+    },
+    "yukioshi#test": {
+      "dependsOn": ["^build"],
+      "outputs": [],
+      "passThroughEnv": ["*"]
+    },
+    "@yukioshi/core#test": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@yukioshi/function#test": {
+      "outputs": []
+    },
+    "@yukioshi/app#test": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@yukioshi/ui#test": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@yukioshi/session-ui#test": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    }
+  }
+}

@@ -1,0 +1,25 @@
+YukiOshi Code — built-in skills
+===============================
+
+This folder contains third-party skills distributed under the Apache License,
+Version 2.0 (see LICENSES/Apache-2.0.txt and the LICENSE.txt files inside the
+individual skill folders).
+
+design/, engineering/, productivity/
+  From anthropics/knowledge-work-plugins (https://github.com/anthropics/knowledge-work-plugins)
+  Plugins: design 1.2.0, engineering 1.2.0, productivity 1.3.1
+  Copyright Anthropic, PBC. Licensed under the Apache License, Version 2.0.
+  Modifications for YukiOshi Code:
+    - Skill folders moved from <plugin>/skills/<skill> to <plugin>/<skill>.
+    - productivity/start/SKILL.md and productivity/task-management/SKILL.md:
+      the reference to ${CLAUDE_PLUGIN_ROOT}/skills/dashboard.html now points
+      to a dashboard.html supporting file copied into each of those skills.
+
+skill-creator/, web-artifacts-builder/
+  Anthropic example skills. Copyright Anthropic, PBC.
+  Licensed under the Apache License, Version 2.0 (see LICENSE.txt in each folder).
+  Not modified.
+
+nightmare/, disaster/, bugfix/
+  Written for YukiOshi Code and licensed under the Apache License, Version 2.0,
+  like the rest of this repository.

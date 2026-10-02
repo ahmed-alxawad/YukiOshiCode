@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "@yukioshi/indexing",
+  "version": "0.0.0",
+  "type": "module",
+  "license": "MIT",
+  "private": true,
+  "description": "Semantic code search/indexing engine, ported from Kilo Code's @kilocode/kilo-indexing (itself MIT-licensed). The Kilo-hosted managed-indexing embedder was dropped as inapplicable outside Kilo's own infrastructure.",
+  "keywords": [
+    "indexing",
+    "search",
+    "embeddings"
+  ],
+  "exports": {
+    ".": "./src/index.ts",
+    "./config": "./src/config.ts",
+    "./detect": "./src/detect.ts",
+    "./engine": "./src/indexing/index.ts",
+    "./file-extensions": "./src/file-extensions.ts",
+    "./server": "./src/server/routes.ts",
+    "./status": "./src/status.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "typecheck": "tsgo --noEmit",
+    "test": "bun test --timeout 30000"
+  },
+  "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "catalog:",
+    "@aws-sdk/credential-provider-ini": "catalog:",
+    "@lancedb/lancedb": "catalog:",
+    "@parcel/watcher": "2.5.1",
+    "@qdrant/js-client-rest": "catalog:",
+    "async-mutex": "catalog:",
+    "effect": "catalog:",
+    "glob": "13.0.5",
+    "hono": "catalog:",
+    "hono-openapi": "catalog:",
+    "ignore": "7.0.5",
+    "minimatch": "10.0.3",
+    "openai": "catalog:",
+    "p-limit": "catalog:",
+    "tree-sitter-wasms": "catalog:",
+    "uuid": "catalog:",
+    "web-tree-sitter": "0.25.10",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@tsconfig/node22": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "typescript": "catalog:"
+  }
+}

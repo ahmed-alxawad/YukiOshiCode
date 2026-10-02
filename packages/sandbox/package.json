@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "@yukioshi/sandbox",
+  "version": "0.0.0",
+  "type": "module",
+  "license": "MIT",
+  "private": true,
+  "description": "OS-level sandbox profiles and launch preparation for bash/shell tool execution (ported from Kilo Code's @kilocode/sandbox, itself MIT-licensed)",
+  "exports": {
+    ".": "./src/index.ts",
+    "./destination": "./src/destination.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "typecheck": "tsgo --noEmit",
+    "test": "bun test --timeout 30000"
+  },
+  "dependencies": {
+    "@anthropic-ai/sandbox-runtime": "catalog:",
+    "effect": "catalog:",
+    "ipaddr.js": "catalog:"
+  },
+  "devDependencies": {
+    "@effect/platform-node": "catalog:",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@typescript/native-preview": "catalog:"
+  }
+}
