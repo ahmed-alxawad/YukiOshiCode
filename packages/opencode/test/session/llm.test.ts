@@ -1030,8 +1030,8 @@ describe("session.llm.stream", () => {
         const capture = yield* Effect.promise(() => request)
         const messages = capture.body.messages as Array<Record<string, unknown>>
         const assistant = messages.find((msg) => msg.role === "assistant")
-        expect(assistant?.reasoning_content).toBe("thinking")
-        expect(assistant && "reasoning" in assistant).toBe(false)
+        expect(assistant?.reasoning).toBe("thinking")
+        expect(assistant && "reasoning_content" in assistant).toBe(false)
       }),
     {
       config: () => ({
