@@ -390,6 +390,8 @@ export function Session() {
     if (part.sessionID !== route.sessionID) return
     if (part.state.status !== "completed") return
     if (part.id === lastSwitch) return
+    // In Auto the next message picks its own mode; keep the user in Auto.
+    if (local.agent.current()?.name === "auto") return
 
     if (part.tool === "plan_exit") {
       local.agent.set("build")

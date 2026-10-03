@@ -891,6 +891,66 @@ it.instance("auto mode routes each message to the mode the router picks", () =>
   }),
 )
 
+it.instance("auto mode keeps the routed mode for messages YukiOshi adds itself", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const session = yield* sessions.create({
+      title: "Auto mode continue",
+      permission: [{ permission: "*", pattern: "*", action: "allow" }],
+    })
+
+    yield* prompt.prompt({
+      sessionID: session.id,
+      agent: "auto",
+      noReply: true,
+      parts: [{ type: "text", text: "How do other tools handle this?" }],
+    })
+    yield* llm.text("research")
+    yield* llm.text("findings")
+    yield* prompt.loop({ sessionID: session.id })
+
+    // Like the "continue" message after auto-compaction: Auto, with only synthetic text.
+    yield* prompt.prompt({
+      sessionID: session.id,
+      agent: "auto",
+      noReply: true,
+      parts: [{ type: "text", text: "Continue if you have next steps.", synthetic: true }],
+    })
+    yield* llm.text("more findings")
+    const result = yield* prompt.loop({ sessionID: session.id })
+    if (result.info.role !== "assistant") throw new Error("expected an assistant reply")
+    expect(result.info.agent).toBe("research")
+    // No second routing call: route, reply, reply.
+    expect(yield* llm.hits).toHaveLength(3)
+  }),
+)
+
+it.instance("auto mode uses a mode named in the message without asking the router", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const session = yield* sessions.create({
+      title: "Auto mode named",
+      permission: [{ permission: "*", pattern: "*", action: "allow" }],
+    })
+
+    yield* prompt.prompt({
+      sessionID: session.id,
+      agent: "auto",
+      noReply: true,
+      parts: [{ type: "text", text: "Use goal mode: ship the release" }],
+    })
+    yield* llm.text("working on it")
+    const result = yield* prompt.loop({ sessionID: session.id })
+    if (result.info.role !== "assistant") throw new Error("expected an assistant reply")
+    expect(result.info.agent).toBe("goal")
+    expect(yield* llm.hits).toHaveLength(1)
+  }),
+)
+
 it.instance("static loop consumes queued replies across turns", () =>
   Effect.gen(function* () {
     const { llm } = yield* useServerConfig(providerCfg)

@@ -139,6 +139,19 @@ const layer = Layer.effect(
 
         const user = Permission.fromConfig(cfg.permission ?? {})
 
+        // The read-only modes keep the shell for inspection, but never for commands that throw away work.
+        const readOnlyShell = {
+          bash: {
+            "git clean*": "deny",
+            "git checkout -- *": "deny",
+            "git checkout .": "deny",
+            "git reset --hard*": "deny",
+            "git restore*": "deny",
+            "git stash*": "deny",
+            "rm *": "deny",
+          },
+        } as const
+
         const agents: Record<string, Info> = {
           build: {
             name: "build",
@@ -210,6 +223,7 @@ const layer = Layer.effect(
                 task: { general: "deny" },
               }),
               user,
+              Permission.fromConfig(readOnlyShell),
             ),
             mode: "primary",
             native: true,
@@ -228,6 +242,7 @@ const layer = Layer.effect(
                 websearch: "allow",
               }),
               user,
+              Permission.fromConfig(readOnlyShell),
             ),
             mode: "primary",
             native: true,
@@ -354,7 +369,10 @@ const layer = Layer.effect(
             delete agents[key]
             continue
           }
-          let item = agents[key]
+          let item: Info | undefined = agents[key]
+          // A config agent with its own prompt that shares a name with one of the newer built-in modes
+          // (for example an existing "research" subagent) stays the user's agent instead of becoming the mode.
+          if (item && value.prompt !== undefined && ["goal", "reasoning", "research", Mode.AUTO].includes(key)) item = undefined
           if (!item)
             item = agents[key] = {
               name: key,

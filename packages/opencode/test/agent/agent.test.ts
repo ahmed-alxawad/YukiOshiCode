@@ -485,6 +485,44 @@ it.instance("reasoning and research modes are read-only; goal mode can edit", ()
   }),
 )
 
+it.instance("read-only modes may inspect with the shell but never throw away work", () =>
+  Effect.gen(function* () {
+    for (const name of ["reasoning", "research"]) {
+      const agent = (yield* load((svc) => svc.get(name)))!
+      expect(Permission.evaluate("bash", "git log --oneline", agent.permission).action).toBe("allow")
+      for (const command of ["git clean -fd", "git checkout -- src", "git checkout .", "git reset --hard HEAD", "git restore src", "git stash", "rm -rf build"]) {
+        expect(Permission.evaluate("bash", command, agent.permission).action).toBe("deny")
+      }
+    }
+    const build = (yield* load((svc) => svc.get("build")))!
+    expect(Permission.evaluate("bash", "git clean -fd", build.permission).action).toBe("allow")
+  }),
+)
+
+it.instance(
+  "a config agent with its own prompt named like a new mode stays the user's agent",
+  () =>
+    Effect.gen(function* () {
+      const research = (yield* load((svc) => svc.get("research")))!
+      expect(research.native).toBe(false)
+      expect(research.mode).toBe("all")
+      expect(research.prompt).toBe("Research things and write notes.md")
+      expect(Permission.evaluate("edit", "notes.md", research.permission).action).toBe("allow")
+      // Changing only the model of a built-in mode still customises the mode.
+      const goal = (yield* load((svc) => svc.get("goal")))!
+      expect(goal.native).toBe(true)
+      expect(String(goal.model?.modelID)).toBe("gpt-5")
+    }),
+  {
+    config: {
+      agent: {
+        research: { description: "My research helper", prompt: "Research things and write notes.md" },
+        goal: { model: "openai/gpt-5" },
+      },
+    },
+  },
+)
+
 it.instance("Agent.get returns undefined for non-existent agent", () =>
   Effect.gen(function* () {
     const nonExistent = yield* load((svc) => svc.get("does_not_exist"))

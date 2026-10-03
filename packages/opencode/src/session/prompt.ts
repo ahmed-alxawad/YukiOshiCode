@@ -271,7 +271,22 @@ const layer = Layer.effect(
         .flatMap((part) => (part.type === "text" && !part.synthetic ? [part.text] : []))
         .join("\n")
         .trim()
-      if (!text) return "build"
+      if (!text) {
+        // Messages YukiOshi adds itself (for example "continue" after auto-compaction) carry on in the
+        // mode the conversation was last routed to, instead of dropping a running task into Build.
+        const autoUsers = new Set(
+          input.msgs.flatMap((msg) => (msg.info.role === "user" && msg.info.agent === Mode.AUTO ? [msg.info.id] : [])),
+        )
+        const previous = input.msgs.findLast(
+          (msg) =>
+            msg.info.role === "assistant" &&
+            autoUsers.has(msg.info.parentID) &&
+            Mode.MODES.includes(msg.info.agent as Mode.Mode),
+        )?.info
+        return previous?.role === "assistant" ? previous.agent : "build"
+      }
+      const asked = Mode.named(text)
+      if (asked) return asked
       const fallback = Mode.guess(text)
 
       const router = yield* agents.get("mode-router")

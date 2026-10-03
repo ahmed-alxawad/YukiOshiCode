@@ -5,19 +5,31 @@
 Press `tab` in the terminal UI to switch modes, or start in one with
 `--agent <mode>` (for example `yukioshi run --agent research "…"`).
 
-| Mode          | For                                                                 | Changes files? |
-| ------------- | ------------------------------------------------------------------- | -------------- |
-| **Build**     | everyday work: write and change code, fix bugs, run commands        | yes            |
-| **Plan**      | designing an approach before any change; writes a plan file          | no             |
-| **Goal**      | a larger objective: works step by step on its own, verifying as it goes, until it is done | yes |
-| **Reasoning** | hard questions: thinks it through and answers, using the model's high reasoning effort when available | no |
-| **Research**  | gathering information from the codebase and the web, reported with sources | no |
-| **Auto**      | picks one of the five above for each message                        | depends on the mode it picks |
+| Mode          | For                                                                 | File tools |
+| ------------- | ------------------------------------------------------------------- | ---------- |
+| **Build**     | everyday work: write and change code, fix bugs, run commands        | on         |
+| **Plan**      | designing an approach before any change; writes a plan file          | plan file only |
+| **Goal**      | a larger objective: works step by step on its own, verifying as it goes, until it is done | on |
+| **Reasoning** | hard questions: thinks it through and answers, using the model's high reasoning effort when available | off |
+| **Research**  | gathering information from the codebase and the web, reported with sources | off |
+| **Auto**      | picks one of the five above for each message                        | as the mode it picks |
 
-Auto asks the session's small model which mode fits each message (falling back
-to the message's wording if that fails), and the reply shows the mode it ran
-in. A message's mode stays fixed until it finishes; the next message is routed
+In Plan, Reasoning, and Research the edit and write tools are off, but shell
+commands still follow your permission rules, so the agent can inspect the
+project (`git log`, `ls`, running tests). Reasoning and Research also refuse
+shell commands that throw work away (`git clean`, `git checkout -- …`,
+`git reset --hard`, `git restore`, `git stash`, `rm`).
+
+Auto makes one quick call to the session's small model for each message to
+choose the mode (falling back to the message's wording if that fails), and the
+reply shows the mode it ran in. Name a mode in the message ("use research mode:
+…") to skip that call. A message's mode stays fixed until it finishes,
+including after the conversation is compacted; the next message is routed
 again.
+
+If your configuration already defines an agent named `goal`, `reasoning`,
+`research`, or `auto` with its own prompt, YukiOshi keeps your agent under
+that name instead of the built-in mode.
 
 These modes decide *how* the agent works. Permission modes (`manual`, `auto`,
 `auto-all`, `plan`, see [Permissions and safety](permissions-and-safety.md))
