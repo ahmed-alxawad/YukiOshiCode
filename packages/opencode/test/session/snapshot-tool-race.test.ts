@@ -96,6 +96,7 @@ const it = testEffect(
 )
 
 const providerCfg = (url: string) => ({
+  model: "test/test-model",
   provider: {
     test: {
       name: "Test",

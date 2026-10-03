@@ -41,6 +41,14 @@ yukioshi models             # every model you can use now
 yukioshi models anthropic   # one provider
 ```
 
+## Choosing a model
+
+YukiOshi never picks a provider or model for you. Until you choose one, the
+terminal UI shows **No model selected**; pick one with `/models` and it is
+remembered for next time. To set one up front, put `"model": "provider/model"`
+in `yukioshi.json`, or pass `--model provider/model` to `yukioshi` or
+`yukioshi run`.
+
 ## Google
 
 **Google Gemini (free and paid).** Choose **Sign in with Google AI Studio**.
@@ -144,21 +152,20 @@ Tokens refresh automatically. An xAI API key remains available.
 
 ### OpenCode
 
-The `opencode` provider is not included: OpenCode limits it, including its free
-models, to the official OpenCode client
+OpenCode's providers (OpenCode, OpenCode Zen, and OpenCode Go) are not
+included: OpenCode limits them, including the free models, to the official
+OpenCode client
 ([anomalyco/opencode#49590](https://github.com/anomalyco/opencode/issues/49590)),
-and YukiOshi does not disguise itself as that client. A paid OpenCode Zen key
-still works through the preset below.
+and YukiOshi does not disguise itself as that client.
 
-## Ready-made presets
+## Ready-made preset
 
-Two OpenAI-compatible presets load automatically when one of their variables is
-set:
+An OpenAI-compatible Google AI Studio preset loads automatically when one of
+its variables is set:
 
 | Preset           | Provider ID        | Endpoint                                                   | Variables                                         |
 | ---------------- | ------------------ | ---------------------------------------------------------- | ------------------------------------------------- |
 | Google AI Studio | `google-ai-studio` | `https://generativelanguage.googleapis.com/v1beta/openai/` | `GOOGLE_API_KEY`, `GEMINI_API_KEY`, `YUKIOSHI_API_KEY` |
-| OpenCode Zen     | `opencode-zen`     | `https://opencode.ai/zen/v1`                               | `OPENCODE_API_KEY`, `YUKIOSHI_API_KEY`            |
 
 ## Your own OpenAI-compatible server
 

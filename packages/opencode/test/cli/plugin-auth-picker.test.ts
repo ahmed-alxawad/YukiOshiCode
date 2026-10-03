@@ -170,7 +170,7 @@ describe("providerLoginOptions", () => {
         { id: "mistral", name: "Mistral" },
         { id: "openai", name: "OpenAI" },
         { id: "google", name: "Google" },
-        { id: "opencode", name: "OpenCode Zen" },
+        { id: "opencode", name: "OpenCode" },
       ],
       [
         { id: "portkey", name: "Portkey AI" },

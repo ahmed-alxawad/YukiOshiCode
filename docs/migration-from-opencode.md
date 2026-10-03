@@ -41,23 +41,24 @@ workflow. Most opencode setups work after a few renames.
   `design:*`, and `productivity:*` families). Project skills are namespaced
   `project:<name>`.
 - Built-in sign-in for ChatGPT (Codex), SuperGrok, Google AI Studio, and
-  Google Vertex AI, plus Google AI Studio and OpenCode Zen presets. See
+  Google Vertex AI, plus a Google AI Studio preset. See
   [Providers](providers.md).
 - Its own YukiOshi theme for light and dark terminals. See
   [Appearance](appearance.md).
 
 **Not included**: opencode's web and desktop apps (YukiOshi Code is a
-terminal application), and the `opencode` provider with its free models, which
-OpenCode limits to its own client. A paid OpenCode Zen key still works; see
-[Providers](providers.md#opencode).
+terminal application), and OpenCode's providers (OpenCode, OpenCode Zen, and
+OpenCode Go), which OpenCode limits to its own client; see
+[Providers](providers.md#opencode). YukiOshi also never picks a model for you:
+choose one with `/models` or set `model` in `yukioshi.json`.
 
 ## Migration checklist
 
 1. Install YukiOshi Code and replace `opencode` with `yukioshi` in shell
    aliases, editor tasks, CI jobs, and scripts.
 2. Replace application environment variables named `OPENCODE_*` with
-   `YUKIOSHI_*`. Provider credentials keep their own names: OpenCode Zen, for
-   example, still reads `OPENCODE_API_KEY`.
+   `YUKIOSHI_*`. Provider credentials keep their own names, such as
+   `ANTHROPIC_API_KEY`.
 3. Copy your global configuration from `~/.config/opencode/` to
    `~/.config/yukioshi/` (rename `opencode.json` to `yukioshi.json` if you
    like). YukiOshi does not read opencode's global directories.
@@ -78,6 +79,6 @@ OpenCode limits to its own client. A paid OpenCode Zen key still works; see
 
 ## Names that intentionally stay "opencode"
 
-Not every remaining `opencode` is a missed rename. The `opencode-zen` provider
-ID, opencode service URLs, third-party plugin packages, plugin compatibility fields, and the built-in `customize-opencode`
-skill keep their names so existing integrations keep working.
+Not every remaining `opencode` is a missed rename. Third-party plugin packages,
+plugin compatibility fields, and the built-in `customize-opencode` skill keep
+their names so existing integrations keep working.

@@ -78,6 +78,7 @@ const getAvailableTools = Effect.fn("Cli.debug.agent.getAvailableTools")(functio
             return fail(`Model not found: ${error.providerID}/${error.modelID}`)
           }
           if (error instanceof Provider.NoModelsError) return fail(`No models found for provider ${error.providerID}`)
+          if (error instanceof Provider.NoModelSelectedError) return fail(error.message)
           return fail("No providers found")
         },
       }),
@@ -144,6 +145,7 @@ const createToolContext = Effect.fn("Cli.debug.agent.createToolContext")(functio
               }
               if (error instanceof Provider.NoModelsError)
                 return fail(`No models found for provider ${error.providerID}`)
+              if (error instanceof Provider.NoModelSelectedError) return fail(error.message)
               return fail("No providers found")
             },
           }),

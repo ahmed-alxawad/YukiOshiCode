@@ -221,16 +221,8 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           }
         }
 
-        const provider = sync.data.provider[0]
-        if (!provider) return undefined
-        const defaultModel = sync.data.provider_default[provider.id]
-        const firstModel = Object.values(provider.models)[0]
-        const model = defaultModel ?? firstModel?.id
-        if (!model) return undefined
-        return {
-          providerID: provider.id,
-          modelID: model,
-        }
+        // No provider is picked by default: the user chooses a model with /models.
+        return undefined
       })
 
       const currentModel = createMemo(() => {
@@ -258,11 +250,9 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         parsed: createMemo(() => {
           const value = currentModel()
           if (!value) {
-            return {
-              provider: "Connect a provider",
-              model: "No provider selected",
-              reasoning: false,
-            }
+            return sync.data.provider.length === 0
+              ? { provider: "Connect a provider", model: "No provider selected", reasoning: false }
+              : { provider: "Choose a model with /models", model: "No model selected", reasoning: false }
           }
           const provider = sync.data.provider.find((item) => item.id === value.providerID)
           const info = provider?.models[value.modelID]

@@ -340,12 +340,12 @@ test("parseModel handles model IDs with slashes", () => {
   expect(String(result.modelID)).toBe("anthropic/claude-3-opus")
 })
 
-it.instance("defaultModel returns first available model when no config set", () =>
+it.instance("defaultModel never picks a provider when no model is chosen", () =>
   Effect.gen(function* () {
     yield* setProcessEnv("ANTHROPIC_API_KEY", "test-api-key")
-    const model = yield* Provider.use.defaultModel()
-    expect(model.providerID).toBeDefined()
-    expect(model.modelID).toBeDefined()
+    const error = yield* Provider.use.defaultModel().pipe(Effect.flip)
+    expect(error).toBeInstanceOf(Provider.NoModelSelectedError)
+    expect(error.message).toContain("/models")
   }),
 )
 
@@ -358,17 +358,6 @@ it.instance(
     expect(String(model.modelID)).toBe("claude-sonnet-4-20250514")
   }),
   { config: { model: "anthropic/claude-sonnet-4-20250514" } },
-)
-
-it.instance(
-  "defaultModel treats empty provider config as no allowlist",
-  Effect.gen(function* () {
-    yield* setProcessEnv("ANTHROPIC_API_KEY", "test-api-key")
-    const model = yield* Provider.use.defaultModel()
-    expect(model.providerID).toBeDefined()
-    expect(model.modelID).toBeDefined()
-  }),
-  { config: { provider: {} } },
 )
 
 it.instance(
@@ -1316,46 +1305,30 @@ it.instance(
 )
 
 it.instance(
-  "OpenAI-compatible provider presets use ordered environment fallbacks",
+  "the Google AI Studio preset uses ordered environment fallbacks",
   Effect.gen(function* () {
     yield* set("YUKIOSHI_API_KEY", "yuki-key")
     yield* set("GOOGLE_API_KEY", "google-key")
     yield* set("GEMINI_API_KEY", "gemini-key")
-    yield* set("OPENCODE_API_KEY", "zen-key")
 
     const providers = yield* list
     expect(providers[ProviderV2.ID.make("google-ai-studio")].options).toMatchObject({
       apiKey: "google-key",
       baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
     })
-    expect(providers[ProviderV2.ID.make("opencode-zen")].options).toMatchObject({
-      apiKey: "zen-key",
-      baseURL: "https://opencode.ai/zen/v1",
-    })
-  }),
-)
-
-it.instance("OpenCode Zen falls back to the YukiOshi key", () =>
-  Effect.gen(function* () {
-    yield* remove("OPENCODE_API_KEY")
-    yield* set("YUKIOSHI_API_KEY", "yuki-key")
-
-    const providers = yield* list
-    expect(providers[ProviderV2.ID.make("opencode-zen")].options.apiKey).toBe("yuki-key")
   }),
 )
 
 it.instance(
-  "OpenCode is not a provider; the Zen preset carries only paid models",
+  "OpenCode providers are not offered, even with an OpenCode key",
   Effect.gen(function* () {
     yield* set("OPENCODE_API_KEY", "zen-key")
+    yield* set("YUKIOSHI_API_KEY", "yuki-key")
 
     const providers = yield* list
-    const zen = providers[ProviderV2.ID.make("opencode-zen")]
-    expect(providers[ProviderV2.ID.make("opencode")]).toBeUndefined()
-    expect(zen.name).toBe("OpenCode Zen")
-    expect(Object.keys(zen.models).length).toBeGreaterThan(0)
-    expect(Object.values(zen.models).every((model) => model.cost.input > 0 || model.cost.output > 0)).toBe(true)
+    for (const id of ["opencode", "opencode-zen", "opencode-go"]) {
+      expect(providers[ProviderV2.ID.make(id)]).toBeUndefined()
+    }
   }),
 )
 

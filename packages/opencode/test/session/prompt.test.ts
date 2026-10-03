@@ -260,8 +260,10 @@ const unix = process.platform !== "win32" ? it.instance : it.instance.skip
 const unixNoLLMServer = process.platform !== "win32" ? noLLMServer.instance : noLLMServer.instance.skip
 
 // Config that registers a custom "test" provider with a "test-model" model
-// so provider model lookup succeeds inside the loop.
+// so provider model lookup succeeds inside the loop. YukiOshi never picks a model on its own,
+// so the config names it.
 const cfg = {
+  model: "test/test-model",
   provider: {
     test: {
       name: "Test",
@@ -1114,6 +1116,7 @@ noLLMServer.instance("prompt tools replace previous prompt tool rules", () =>
     expect(reloaded.permission).toEqual([{ permission: "read", pattern: "*", action: "allow" }])
     expect(Permission.evaluate("bash", "anything", reloaded.permission ?? []).action).toBe("ask")
   }),
+  { config: cfg },
 )
 
 it.instance(

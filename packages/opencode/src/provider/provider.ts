@@ -193,15 +193,6 @@ const COMPATIBLE_PRESETS = {
     source: "google",
     paidOnly: false,
   },
-  "opencode-zen": {
-    name: "OpenCode Zen",
-    env: ["OPENCODE_API_KEY", "YUKIOSHI_API_KEY"],
-    baseURL: "https://opencode.ai/zen/v1",
-    source: "opencode",
-    // OpenCode's free models only work in the official OpenCode client, so the
-    // preset carries the paid models alone.
-    paidOnly: true,
-  },
 } as const
 
 function compatiblePresetLoader(dep: CustomDep, preset: (typeof COMPATIBLE_PRESETS)[keyof typeof COMPATIBLE_PRESETS]) {
@@ -276,7 +267,6 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
         },
       }),
     "google-ai-studio": compatiblePresetLoader(dep, COMPATIBLE_PRESETS["google-ai-studio"]),
-    "opencode-zen": compatiblePresetLoader(dep, COMPATIBLE_PRESETS["opencode-zen"]),
     openai: () =>
       Effect.succeed({
         autoload: false,
@@ -1266,8 +1256,21 @@ export class NoModelsError extends Schema.TaggedErrorClass<NoModelsError>()("Pro
   }
 }
 
-export type DefaultModelError = ModelNotFoundError | NoProvidersError | NoModelsError
-export type Error = ModelNotFoundError | InitError | NoProvidersError | NoModelsError
+export class NoModelSelectedError extends Schema.TaggedErrorClass<NoModelSelectedError>()(
+  "ProviderNoModelSelectedError",
+  {},
+) {
+  override get message() {
+    return 'No model selected. Choose one with /models, pass --model provider/model, or set "model" in yukioshi.json'
+  }
+
+  static isInstance(input: unknown): input is NoModelSelectedError {
+    return input instanceof NoModelSelectedError
+  }
+}
+
+export type DefaultModelError = ModelNotFoundError | NoProvidersError | NoModelsError | NoModelSelectedError
+export type Error = ModelNotFoundError | InitError | NoProvidersError | NoModelsError | NoModelSelectedError
 
 export interface Interface {
   readonly list: () => Effect.Effect<Record<ProviderV2.ID, Info>>
@@ -1483,10 +1486,9 @@ const layer = Layer.effect(
         const modelsDev = yield* modelsDevSvc.get()
         const catalog = mapValues(modelsDev, fromModelsDevProvider)
         addCompatiblePreset(catalog, "google-ai-studio", "google")
-        addCompatiblePreset(catalog, "opencode-zen", "opencode")
-        // OpenCode limits its own provider, including the free models, to the official OpenCode client.
-        // Only the paid OpenCode Zen preset above remains.
-        delete catalog[ProviderV2.ID.make("opencode")]
+        // OpenCode limits its providers, including the free models, to the official OpenCode client,
+        // so neither OpenCode Zen nor OpenCode Go is offered.
+        for (const id of ["opencode", "opencode-go"]) delete catalog[ProviderV2.ID.make(id)]
         const database = mapValues(catalog, toPublicInfo)
 
         const providers: Record<ProviderV2.ID, Info> = {} as Record<ProviderV2.ID, Info>
@@ -2113,15 +2115,10 @@ const layer = Layer.effect(
         return { providerID: entry.providerID, modelID: entry.modelID }
       }
 
-      const configured = Object.keys(cfg.provider ?? {})
-      const provider = Object.values(s.providers).find((p) => configured.length === 0 || configured.includes(p.id))
-      if (!provider) return yield* new NoProvidersError()
-      const [model] = sort(Object.values(provider.models))
-      if (!model) return yield* new NoModelsError({ providerID: provider.id })
-      return {
-        providerID: provider.id,
-        modelID: model.id,
-      }
+      // Never pick a provider on the user's behalf: a model comes from the config, a flag, or the
+      // user's own earlier choice.
+      if (Object.keys(s.providers).length === 0) return yield* new NoProvidersError()
+      return yield* new NoModelSelectedError()
     })
 
     return Service.of({ list, getProvider, getModel, getLanguage, closest, getSmallModel, defaultModel })

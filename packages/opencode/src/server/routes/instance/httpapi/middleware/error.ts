@@ -1,5 +1,6 @@
 import { NamedError } from "@yukioshi/core/util/error"
 import { ConfigErrorV1 } from "@yukioshi/core/v1/config/error"
+import { Provider } from "@/provider/provider"
 import { Cause, Effect } from "effect"
 import { HttpRouter, HttpServerError, HttpServerRespondable, HttpServerResponse } from "effect/unstable/http"
 
@@ -24,6 +25,13 @@ export const errorLayer = HttpRouter.middleware<{ handles: unknown }>()((effect)
         ConfigErrorV1.RemoteAuthError.isInstance(error)
       ) {
         return Effect.succeed(HttpServerResponse.jsonUnsafe(error.toObject(), { status: 400 }))
+      }
+
+      // No model chosen yet, or nothing connected: tell the user what to do.
+      if (Provider.NoModelSelectedError.isInstance(error) || Provider.NoProvidersError.isInstance(error)) {
+        return Effect.succeed(
+          HttpServerResponse.jsonUnsafe(new NamedError.Unknown({ message: error.message }).toObject(), { status: 400 }),
+        )
       }
 
       const ref = `err_${crypto.randomUUID().slice(0, 8)}`
