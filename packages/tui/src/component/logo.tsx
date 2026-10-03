@@ -2,16 +2,16 @@ import { RGBA, TextAttributes } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/solid"
 import { For, Match, Switch, createMemo } from "solid-js"
 import { useTheme } from "../context/theme"
-import { emblemLarge, emblemMedium, wordmark, type LogoArt } from "../logo-art"
+import { logoArt, type LogoArt } from "../logo-art"
 
 type Segment = { text: string; part: string }
 
-// Splits a traced line into runs of the same logo part so each run is one text node.
+// Splits a traced line into runs of the same logo colour so each run is one text node.
 function segments(line: string, parts: string): Segment[] {
   const result: Segment[] = []
   const chars = Array.from(line)
   for (const [index, char] of chars.entries()) {
-    const part = char === " " ? " " : (parts[index] ?? "w")
+    const part = char === " " ? " " : (parts[index] ?? "0")
     const last = result.at(-1)
     if (last && last.part === part) last.text += char
     else result.push({ text: char, part })
@@ -20,16 +20,15 @@ function segments(line: string, parts: string): Segment[] {
 }
 
 export function Logo() {
-  const { theme } = useTheme()
+  const { mode } = useTheme()
   const dimensions = useTerminalDimensions()
 
-  // White crystal and "Yuki" follow the text colour, so the emblem stays visible on light
-  // backgrounds; the ice and blue parts use the theme's accent and primary colours.
+  // The official dark and light logos, each with its own colours.
+  const variant = createMemo(() => (mode() === "light" ? logoArt.light : logoArt.dark))
   const colour = (part: string): RGBA | undefined => {
-    if (part === "w") return theme.text
-    if (part === "i") return theme.accent
-    if (part === "b") return theme.primary
-    return undefined
+    if (part === " ") return undefined
+    const palette = variant().palette
+    return RGBA.fromHex(palette[Number(part)] ?? palette[0])
   }
 
   // The full emblem needs about 19 rows, so smaller terminals get a shorter version.
@@ -61,13 +60,13 @@ export function Logo() {
 
   const Code = () => (
     <box flexDirection="row" height={1}>
-      <text fg={theme.primary} attributes={TextAttributes.BOLD} selectable={false}>
+      <text fg={RGBA.fromHex(variant().code.bracket)} attributes={TextAttributes.BOLD} selectable={false}>
         {"< /  "}
       </text>
-      <text fg={theme.text} attributes={TextAttributes.BOLD} selectable={false}>
+      <text fg={RGBA.fromHex(variant().code.text)} attributes={TextAttributes.BOLD} selectable={false}>
         C O D E
       </text>
-      <text fg={theme.primary} attributes={TextAttributes.BOLD} selectable={false}>
+      <text fg={RGBA.fromHex(variant().code.bracket)} attributes={TextAttributes.BOLD} selectable={false}>
         {"  >"}
       </text>
     </box>
@@ -77,27 +76,27 @@ export function Logo() {
     <box flexDirection="column" alignItems="center">
       <Switch>
         <Match when={size() === "large"}>
-          <Art art={emblemLarge} />
+          <Art art={variant().emblemLarge} />
           <box height={1} />
         </Match>
         <Match when={size() === "medium"}>
-          <Art art={emblemMedium} />
+          <Art art={variant().emblemMedium} />
           <box height={1} />
         </Match>
       </Switch>
       <Switch>
         <Match when={size() === "text"}>
           <box flexDirection="row" height={1}>
-            <text fg={theme.text} attributes={TextAttributes.BOLD} selectable={false}>
+            <text fg={RGBA.fromHex(variant().code.text)} attributes={TextAttributes.BOLD} selectable={false}>
               Yuki
             </text>
-            <text fg={theme.primary} attributes={TextAttributes.BOLD} selectable={false}>
+            <text fg={RGBA.fromHex(variant().code.bracket)} attributes={TextAttributes.BOLD} selectable={false}>
               Oshi
             </text>
           </box>
         </Match>
         <Match when={true}>
-          <Art art={wordmark} />
+          <Art art={variant().wordmark} />
         </Match>
       </Switch>
       <Code />
