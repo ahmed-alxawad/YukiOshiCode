@@ -201,7 +201,13 @@ else
     if [ -z "$requested_version" ]; then
         url="$GITHUB_URL/releases/latest/download/$filename"
         checksum_url="$GITHUB_URL/releases/latest/download/SHA256SUMS"
-        specific_version=$(curl -s "https://api.github.com/repos/$GITHUB_REPO/releases/latest" | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p')
+        # The releases/latest page redirects to the newest tag and, unlike api.github.com, is not
+        # subject to the 60-requests-per-hour limit that shared IPs (CI, offices, VPNs) hit.
+        latest_url=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "$GITHUB_URL/releases/latest" 2>/dev/null || true)
+        specific_version=$(printf '%s\n' "$latest_url" | sed -n 's#.*/releases/tag/v\([^/?#]*\)$#\1#p')
+        if [ -z "$specific_version" ]; then
+            specific_version=$(curl -s "https://api.github.com/repos/$GITHUB_REPO/releases/latest" | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p')
+        fi
 
         if [[ $? -ne 0 || -z "$specific_version" ]]; then
             echo -e "${RED}Failed to fetch version information${NC}"

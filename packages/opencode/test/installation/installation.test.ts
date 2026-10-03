@@ -82,6 +82,24 @@ describe("installation", () => {
       }),
     )
 
+    const feedCalls: string[] = []
+    testEffect(
+      testLayer((request) => {
+        feedCalls.push(request.url)
+        if (request.url.endsWith("/releases.atom")) {
+          return new Response(
+            '<feed><entry><link href="https://github.com/ahmed-alxawad/YukiOshiCode/releases/tag/v2.4.6"/></entry></feed>',
+          )
+        }
+        return new Response("API rate limit exceeded", { status: 403 })
+      }),
+    ).effect("reads the version from the release feed without the rate-limited API", () =>
+      Effect.gen(function* () {
+        expect(yield* Installation.use.latest("curl")).toBe("2.4.6")
+        expect(feedCalls).not.toContain("https://api.github.com/repos/ahmed-alxawad/YukiOshiCode/releases/latest")
+      }),
+    )
+
     testEffect(testLayer(() => jsonResponse({ tag_name: "v4.0.0-beta.1" }))).effect(
       "strips v prefix from GitHub release tag",
       () =>

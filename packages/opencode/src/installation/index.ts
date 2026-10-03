@@ -69,6 +69,9 @@ const BrewInfoV2 = Schema.Struct({
 
 const GITHUB_REPOSITORY = "ahmed-alxawad/YukiOshiCode"
 const GITHUB_RELEASES_API = `https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/latest`
+// The public release feed lists published releases newest first and, unlike api.github.com, is not
+// limited to 60 requests per hour per IP, a limit that shared IPs (CI, offices, VPNs) often reach.
+const GITHUB_RELEASES_FEED = `https://github.com/${GITHUB_REPOSITORY}/releases.atom`
 const MAIN_INSTALL_SCRIPT_URL = `https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/install`
 const NPM_PACKAGE = "yukioshi-ai"
 const BREW_FORMULA = "yukioshi"
@@ -238,6 +241,13 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
           const data = yield* HttpClientResponse.schemaBodyJson(NpmPackage)(response)
           return data.version
         }
+
+        const fromFeed = yield* httpOk.execute(HttpClientRequest.get(GITHUB_RELEASES_FEED)).pipe(
+          Effect.flatMap((response) => response.text),
+          Effect.map((feed) => feed.match(/\/releases\/tag\/v([^"'<\s]+)/)?.[1]),
+          Effect.orElseSucceed(() => undefined),
+        )
+        if (fromFeed) return fromFeed
 
         const response = yield* httpOk.execute(
           HttpClientRequest.get(GITHUB_RELEASES_API).pipe(HttpClientRequest.acceptJson),
