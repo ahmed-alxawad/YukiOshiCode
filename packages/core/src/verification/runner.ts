@@ -461,8 +461,7 @@ export async function runVerificationPipeline(options: RunVerificationOptions): 
   if (
     options.skip ||
     process.env.YUKIOSHI_SKIP_VERIFY === "1" ||
-    process.env.YUKIOSHI_SKIP_VERIFY === "true" ||
-    process.env.YUKIOSHI_SKIP_VERIFY === "1"
+    process.env.YUKIOSHI_SKIP_VERIFY === "true"
   ) {
     return {
       status: "SKIPPED_BY_USER",
