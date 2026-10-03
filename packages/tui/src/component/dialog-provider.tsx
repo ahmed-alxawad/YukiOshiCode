@@ -25,7 +25,6 @@ const PROVIDER_PRIORITY: Record<string, number> = {
   xai: 3,
   openrouter: 4,
   agentrouter: 5,
-  opencode: 6,
   abacus: 7,
   "kimi-code-plan-global": 8,
   "kimi-for-coding": 8,
@@ -57,10 +56,10 @@ export function providerOptions(list: { id: string; name: string }[]): ProviderO
       value: provider.id,
       providerID: provider.id,
       description: {
-        opencode: "Free models",
         anthropic: "API key",
         openai: "ChatGPT Plus/Pro OAuth or API key",
-        google: "Google OAuth or API key",
+        google: "Google AI Studio sign-in or API key",
+        "google-vertex": "Sign in with Google",
       }[provider.id],
       category: "Providers",
     })),
@@ -314,17 +313,6 @@ function ApiMethod(props: ApiMethodProps) {
       placeholder="API key"
       description={() =>
         ({
-          opencode: (
-            <box gap={1}>
-              <text fg={theme.textMuted}>
-                OpenCode Zen gives you access to all the best coding models at the cheapest prices with a single API
-                key.
-              </text>
-              <text fg={theme.text}>
-                Go to <span style={{ fg: theme.primary }}>https://opencode.ai/zen</span> to get a key
-              </text>
-            </box>
-          ),
           "opencode-go": (
             <box gap={1}>
               <text fg={theme.textMuted}>

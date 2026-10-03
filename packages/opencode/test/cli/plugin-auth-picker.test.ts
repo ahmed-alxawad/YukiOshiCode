@@ -182,7 +182,6 @@ describe("providerLoginOptions", () => {
       ["openai", "Codex (OpenAI)"],
       ["google", "Google Gemini"],
       ["agentrouter", "AgentRouter"],
-      ["opencode", "OpenCode"],
     ])
   })
 

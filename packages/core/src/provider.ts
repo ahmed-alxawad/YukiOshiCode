@@ -19,7 +19,6 @@ export const SELECTED = {
   xai: "Grok (xAI)",
   openrouter: "OpenRouter",
   agentrouter: "AgentRouter",
-  opencode: "OpenCode",
   abacus: "Abacus",
   "kimi-code-plan-global": "Kimi",
   "kimi-for-coding": "Kimi",

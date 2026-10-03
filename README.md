@@ -74,8 +74,8 @@ yukioshi run -c "now add a test for it"   # continue the last session
 ## What it does
 
 - **Any model.** Claude, Codex (with ChatGPT sign-in), Grok (with SuperGrok
-  sign-in), Gemini, OpenRouter, Kimi, Moonshot, Z.AI, NVIDIA NIM, OpenCode, and
-  any OpenAI-compatible server. Several providers can be set up at once.
+  sign-in), Gemini (with Google sign-in), OpenRouter, Kimi, Moonshot, Z.AI,
+  NVIDIA NIM, and any OpenAI-compatible server. Several providers can be set up at once.
   [Providers](docs/providers.md)
 - **You decide what it may do.** Four permission modes (`manual`, `auto`,
   `auto-all`, `plan`), per-tool rules, and hard blocks that refuse destructive

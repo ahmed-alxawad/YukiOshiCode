@@ -261,9 +261,9 @@ export function providerLoginOptions(
       label: ProviderV2.selectedName(provider.id) ?? provider.name ?? provider.id,
       value: provider.id,
       hint: {
-        opencode: "free models",
         openai: "ChatGPT Plus/Pro OAuth or API key",
-        google: "Antigravity OAuth or API key",
+        google: "Google AI Studio sign-in or API key",
+        "google-vertex": "sign in with Google",
       }[provider.id],
     })),
   )
@@ -446,10 +446,6 @@ export const ProvidersLoginCommand = effectCmd({
           "Configure via yukioshi.json options (profile, region, endpoint) or\n" +
           "AWS environment variables (AWS_PROFILE, AWS_REGION, AWS_ACCESS_KEY_ID, AWS_WEB_IDENTITY_TOKEN_FILE).",
       )
-    }
-
-    if (provider === "opencode") {
-      yield* Prompt.log.info("Create an api key at https://opencode.ai/auth")
     }
 
     if (provider === "vercel") {

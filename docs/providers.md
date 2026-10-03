@@ -28,7 +28,6 @@ These providers appear when you connect:
 | Grok (xAI)          | `xai`                   | SuperGrok sign-in, or `XAI_API_KEY`                                  |
 | OpenRouter          | `openrouter`            | `OPENROUTER_API_KEY`                                                 |
 | AgentRouter         | `agentrouter`           | `AGENTROUTER_API_KEY`                                                |
-| OpenCode            | `opencode`              | free models with no key, or OpenCode sign-in                         |
 | Abacus              | `abacus`                | `ABACUS_API_KEY`                                                     |
 | Kimi                | `kimi-code-plan-global` | `KIMI_API_KEY`                                                       |
 | Moonshot AI         | `moonshotai`            | `MOONSHOT_API_KEY`                                                   |
@@ -145,11 +144,11 @@ Tokens refresh automatically. An xAI API key remains available.
 
 ### OpenCode
 
-The `opencode` provider's free models need no key. Paid access uses OpenCode's
-own sign-in. OpenCode applies its own account and quota rules, and currently
-limits its free tier to the official OpenCode client; YukiOshi does not
-disguise itself as that client
-([anomalyco/opencode#49590](https://github.com/anomalyco/opencode/issues/49590)).
+The `opencode` provider is not included: OpenCode limits it, including its free
+models, to the official OpenCode client
+([anomalyco/opencode#49590](https://github.com/anomalyco/opencode/issues/49590)),
+and YukiOshi does not disguise itself as that client. A paid OpenCode Zen key
+still works through the preset below.
 
 ## Ready-made presets
 

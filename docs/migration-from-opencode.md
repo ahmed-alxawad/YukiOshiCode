@@ -46,8 +46,10 @@ workflow. Most opencode setups work after a few renames.
 - Its own YukiOshi theme for light and dark terminals. See
   [Appearance](appearance.md).
 
-**Not included**: opencode's web and desktop apps. YukiOshi Code is a
-terminal application.
+**Not included**: opencode's web and desktop apps (YukiOshi Code is a
+terminal application), and the `opencode` provider with its free models, which
+OpenCode limits to its own client. A paid OpenCode Zen key still works; see
+[Providers](providers.md#opencode).
 
 ## Migration checklist
 
@@ -76,7 +78,6 @@ terminal application.
 
 ## Names that intentionally stay "opencode"
 
-Not every remaining `opencode` is a missed rename. The `opencode` and
-`opencode-zen` provider IDs, opencode service URLs, third-party plugin
-packages, plugin compatibility fields, and the built-in `customize-opencode`
+Not every remaining `opencode` is a missed rename. The `opencode-zen` provider
+ID, opencode service URLs, third-party plugin packages, plugin compatibility fields, and the built-in `customize-opencode`
 skill keep their names so existing integrations keep working.

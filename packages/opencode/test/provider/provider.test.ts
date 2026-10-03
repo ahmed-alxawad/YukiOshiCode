@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test"
-import { mkdir, unlink } from "fs/promises"
+import { mkdir } from "fs/promises"
 import path from "path"
 import { LayerNode } from "@yukioshi/core/effect/layer-node"
 import { AppNodeBuilder } from "@yukioshi/core/effect/app-node-builder"
@@ -17,7 +17,6 @@ import { Plugin } from "../../src/plugin/index"
 import { Provider } from "@/provider/provider"
 
 import { RuntimeFlags } from "@/effect/runtime-flags"
-import { Filesystem } from "@/util/filesystem"
 import { InstanceBootstrap } from "@/project/bootstrap"
 import { InstanceStore } from "@/project/instance-store"
 import { testEffect } from "../lib/effect"
@@ -75,12 +74,6 @@ const providerLayer = (flags: Partial<RuntimeFlags.Info> = {}) =>
   )
 
 const list = Provider.use.list()
-
-const paid = (providers: Record<string, { models: Record<string, { cost: { input: number } }> }>) => {
-  const item = providers[ProviderV2.ID.make("opencode")]
-  expect(item).toBeDefined()
-  return Object.values(item.models).filter((model) => model.cost.input > 0).length
-}
 
 const languageBaseURL = (language: unknown) => (language as { config: { baseURL: string } }).config.baseURL
 
@@ -1191,9 +1184,9 @@ it.instance("ModelNotFoundError for provider includes suggestions", () =>
 
 it.instance("ModelNotFoundError suggests catalog models for unloaded providers", () =>
   Effect.gen(function* () {
-    yield* remove("YUKIOSHI_API_KEY")
+    yield* remove("ANTHROPIC_API_KEY")
     const error = yield* Provider.use
-      .getModel(ProviderV2.ID.opencode, ModelV2.ID.make("claude-haiku-fake-model"))
+      .getModel(ProviderV2.ID.anthropic, ModelV2.ID.make("claude-haiku-fake-model"))
       .pipe(Effect.flip)
     if (!Provider.ModelNotFoundError.isInstance(error)) throw error
     expect(error.suggestions ?? []).toContain("claude-haiku-4-5")
@@ -1353,23 +1346,16 @@ it.instance("OpenCode Zen falls back to the YukiOshi key", () =>
 )
 
 it.instance(
-  "OpenCode free models are exposed only by the native provider",
+  "OpenCode is not a provider; the Zen preset carries only paid models",
   Effect.gen(function* () {
     yield* set("OPENCODE_API_KEY", "zen-key")
-    yield* set("YUKIOSHI_API_KEY", "shared-key")
 
     const providers = yield* list
-    const native = providers[ProviderV2.ID.make("opencode")]
     const zen = providers[ProviderV2.ID.make("opencode-zen")]
-    const free = Object.values(native.models).find((model) => model.cost.input === 0 && model.cost.output === 0)
-    const paid = Object.values(zen.models).find((model) => model.cost.input > 0 || model.cost.output > 0)
-
-    expect(free).toBeDefined()
-    expect(paid).toBeDefined()
-    expect(native.name).toBe("OpenCode")
+    expect(providers[ProviderV2.ID.make("opencode")]).toBeUndefined()
     expect(zen.name).toBe("OpenCode Zen")
-    expect(zen.models[free!.id]).toBeUndefined()
-    expect(zen.models[paid!.id]).toBeDefined()
+    expect(Object.keys(zen.models).length).toBeGreaterThan(0)
+    expect(Object.values(zen.models).every((model) => model.cost.input > 0 || model.cost.output > 0)).toBe(true)
   }),
 )
 
@@ -2142,57 +2128,4 @@ it.instance(
     expect(providers[ProviderV2.ID.anthropic]).toBeDefined()
     expect(providers[ProviderV2.ID.openai]).toBeUndefined()
   }),
-)
-
-it.effect("opencode loader keeps paid models when config apiKey is present", () =>
-  Effect.gen(function* () {
-    const noneDir = yield* tmpdirScoped()
-    const keyedDir = yield* tmpdirScoped({
-      config: { provider: { opencode: { options: { apiKey: "test-key" } } } },
-    })
-
-    const listIn = (directory: string) =>
-      Provider.use
-        .list()
-        .pipe(provideInstanceEffect(directory))
-        .pipe(Effect.provide(instanceStoreLayer), Effect.provide(AppNodeBuilder.build(CrossSpawnSpawner.node)))
-
-    const none = paid(yield* listIn(noneDir))
-    const keyedCount = paid(yield* listIn(keyedDir))
-
-    expect(none).toBe(0)
-    expect(keyedCount).toBeGreaterThan(0)
-  }).pipe(provideMultiInstance),
-)
-
-it.effect("opencode loader keeps paid models when auth exists", () =>
-  Effect.gen(function* () {
-    const noneDir = yield* tmpdirScoped()
-    const keyedDir = yield* tmpdirScoped()
-
-    const listIn = (directory: string) =>
-      Provider.use
-        .list()
-        .pipe(provideInstanceEffect(directory))
-        .pipe(Effect.provide(instanceStoreLayer), Effect.provide(AppNodeBuilder.build(CrossSpawnSpawner.node)))
-
-    const none = paid(yield* listIn(noneDir))
-
-    const authPath = path.join(Global.Path.data, "auth.json")
-    const original = yield* Effect.promise(() => Filesystem.readText(authPath).catch(() => undefined))
-
-    yield* Effect.acquireRelease(
-      Effect.promise(() => Filesystem.write(authPath, JSON.stringify({ opencode: { type: "api", key: "test-key" } }))),
-      () =>
-        Effect.promise(async () => {
-          if (original !== undefined) await Filesystem.write(authPath, original)
-          else await unlink(authPath).catch(() => undefined)
-        }),
-    )
-
-    const keyedCount = paid(yield* listIn(keyedDir))
-
-    expect(none).toBe(0)
-    expect(keyedCount).toBeGreaterThan(0)
-  }).pipe(provideMultiInstance),
 )
