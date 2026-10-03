@@ -27,9 +27,12 @@ export function usagePeriods(now: number): UsagePeriod[] {
   ]
 }
 
-/** Adds up tokens and cost per period, counting a session in every period it was active in. */
+/**
+ * Adds up tokens and cost of the sessions active in each period (a session counts in full in every
+ * period it was used in). Subagent sessions add their tokens and cost but are not counted as sessions.
+ */
 export function usageTotals(
-  sessions: Pick<GlobalSession, "cost" | "tokens" | "time">[],
+  sessions: Pick<GlobalSession, "cost" | "tokens" | "time" | "parentID">[],
   periods: UsagePeriod[],
 ): Totals[] {
   return periods.map((period) =>
@@ -39,7 +42,7 @@ export function usageTotals(
         (sum, session) => {
           const tokens = session.tokens
           return {
-            sessions: sum.sessions + 1,
+            sessions: sum.sessions + (session.parentID ? 0 : 1),
             tokens: sum.tokens + (tokens ? tokens.input + tokens.output + tokens.reasoning : 0),
             cost: sum.cost + (session.cost ?? 0),
           }
@@ -64,7 +67,14 @@ export function DialogUsage() {
     const sessions: GlobalSession[] = []
     let cursor: number | undefined
     while (true) {
-      const { data } = await sdk.client.experimental.session.list({ start: since, cursor, limit: PAGE_SIZE, archived: true })
+      // An empty directory overrides the client's own folder, so every project is included.
+      const { data } = await sdk.client.experimental.session.list({
+        directory: "",
+        start: since,
+        cursor,
+        limit: PAGE_SIZE,
+        archived: true,
+      })
       if (!data?.length) break
       sessions.push(...data)
       if (data.length < PAGE_SIZE) break
@@ -72,6 +82,29 @@ export function DialogUsage() {
     }
     return usageTotals(sessions, periods)
   })
+
+  // What the current session's subagents spent, at any depth.
+  const [subagents] = createResource(
+    () => (route.data.type === "session" ? route.data.sessionID : undefined),
+    async (sessionID) => {
+      const total = { input: 0, output: 0, cached: 0, cost: 0, count: 0 }
+      let parents = [sessionID]
+      for (let depth = 0; depth < 5 && parents.length; depth++) {
+        const children = (
+          await Promise.all(parents.map((id) => sdk.client.session.children({ sessionID: id }).then((r) => r.data ?? [])))
+        ).flat()
+        for (const child of children) {
+          total.input += child.tokens?.input ?? 0
+          total.output += (child.tokens?.output ?? 0) + (child.tokens?.reasoning ?? 0)
+          total.cached += child.tokens?.cache.read ?? 0
+          total.cost += child.cost ?? 0
+          total.count++
+        }
+        parents = children.map((child) => child.id)
+      }
+      return total
+    },
+  )
 
   const current = createMemo(() => {
     if (route.data.type !== "session") return
@@ -84,14 +117,16 @@ export function DialogUsage() {
       ? last.tokens.input + last.tokens.output + last.tokens.reasoning + last.tokens.cache.read + last.tokens.cache.write
       : 0
     const tokens = session.tokens
+    const sub = subagents()
     return {
       model: last ? (model?.name ?? `${last.providerID}/${last.modelID}`) : undefined,
       context,
       contextLimit: model?.limit.context,
-      input: tokens?.input ?? 0,
-      output: (tokens?.output ?? 0) + (tokens?.reasoning ?? 0),
-      cached: tokens?.cache.read ?? 0,
-      cost: session.cost ?? 0,
+      input: (tokens?.input ?? 0) + (sub?.input ?? 0),
+      output: (tokens?.output ?? 0) + (tokens?.reasoning ?? 0) + (sub?.output ?? 0),
+      cached: (tokens?.cache.read ?? 0) + (sub?.cached ?? 0),
+      cost: (session.cost ?? 0) + (sub?.cost ?? 0),
+      subagents: sub?.count ?? 0,
     }
   })
 
@@ -132,13 +167,18 @@ export function DialogUsage() {
             {row("Output", `${Locale.number(session().output)} tokens`)}
             <Show when={session().cached > 0}>{row("Cached", `${Locale.number(session().cached)} tokens`)}</Show>
             {row("Cost", money.format(session().cost))}
+            <Show when={session().subagents > 0}>
+              <text fg={theme.textMuted}>
+                Includes {session().subagents} {session().subagents === 1 ? "subagent" : "subagents"}.
+              </text>
+            </Show>
           </box>
         )}
       </Show>
 
       <box>
         <text fg={theme.text} attributes={TextAttributes.BOLD}>
-          All projects
+          All projects <span style={{ fg: theme.textMuted }}>(sessions used in each period, counted in full)</span>
         </text>
         <Show
           when={history()}
@@ -159,8 +199,9 @@ export function DialogUsage() {
       </box>
 
       <text fg={theme.textMuted} wrapMode="word">
-        Costs are estimates from each model's list price. Subscription sign-ins (ChatGPT, SuperGrok) count against
-        your plan's own limits, shown on the provider's account page.
+        Costs are estimates from each model's list price. Token totals leave out cached tokens and background calls
+        (session titles, Auto's mode choice). Subscription sign-ins (ChatGPT, SuperGrok) count against your plan's own
+        limits, shown on the provider's account page.
       </text>
     </box>
   )

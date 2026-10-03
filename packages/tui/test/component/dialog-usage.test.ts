@@ -3,8 +3,13 @@ import { usagePeriods, usageTotals } from "../../src/component/dialog-usage"
 
 const DAY = 24 * 60 * 60 * 1000
 
-function session(updated: number, cost: number, input: number, output: number, reasoning = 0) {
-  return { cost, tokens: { input, output, reasoning, cache: { read: 0, write: 0 } }, time: { created: updated, updated } }
+function session(updated: number, cost: number, input: number, output: number, reasoning = 0, parentID?: string) {
+  return {
+    cost,
+    tokens: { input, output, reasoning, cache: { read: 0, write: 0 } },
+    time: { created: updated, updated },
+    parentID,
+  }
 }
 
 describe("usage", () => {
@@ -33,5 +38,14 @@ describe("usage", () => {
       { sessions: 3, tokens: 6250, cost: 1.75 },
       { sessions: 4, tokens: 19_250, cost: 3.75 },
     ])
+  })
+
+  test("subagent sessions add their usage but are not counted as sessions", () => {
+    const now = new Date(2026, 9, 3, 15, 30).getTime()
+    const [today] = usageTotals(
+      [session(now - 60_000, 1, 1000, 100), session(now - 30_000, 0.25, 500, 50, 0, "ses_parent")],
+      usagePeriods(now).slice(0, 1),
+    )
+    expect(today).toEqual({ sessions: 1, tokens: 1650, cost: 1.25 })
   })
 })
