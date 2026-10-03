@@ -24,7 +24,6 @@ These providers appear when you connect:
 | Claude (Anthropic)  | `anthropic`             | `ANTHROPIC_API_KEY` or an API key                                    |
 | Codex (OpenAI)      | `openai`                | ChatGPT Plus/Pro sign-in, or `OPENAI_API_KEY`                        |
 | Google Gemini       | `google`                | Google AI Studio sign-in (free and paid), or `GOOGLE_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `GEMINI_API_KEY` |
-| Google Vertex AI    | `google-vertex`         | Sign in with Google (your Google Cloud account)                      |
 | Grok (xAI)          | `xai`                   | SuperGrok sign-in, or `XAI_API_KEY`                                  |
 | OpenRouter          | `openrouter`            | `OPENROUTER_API_KEY`                                                 |
 | AgentRouter         | `agentrouter`           | `AGENTROUTER_API_KEY`                                                |
@@ -51,27 +50,19 @@ in `yukioshi.json`, or pass `--model provider/model` to `yukioshi` or
 
 ## Google
 
-YukiOshi never opens a browser for Google sign-in. It shows a link; open it on
-any device, sign in, and paste back what Google gives you. This also works over
-SSH.
-
-**Google Gemini (free and paid).** Choose **Sign in with Google AI Studio**,
-open the [Google AI Studio](https://aistudio.google.com/apikey) link, sign in
+**Google Gemini (free and paid).** Choose **Sign in with Google AI Studio**.
+YukiOshi shows a link instead of opening a browser, so this also works over
+SSH: open the [Google AI Studio](https://aistudio.google.com/apikey) link, sign in
 with your Google account, create an API key, and paste it back. AI Studio's
 free tier needs no billing, with rate limits; add billing in AI Studio for
 higher limits. You can also paste an existing Gemini API key.
 
-**Google Vertex AI (sign in with Google).** Choose **Google Vertex AI** and
-enter your Google Cloud project ID and a region. YukiOshi shows a Google
-sign-in link; open it, sign in with your Google account, allow access, and
-paste the verification code Google shows. This is Google's own sign-in
-(Application Default Credentials) through the
-[Google Cloud CLI](https://cloud.google.com/sdk/docs/install), so `gcloud`
-must be installed. Usage is billed to your Google Cloud project, which needs
-the Vertex AI API enabled; new Google Cloud accounts come with free trial
-credit. If you are already signed in with `gcloud auth application-default
-login`, YukiOshi reuses that sign-in. The agent's file tools cannot read the
-stored Google credentials.
+**Google Vertex AI.** Vertex has no sign-in option in the connect list. If you
+already use Vertex with the [Google Cloud CLI](https://cloud.google.com/sdk/docs/install),
+YukiOshi picks it up from your environment: sign in with
+`gcloud auth application-default login` and set `GOOGLE_CLOUD_PROJECT` (and
+optionally `GOOGLE_CLOUD_LOCATION`), then use `google-vertex/<model>` models.
+The agent's file tools cannot read the stored Google Cloud credentials.
 
 **Why there is no Antigravity-style sign-in.** Google's Antigravity and Gemini
 CLI apps let you use your personal Google account's Gemini allowance. That

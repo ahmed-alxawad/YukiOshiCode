@@ -8,7 +8,6 @@ import { NoSuchModelError, type Provider as SDK } from "ai"
 import { Npm } from "@yukioshi/core/npm"
 import { Hash } from "@yukioshi/core/util/hash"
 import { Plugin } from "../plugin"
-import { GOOGLE_SIGN_IN_KEY } from "../plugin/google"
 import { serviceUse } from "@yukioshi/core/effect/service-use"
 import { type LanguageModelV3 } from "@ai-sdk/provider"
 import { ModelsDev } from "@yukioshi/core/models-dev"
@@ -571,9 +570,6 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
       }),
     "google-vertex": Effect.fnUntraced(function* (provider: Info) {
       const env = yield* dep.env()
-      // "Sign in with Google" stores the chosen project and region as credential metadata.
-      const auth = yield* dep.auth(provider.id)
-      const signedIn = auth?.type === "api" ? auth.metadata : undefined
       // models.dev advertises GOOGLE_VERTEX_PROJECT for Vertex; keep the wider
       // Google Cloud project env names as fallbacks for existing ADC setups.
       const project =
@@ -581,15 +577,13 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
         env["GOOGLE_VERTEX_PROJECT"] ??
         env["GOOGLE_CLOUD_PROJECT"] ??
         env["GCP_PROJECT"] ??
-        env["GCLOUD_PROJECT"] ??
-        signedIn?.project
+        env["GCLOUD_PROJECT"]
 
       const location = String(
         provider.options?.location ??
           env["GOOGLE_VERTEX_LOCATION"] ??
           env["GOOGLE_CLOUD_LOCATION"] ??
           env["VERTEX_LOCATION"] ??
-          signedIn?.location ??
           "us-central1",
       )
 
@@ -1687,8 +1681,7 @@ const layer = Layer.effect(
           if (provider.type === "api") {
             mergeProvider(providerID, {
               source: "api",
-              // A Google sign-in marker is not a key: Vertex AI must use the Google sign-in itself.
-              ...(provider.key !== GOOGLE_SIGN_IN_KEY && { key: provider.key }),
+              key: provider.key,
             })
           }
         }

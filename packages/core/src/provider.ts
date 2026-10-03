@@ -15,7 +15,6 @@ export const SELECTED = {
   anthropic: "Claude (Anthropic)",
   openai: "Codex (OpenAI)",
   google: "Google Gemini",
-  "google-vertex": "Google Vertex AI",
   xai: "Grok (xAI)",
   openrouter: "OpenRouter",
   agentrouter: "AgentRouter",

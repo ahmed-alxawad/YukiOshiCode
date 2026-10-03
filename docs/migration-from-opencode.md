@@ -40,8 +40,8 @@ workflow. Most opencode setups work after a few renames.
 - Bundled skills (`nightmare`, `disaster`, `bugfix`, and the `engineering:*`,
   `design:*`, and `productivity:*` families). Project skills are namespaced
   `project:<name>`.
-- Built-in sign-in for ChatGPT (Codex), SuperGrok, Google AI Studio, and
-  Google Vertex AI, plus a Google AI Studio preset. See
+- Built-in sign-in for ChatGPT (Codex), SuperGrok, and Google AI Studio, plus
+  a Google AI Studio preset. See
   [Providers](providers.md).
 - Its own YukiOshi theme for light and dark terminals. See
   [Appearance](appearance.md).

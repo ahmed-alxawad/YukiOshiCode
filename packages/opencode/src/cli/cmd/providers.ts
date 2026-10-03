@@ -266,7 +266,6 @@ export function providerLoginOptions(
       hint: {
         openai: "ChatGPT Plus/Pro OAuth or API key",
         google: "Google AI Studio sign-in or API key",
-        "google-vertex": "sign in with Google",
       }[provider.id],
     })),
   )
