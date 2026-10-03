@@ -1,10 +1,14 @@
-import { describe, expect, test } from "bun:test"
-import { mkdtemp, rm } from "node:fs/promises"
-import os from "node:os"
-import path from "node:path"
+import { describe, expect, spyOn, test } from "bun:test"
+import { GoogleAuth } from "google-auth-library"
 import { GoogleAIStudioAuthPlugin, GoogleVertexAuthPlugin } from "../../src/plugin/google"
 
 const input = {} as any
+
+async function vertexSignIn() {
+  const [signIn] = (await GoogleVertexAuthPlugin(input)).auth!.methods
+  if (signIn.type !== "oauth") throw new Error("expected the sign-in method")
+  return signIn
+}
 
 describe("GoogleAIStudioAuthPlugin", () => {
   test("opens AI Studio and accepts a pasted key, or an existing key", async () => {
@@ -36,27 +40,38 @@ describe("GoogleVertexAuthPlugin", () => {
   })
 
   test("explains how to install gcloud when there is no Google sign-in and no gcloud", async () => {
-    const empty = await mkdtemp(path.join(os.tmpdir(), "yukioshi-google-"))
-    const saved = { PATH: process.env.PATH, HOME: process.env.HOME, GAC: process.env.GOOGLE_APPLICATION_CREDENTIALS, CLOUDSDK: process.env.CLOUDSDK_CONFIG }
-    process.env.PATH = empty
-    process.env.HOME = empty
-    process.env.CLOUDSDK_CONFIG = empty
-    delete process.env.GOOGLE_APPLICATION_CREDENTIALS
+    // Stub the environment: CI runners may have gcloud or Google credentials of their own.
+    const client = spyOn(GoogleAuth.prototype, "getClient").mockRejectedValue(new Error("no credentials"))
+    const which = spyOn(Bun, "which").mockReturnValue(null)
     try {
-      const hooks = await GoogleVertexAuthPlugin(input)
-      const [signIn] = hooks.auth!.methods
-      if (signIn.type !== "oauth") throw new Error("expected the sign-in method")
+      const signIn = await vertexSignIn()
       const authorization = await signIn.authorize({ project: "my-project-123", location: "global" })
       expect(authorization.url).toBe("https://cloud.google.com/sdk/docs/install")
       expect(authorization.instructions).toContain("gcloud")
       if (authorization.method !== "auto") throw new Error("expected an automatic flow")
       expect(await authorization.callback()).toEqual({ type: "failed" })
     } finally {
-      for (const [key, value] of [["PATH", saved.PATH], ["HOME", saved.HOME], ["GOOGLE_APPLICATION_CREDENTIALS", saved.GAC], ["CLOUDSDK_CONFIG", saved.CLOUDSDK]] as const) {
-        if (value === undefined) delete process.env[key]
-        else process.env[key] = value
-      }
-      await rm(empty, { recursive: true, force: true })
+      client.mockRestore()
+      which.mockRestore()
+    }
+  })
+
+  test("reuses an existing Google sign-in and records the project and region", async () => {
+    const client = spyOn(GoogleAuth.prototype, "getClient").mockResolvedValue({
+      getAccessToken: async () => ({ token: "ya29.example" }),
+    } as any)
+    try {
+      const signIn = await vertexSignIn()
+      const authorization = await signIn.authorize({ project: " my-project-123 ", location: "europe-west4" })
+      expect(authorization.instructions).toContain("existing Google sign-in")
+      if (authorization.method !== "auto") throw new Error("expected an automatic flow")
+      expect(await authorization.callback()).toEqual({
+        type: "success",
+        key: "google-adc",
+        metadata: { project: "my-project-123", location: "europe-west4" },
+      })
+    } finally {
+      client.mockRestore()
     }
   })
 })
