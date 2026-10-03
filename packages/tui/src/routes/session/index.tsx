@@ -295,6 +295,14 @@ export function Session() {
   const runVerificationForMessage = async (msg: AssistantMessage) => {
     if (!msg || !msg.id || inFlightVerifications.has(msg.id)) return
     if (verifications()[msg.id]) return
+    // Verification is off unless the user turned it on (--verify); then there is nothing to show.
+    const skip = Boolean(
+      args.skipVerify ||
+      args.verify !== true ||
+      process.env.YUKIOSHI_SKIP_VERIFY === "1" ||
+      process.env.YUKIOSHI_SKIP_VERIFY === "true",
+    )
+    if (skip) return
     inFlightVerifications.add(msg.id)
 
     setVerifications((prev) => ({
@@ -307,21 +315,12 @@ export function Session() {
       project.instance.path()?.directory ??
       sdk.directory ??
       process.cwd()
-    const skip = Boolean(
-      args.skipVerify ||
-      args.verify === false ||
-      process.env.YUKIOSHI_SKIP_VERIFY === "1" ||
-      process.env.YUKIOSHI_SKIP_VERIFY === "true" ||
-      process.env.YUKIOSHI_SKIP_VERIFY === "1",
-    )
-
     try {
       const summary = await runVerificationPipeline({
         cwd,
         client: sdk.client,
         sessionID: route.sessionID,
         promptResult: msg,
-        skip,
       })
       setVerifications((prev) => ({
         ...prev,

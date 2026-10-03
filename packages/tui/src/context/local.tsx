@@ -250,9 +250,10 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         parsed: createMemo(() => {
           const value = currentModel()
           if (!value) {
+            // Shown as "<model> <provider>" in the prompt footer, so the hint goes in the provider slot.
             return sync.data.provider.length === 0
-              ? { provider: "Connect a provider", model: "No provider selected", reasoning: false }
-              : { provider: "Choose a model with /models", model: "No model selected", reasoning: false }
+              ? { provider: "(use /connect)", model: "No provider connected", reasoning: false }
+              : { provider: "(use /models)", model: "No model selected", reasoning: false }
           }
           const provider = sync.data.provider.find((item) => item.id === value.providerID)
           const info = provider?.models[value.modelID]
