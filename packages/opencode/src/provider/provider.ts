@@ -602,6 +602,9 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
       }),
     "google-vertex": Effect.fnUntraced(function* (provider: Info) {
       const env = yield* dep.env()
+      // "Sign in with Google" stores the chosen project and region as credential metadata.
+      const auth = yield* dep.auth(provider.id)
+      const signedIn = auth?.type === "api" ? auth.metadata : undefined
       // models.dev advertises GOOGLE_VERTEX_PROJECT for Vertex; keep the wider
       // Google Cloud project env names as fallbacks for existing ADC setups.
       const project =
@@ -609,13 +612,15 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
         env["GOOGLE_VERTEX_PROJECT"] ??
         env["GOOGLE_CLOUD_PROJECT"] ??
         env["GCP_PROJECT"] ??
-        env["GCLOUD_PROJECT"]
+        env["GCLOUD_PROJECT"] ??
+        signedIn?.project
 
       const location = String(
         provider.options?.location ??
           env["GOOGLE_VERTEX_LOCATION"] ??
           env["GOOGLE_CLOUD_LOCATION"] ??
           env["VERTEX_LOCATION"] ??
+          signedIn?.location ??
           "us-central1",
       )
 

@@ -180,7 +180,7 @@ describe("providerLoginOptions", () => {
 
     expect(result.map((option) => [option.value, option.label])).toEqual([
       ["openai", "Codex (OpenAI)"],
-      ["google", "Antigravity OAuth (Google)"],
+      ["google", "Google Gemini"],
       ["agentrouter", "AgentRouter"],
       ["opencode", "OpenCode"],
     ])

@@ -28,7 +28,7 @@ describe("providerOptions", () => {
     expect(options.map((option) => option.title)).toEqual([
       "Claude (Anthropic)",
       "Codex (OpenAI)",
-      "Antigravity OAuth (Google)",
+      "Google Gemini",
       "Z.AI (GLM)",
     ])
   })

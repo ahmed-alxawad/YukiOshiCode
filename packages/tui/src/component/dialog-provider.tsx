@@ -21,6 +21,7 @@ const PROVIDER_PRIORITY: Record<string, number> = {
   anthropic: 0,
   openai: 1,
   google: 2,
+  "google-vertex": 2,
   xai: 3,
   openrouter: 4,
   agentrouter: 5,
@@ -268,7 +269,7 @@ function CodeMethod(props: CodeMethodProps) {
   return (
     <DialogPrompt
       title={props.title}
-      placeholder="Authorization code"
+      placeholder="Paste the code or API key"
       onConfirm={async (value) => {
         const { error } = await sdk.client.provider.oauth.callback({
           providerID: props.providerID,
