@@ -51,6 +51,14 @@ jobs:
           git config --global user.email ci@example.invalid
           git config --global user.name CI
       - run: bun install --frozen-lockfile
+      # The sandbox tests run real bubblewrap; Ubuntu 24.04 also restricts the unprivileged user
+      # namespaces it needs unless AppArmor's restriction is lifted.
+      - name: Install bubblewrap for sandbox tests
+        if: matrix.group == 'opencode-tool' || matrix.group == 'sandbox'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       - name: Run ${{ matrix.group }} tests
         shell: bash
         run: |

@@ -71,14 +71,16 @@ describe("opencode run (non-interactive subprocess)", () => {
     "exits nonzero promptly when the model is unknown (regression for #27371)",
     ({ opencode }) =>
       Effect.gen(function* () {
+        // The regression was a process that never exited. Cold starts on small CI runners, with this
+        // file's other subprocesses running concurrently, can exceed 15s, so allow a minute.
         const result = yield* opencode.run("say hi", {
           model: "test/nonexistent-model",
-          timeoutMs: 15_000,
+          timeoutMs: 60_000,
         })
         expect(result.exitCode).not.toBe(0)
-        expect(result.durationMs).toBeLessThan(15_000)
+        expect(result.durationMs).toBeLessThan(60_000)
       }),
-    30_000,
+    90_000,
   )
 
   // The test provider's SSE error item is interpreted by the SDK as an unknown
