@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>An AI coding agent for the terminal.</strong><br>
+  <strong>An AI coding agent for the terminal, by <a href="https://yukioshi.com">YukiOshi</a>.</strong><br>
   Bring any model, keep control of what it can do, and check the evidence before you accept the work.
 </p>
 
@@ -114,11 +114,12 @@ yukioshi run -c "now add a test for it"   # continue the last session
 
 ## License
 
-YukiOshi Code is proprietary, closed-source software: © 2026 Ahmed Alxawad,
-all rights reserved. Its source code is published on GitHub so you can review
-what runs on your machine, but it is not open source and is not licensed for
-copying, modification, or redistribution. You may install and use the official
-releases. See [LICENSE](LICENSE).
+YukiOshi Code is proprietary, closed-source software developed by
+[YukiOshi](https://yukioshi.com): © 2026 YukiOshi, all rights reserved. It is
+not open source. The source code is public for a limited testing period only
+and will not stay public, and it is not licensed for copying, modification, or
+redistribution. You may install and use the official releases. See
+[LICENSE](LICENSE).
 
 YukiOshi Code is built on [opencode](https://github.com/anomalyco/opencode),
 and its sandbox and code-indexing packages come from

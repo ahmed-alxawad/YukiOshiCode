@@ -121,6 +121,8 @@
     "url": "https://github.com/ahmed-alxawad/YukiOshiCode"
   },
   "license": "UNLICENSED",
+  "author": "YukiOshi (https://yukioshi.com)",
+  "homepage": "https://yukioshi.com",
   "prettier": {
     "semi": false,
     "printWidth": 120

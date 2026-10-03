@@ -4,6 +4,8 @@
   "name": "yukioshi",
   "type": "module",
   "license": "UNLICENSED",
+  "author": "YukiOshi (https://yukioshi.com)",
+  "homepage": "https://yukioshi.com",
   "private": true,
   "scripts": {
     "typecheck": "tsgo --noEmit",
