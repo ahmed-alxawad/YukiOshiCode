@@ -135,8 +135,11 @@ const handlePluginAuth = Effect.fn("Cli.providers.pluginAuth")(function* (
     }
 
     if (authorize.method === "code") {
+      if (authorize.instructions) {
+        yield* Prompt.log.info(authorize.instructions)
+      }
       const code = yield* Prompt.text({
-        message: "Paste the authorization code here: ",
+        message: "Paste the code or API key here: ",
         validate: (x) => (x && x.length > 0 ? undefined : "Required"),
       })
       const authorizationCode = yield* promptValue(code)

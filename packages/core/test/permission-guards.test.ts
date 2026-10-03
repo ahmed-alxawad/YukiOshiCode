@@ -14,6 +14,10 @@ describe("SafetyGuards", () => {
       ".aws/credentials",
       ".gnupg/private-keys-v1.d/key",
       ".kube/config",
+      "/home/me/.config/gcloud/application_default_credentials.json",
+      "/home/me/.config/gcloud/credentials.db",
+      "/home/me/.config/gcloud/access_tokens.db",
+      "/home/me/.config/gcloud/legacy_credentials/me@example.com/adc.json",
     ]
     for (const action of ["read", "edit", "write", "apply_patch"]) {
       for (const resource of resources) {
@@ -28,6 +32,8 @@ describe("SafetyGuards", () => {
     expect(SafetyGuards.check("write", ["/project/environment.ts"])).toBeUndefined()
     expect(SafetyGuards.check("edit", [".env.example"])).toBeUndefined()
     expect(SafetyGuards.check("edit", ["config/.env.sample"])).toBeUndefined()
+    expect(SafetyGuards.check("read", ["/home/me/.config/gcloud/configurations/config_default"])).toBeUndefined()
+    expect(SafetyGuards.check("read", ["/project/data/credentials.db"])).toBeUndefined()
     expect(SafetyGuards.check("write", [".env.local.template"])).toBeUndefined()
     expect(SafetyGuards.check("apply_patch", ["config/.env.production.dist"])).toBeUndefined()
   })

@@ -22,6 +22,7 @@ const PROTECTED_FILE_NAMES = [
   /^\.netrc$/,
   /^\.pgpass$/,
   /^credentials(\.json)?$/,
+  /^application_default_credentials\.json$/,
   /^id_rsa(\.pub)?$/,
   /^id_ed25519(\.pub)?$/,
   /^id_ecdsa(\.pub)?$/,
@@ -66,6 +67,16 @@ function isShellStartupPath(normalized: string, segments: string[]): boolean {
   return normalized.toLowerCase().endsWith("/fish/config.fish")
 }
 
+// Google Cloud CLI sign-ins (including YukiOshi's "Sign in with Google" for Vertex AI) keep
+// refresh tokens for the whole Google Cloud account here.
+function isGcloudCredentialPath(segments: string[]): boolean {
+  const index = segments.findIndex((segment) => segment.toLowerCase() === "gcloud")
+  if (index === -1) return false
+  const rest = segments.slice(index + 1)
+  if (rest[0] === "legacy_credentials") return true
+  return rest.length === 1 && /^(?:credentials|access_tokens)\.db$/.test(rest[0]!)
+}
+
 function isProtectedPath(resource: string): boolean {
   const normalized = resource.replace(/\\/g, "/")
   const segments = normalized.split("/").filter(Boolean)
@@ -73,6 +84,7 @@ function isProtectedPath(resource: string): boolean {
   const base = segments[segments.length - 1] ?? normalized
   if (ENV_FILE.test(base)) return !ENV_TEMPLATE.test(base)
   if (PROTECTED_FILE_NAMES.some((pattern) => pattern.test(base))) return true
+  if (isGcloudCredentialPath(segments)) return true
   return isShellStartupPath(normalized, segments)
 }
 

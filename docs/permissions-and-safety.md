@@ -104,6 +104,8 @@ your rules.
   `.template`, or `.dist`;
 - SSH keys, `.npmrc`, `.netrc`, credentials files, certificates, and key files;
 - anything under `.git`, `.ssh`, `.gnupg`, `.aws`, or `.kube`;
+- Google Cloud sign-in files (`application_default_credentials.json` and
+  gcloud's stored credentials);
 - shell startup files such as `~/.bashrc`, `~/.zshrc`, and `~/.profile` when
   they are outside the project.
 

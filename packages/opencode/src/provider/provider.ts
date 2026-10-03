@@ -8,6 +8,7 @@ import { NoSuchModelError, type Provider as SDK } from "ai"
 import { Npm } from "@yukioshi/core/npm"
 import { Hash } from "@yukioshi/core/util/hash"
 import { Plugin } from "../plugin"
+import { GOOGLE_SIGN_IN_KEY } from "../plugin/google"
 import { serviceUse } from "@yukioshi/core/effect/service-use"
 import { type LanguageModelV3 } from "@ai-sdk/provider"
 import { ModelsDev } from "@yukioshi/core/models-dev"
@@ -1686,7 +1687,8 @@ const layer = Layer.effect(
           if (provider.type === "api") {
             mergeProvider(providerID, {
               source: "api",
-              key: provider.key,
+              // A Google sign-in marker is not a key: Vertex AI must use the Google sign-in itself.
+              ...(provider.key !== GOOGLE_SIGN_IN_KEY && { key: provider.key }),
             })
           }
         }

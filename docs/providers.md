@@ -51,21 +51,27 @@ in `yukioshi.json`, or pass `--model provider/model` to `yukioshi` or
 
 ## Google
 
-**Google Gemini (free and paid).** Choose **Sign in with Google AI Studio**.
-YukiOshi opens [Google AI Studio](https://aistudio.google.com/apikey) in your
-browser; sign in with your Google account, create an API key, and paste it
-back. AI Studio's free tier needs no billing, with rate limits; add billing in
-AI Studio for higher limits. You can also paste an existing Gemini API key.
+YukiOshi never opens a browser for Google sign-in. It shows a link; open it on
+any device, sign in, and paste back what Google gives you. This also works over
+SSH.
 
-**Google Vertex AI (sign in with Google).** Choose **Google Vertex AI**, enter
-your Google Cloud project ID and a region, and sign in with your Google
-account in the browser window that opens. This uses Google's own sign-in
+**Google Gemini (free and paid).** Choose **Sign in with Google AI Studio**,
+open the [Google AI Studio](https://aistudio.google.com/apikey) link, sign in
+with your Google account, create an API key, and paste it back. AI Studio's
+free tier needs no billing, with rate limits; add billing in AI Studio for
+higher limits. You can also paste an existing Gemini API key.
+
+**Google Vertex AI (sign in with Google).** Choose **Google Vertex AI** and
+enter your Google Cloud project ID and a region. YukiOshi shows a Google
+sign-in link; open it, sign in with your Google account, allow access, and
+paste the verification code Google shows. This is Google's own sign-in
 (Application Default Credentials) through the
 [Google Cloud CLI](https://cloud.google.com/sdk/docs/install), so `gcloud`
 must be installed. Usage is billed to your Google Cloud project, which needs
 the Vertex AI API enabled; new Google Cloud accounts come with free trial
 credit. If you are already signed in with `gcloud auth application-default
-login`, YukiOshi reuses that sign-in.
+login`, YukiOshi reuses that sign-in. The agent's file tools cannot read the
+stored Google credentials.
 
 **Why there is no Antigravity-style sign-in.** Google's Antigravity and Gemini
 CLI apps let you use your personal Google account's Gemini allowance. That
