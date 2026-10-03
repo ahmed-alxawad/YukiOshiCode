@@ -1,0 +1,101 @@
+name: Installer smoke tests
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Install YukiOshi Code
+        shell: pwsh
+        run: irm https://raw.githubusercontent.com/${{ github.repository }}/main/install.ps1 | iex
+
+      - name: Verify installed version and built-in skills
+        shell: pwsh
+        run: |
+          $expected = (gh release view --json tagName --jq '.tagName').Trim()
+          $expected = $expected -replace '^v', ''
+          $binary = Join-Path $env:USERPROFILE '.yukioshi\bin\yukioshi.exe'
+
+          $versionLines = & $binary --version
+          if ($LASTEXITCODE -ne 0) {
+            throw "Installed binary failed --version with exit code $LASTEXITCODE"
+          }
+          $actual = ($versionLines -join "`n").Trim()
+          if ($actual -ne $expected) {
+            throw "Version mismatch: got '$actual', expected '$expected'"
+          }
+
+          $skillLines = & $binary debug skill 2>&1
+          if ($LASTEXITCODE -ne 0) {
+            throw "Installed binary failed debug skill with exit code $LASTEXITCODE"
+          }
+          $skills = $skillLines -join "`n"
+          if (-not $skills.Contains('"name": "nightmare"')) {
+            throw "Expected debug skill output to contain the nightmare skill"
+          }
+
+      - name: Reinstall and verify backup
+        shell: pwsh
+        run: |
+          irm https://raw.githubusercontent.com/${{ github.repository }}/main/install.ps1 | iex
+          $backup = Join-Path $env:USERPROFILE '.yukioshi\bin\yukioshi.exe.old'
+          if (-not (Test-Path -LiteralPath $backup -PathType Leaf)) {
+            throw "Second install did not retain $backup"
+          }
+
+  unix:
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-14
+          - ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Install YukiOshi Code
+        shell: bash
+        run: curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install | bash
+
+      - name: Verify installed version and built-in skills
+        shell: bash
+        run: |
+          expected="$(gh release view --json tagName --jq '.tagName')"
+          expected="${expected#v}"
+          binary="$HOME/.yukioshi/bin/yukioshi"
+
+          actual="$("$binary" --version)"
+          if [ "$actual" != "$expected" ]; then
+            echo "Version mismatch: got '$actual', expected '$expected'" >&2
+            exit 1
+          fi
+
+          skills="$("$binary" debug skill)"
+          if ! grep -Fq '"name": "nightmare"' <<<"$skills"; then
+            echo "Expected debug skill output to contain the nightmare skill" >&2
+            exit 1
+          fi
+
+      - name: Reinstall and verify backup
+        shell: bash
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install | bash
+          backup="$HOME/.yukioshi/bin/yukioshi.old"
+          if [ ! -f "$backup" ]; then
+            echo "Second install did not retain $backup" >&2
+            exit 1
+          fi
