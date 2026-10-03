@@ -28,7 +28,7 @@ interface), and `--verify` (turn on post-turn verification).
 | Option                     | Effect                                                      |
 | -------------------------- | ----------------------------------------------------------- |
 | `-m, --model`              | model as `provider/model`                                   |
-| `--agent`                  | agent to use                                                |
+| `--agent`                  | mode or agent: `build`, `plan`, `goal`, `reasoning`, `research`, `auto`, or a custom agent |
 | `--mode`                   | `manual`, `auto`, `auto-all`, or `plan`                     |
 | `-c, --continue`           | continue the last session                                   |
 | `-s, --session`            | continue a session by id                                    |

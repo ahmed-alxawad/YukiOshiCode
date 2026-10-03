@@ -11,6 +11,15 @@ import { Session } from "./session"
 import PROMPT_PLAN from "./prompt/plan.txt"
 import BUILD_SWITCH from "./prompt/build-switch.txt"
 import PLAN_MODE from "./prompt/plan-mode.txt"
+import GOAL_MODE from "./prompt/goal.txt"
+import REASONING_MODE from "./prompt/reasoning.txt"
+import RESEARCH_MODE from "./prompt/research.txt"
+
+const MODE_REMINDERS: Record<string, string> = {
+  goal: GOAL_MODE,
+  reasoning: REASONING_MODE,
+  research: RESEARCH_MODE,
+}
 
 export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
   messages: SessionV1.WithParts[]
@@ -22,6 +31,18 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
   const sessions = yield* Session.Service
   const userMessage = input.messages.findLast((msg) => msg.info.role === "user")
   if (!userMessage) return input.messages
+
+  const modeReminder = input.agent.native ? MODE_REMINDERS[input.agent.name] : undefined
+  if (modeReminder) {
+    userMessage.parts.push({
+      id: PartID.ascending(),
+      messageID: userMessage.info.id,
+      sessionID: userMessage.info.sessionID,
+      type: "text",
+      text: modeReminder,
+      synthetic: true,
+    })
+  }
 
   if (!flags.experimentalPlanMode) {
     if (input.agent.name === "plan") {

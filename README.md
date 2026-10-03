@@ -58,7 +58,8 @@ Describe the task in plain language. In the terminal UI:
 | --------------- | -------------------------------------------------- |
 | `/`             | slash commands, including every skill              |
 | `@`             | attach a file                                      |
-| `tab`           | switch agents                                      |
+| `tab`           | switch mode: Build, Plan, Goal, Reasoning, Research, Auto |
+| `/usage`        | tokens and cost for this session and recent days   |
 | `ctrl+p`        | command palette (permission mode, theme, and more) |
 | `ctrl+x t`      | switch theme                                       |
 
@@ -77,6 +78,9 @@ yukioshi run -c "now add a test for it"   # continue the last session
   sign-in), Gemini (with Google sign-in), OpenRouter, Kimi, Moonshot, Z.AI,
   NVIDIA NIM, and any OpenAI-compatible server. Several providers can be set up at once.
   [Providers](docs/providers.md)
+- **A mode for each kind of work.** Build, Plan, Goal (work autonomously
+  until done), Reasoning, and Research, or Auto, which picks one for each
+  message. [Features](docs/features.md#modes)
 - **You decide what it may do.** Four permission modes (`manual`, `auto`,
   `auto-all`, `plan`), per-tool rules, and hard blocks that refuse destructive
   commands and secret files in every mode.
@@ -104,7 +108,7 @@ yukioshi run -c "now add a test for it"   # continue the last session
 | [Providers](docs/providers.md)                            | Connecting models, credentials, OAuth, custom endpoints       |
 | [Configuration](docs/configuration.md)                    | Config files and precedence, variables, common settings       |
 | [Permissions and safety](docs/permissions-and-safety.md)  | Modes, rules, hard blocks, sandbox, trust, keychain           |
-| [Features](docs/features.md)                              | Verification, memory, code search, code graph, subagents      |
+| [Features](docs/features.md)                              | Modes, usage, verification, memory, code search, subagents    |
 | [Hooks](docs/hooks.md)                                    | Running your own commands at points in the agent's work       |
 | [Skills](docs/skills.md)                                  | Built-in skills and adding your own                           |
 | [Appearance](docs/appearance.md)                          | Theme, light and dark mode, the logo                          |

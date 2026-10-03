@@ -8,6 +8,7 @@ import { MessageV2 } from "./message-v2"
 import { SessionRevert } from "./revert"
 import { Session } from "./session"
 import { Agent } from "../agent/agent"
+import * as Mode from "../agent/mode"
 import { Provider } from "@/provider/provider"
 
 import { type Tool as AITool, tool, jsonSchema } from "ai"
@@ -252,6 +253,65 @@ const layer = Layer.effect(
       yield* sessions
         .setTitle({ sessionID: input.session.id, title: t })
         .pipe(Effect.catchCause((cause) => Effect.logError("failed to generate title", { error: Cause.squash(cause) })))
+    })
+
+    // Auto mode: picks the mode for a user message once. Later steps of the same message reuse the
+    // mode its first reply ran in, so the choice survives restarts and never changes mid-task.
+    const autoMode = Effect.fn("SessionPrompt.autoMode")(function* (input: {
+      user: SessionV1.User
+      msgs: SessionV1.WithParts[]
+      sessionID: SessionID
+    }) {
+      const earlier = input.msgs.find(
+        (msg) => msg.info.role === "assistant" && msg.info.parentID === input.user.id,
+      )?.info
+      if (earlier?.role === "assistant" && Mode.MODES.includes(earlier.agent as Mode.Mode)) return earlier.agent
+
+      const text = (input.msgs.find((msg) => msg.info.id === input.user.id)?.parts ?? [])
+        .flatMap((part) => (part.type === "text" && !part.synthetic ? [part.text] : []))
+        .join("\n")
+        .trim()
+      if (!text) return "build"
+      const fallback = Mode.guess(text)
+
+      const router = yield* agents.get("mode-router")
+      if (!router) return fallback
+      const model =
+        (yield* provider.getSmallModel(input.user.model.providerID)) ??
+        (yield* provider
+          .getModel(input.user.model.providerID, input.user.model.modelID)
+          .pipe(Effect.catch(() => Effect.succeed(undefined))))
+      if (!model) return fallback
+
+      const answer = yield* llm
+        .stream({
+          agent: router,
+          user: input.user,
+          system: [],
+          small: true,
+          tools: {},
+          model,
+          sessionID: input.sessionID,
+          retries: 0,
+          messages: [{ role: "user", content: text.slice(0, 4000) }],
+        })
+        .pipe(
+          Stream.filter(LLMEvent.is.textDelta),
+          Stream.map((event) => event.text),
+          Stream.mkString,
+          Effect.timeout("8 seconds"),
+          Effect.catchCause((cause) =>
+            // Stopping the session must still stop it; any other failure falls back to keywords.
+            Cause.hasInterrupts(cause)
+              ? Effect.interrupt
+              : Effect.logWarning("auto mode router failed; using keywords", { error: Cause.squash(cause) }).pipe(
+                  Effect.as(""),
+                ),
+          ),
+        )
+      const mode = Mode.parse(answer) ?? fallback
+      yield* Effect.logInfo("auto mode", { "session.id": input.sessionID, mode })
+      return mode
     })
 
     const handleSubtask = Effect.fn("SessionPrompt.handleSubtask")(function* (input: {
@@ -648,7 +708,7 @@ const layer = Layer.effect(
       const model = input.model ?? ag.model ?? (yield* currentModel(input.sessionID))
       const same = ag.model && model.providerID === ag.model.providerID && model.modelID === ag.model.modelID
       const full =
-        !input.variant && ag.variant && same
+        !input.variant && ag.variant && (same || !ag.model)
           ? yield* provider
               .getModel(model.providerID, model.modelID)
               .pipe(Effect.catchIf(Provider.ModelNotFoundError.isInstance, () => Effect.succeed(undefined)))
@@ -1217,7 +1277,9 @@ const layer = Layer.effect(
             continue
           }
 
-          const agent = yield* agents.get(lastUser.agent)
+          const agentName =
+            lastUser.agent === Mode.AUTO ? yield* autoMode({ user: lastUser, msgs, sessionID }) : lastUser.agent
+          const agent = yield* agents.get(agentName)
           if (!agent) {
             const available = (yield* agents.list()).filter((a) => !a.hidden).map((a) => a.name)
             const hint = available.length ? ` Available agents: ${available.join(", ")}` : ""

@@ -856,6 +856,41 @@ it.instance("static loop returns assistant text through local provider", () =>
   }),
 )
 
+it.instance("auto mode routes each message to the mode the router picks", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const session = yield* sessions.create({
+      title: "Auto mode",
+      permission: [{ permission: "*", pattern: "*", action: "allow" }],
+    })
+
+    yield* prompt.prompt({
+      sessionID: session.id,
+      agent: "auto",
+      noReply: true,
+      parts: [{ type: "text", text: "How do other tools handle this?" }],
+    })
+
+    yield* llm.text("research")
+    yield* llm.text("findings")
+
+    const result = yield* prompt.loop({ sessionID: session.id })
+    if (result.info.role !== "assistant") throw new Error("expected an assistant reply")
+    expect(result.info.agent).toBe("research")
+    expect(result.parts.some((part) => part.type === "text" && part.text === "findings")).toBe(true)
+
+    const hits = yield* llm.hits
+    expect(hits).toHaveLength(2)
+    expect(JSON.stringify(hits[0]?.body)).toContain("route a coding assistant")
+    expect(JSON.stringify(hits[1]?.body)).toContain("Research Mode")
+    // The message keeps "auto", so the next message is routed again.
+    const user = (yield* sessions.messages({ sessionID: session.id })).find((msg) => msg.info.role === "user")
+    expect(user?.info.role === "user" && user.info.agent).toBe("auto")
+  }),
+)
+
 it.instance("static loop consumes queued replies across turns", () =>
   Effect.gen(function* () {
     const { llm } = yield* useServerConfig(providerCfg)

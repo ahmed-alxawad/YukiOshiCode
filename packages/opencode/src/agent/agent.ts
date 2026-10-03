@@ -14,6 +14,8 @@ import PROMPT_COMPACTION from "./prompt/compaction.txt"
 import PROMPT_EXPLORE from "./prompt/explore.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
+import PROMPT_MODE_ROUTER from "./prompt/mode-router.txt"
+import * as Mode from "./mode"
 import { Permission } from "@/permission"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@yukioshi/core/global"
@@ -180,6 +182,88 @@ const layer = Layer.effect(
             mode: "primary",
             native: true,
           },
+          goal: {
+            name: "goal",
+            description: "Goal mode. Works toward a stated goal autonomously, step by step, until it is done and verified.",
+            options: {},
+            permission: Permission.merge(
+              defaults,
+              Permission.fromConfig({
+                question: "allow",
+              }),
+              user,
+            ),
+            mode: "primary",
+            native: true,
+          },
+          reasoning: {
+            name: "reasoning",
+            description: "Reasoning mode. Thinks problems through carefully and answers without making changes.",
+            options: {},
+            // Uses the model's high reasoning effort when it has one and no other effort was chosen.
+            variant: "high",
+            permission: Permission.merge(
+              defaults,
+              Permission.fromConfig({
+                question: "allow",
+                edit: "deny",
+                task: { general: "deny" },
+              }),
+              user,
+            ),
+            mode: "primary",
+            native: true,
+          },
+          research: {
+            name: "research",
+            description: "Research mode. Investigates the codebase and the web and reports findings with sources, without making changes.",
+            options: {},
+            permission: Permission.merge(
+              defaults,
+              Permission.fromConfig({
+                question: "allow",
+                edit: "deny",
+                task: { general: "deny" },
+                webfetch: "allow",
+                websearch: "allow",
+              }),
+              user,
+            ),
+            mode: "primary",
+            native: true,
+          },
+          [Mode.AUTO]: {
+            name: Mode.AUTO,
+            description: "Auto mode. Picks Build, Plan, Goal, Reasoning, or Research for each message.",
+            options: {},
+            // Each message runs with the permissions of the mode chosen for it; these apply only until then.
+            permission: Permission.merge(
+              defaults,
+              Permission.fromConfig({
+                question: "allow",
+                plan_enter: "allow",
+              }),
+              user,
+            ),
+            mode: "primary",
+            native: true,
+          },
+          "mode-router": {
+            name: "mode-router",
+            mode: "primary",
+            options: {},
+            native: true,
+            hidden: true,
+            temperature: 0,
+            permission: Permission.merge(
+              defaults,
+              Permission.fromConfig({
+                "*": "deny",
+              }),
+              user,
+            ),
+            prompt: PROMPT_MODE_ROUTER,
+          },
           general: {
             name: "general",
             description: `General-purpose agent for researching complex questions and executing multi-step tasks. Use this agent to execute multiple units of work in parallel.`,
@@ -321,6 +405,8 @@ const layer = Layer.effect(
             values(),
             sortBy(
               [(x) => (cfg.default_agent ? x.name === cfg.default_agent : x.name === "build"), "desc"],
+              // Built-in modes in Tab order, then everything else by name.
+              [(x) => (x.native && Mode.ORDER.includes(x.name) ? Mode.ORDER.indexOf(x.name) : Mode.ORDER.length), "asc"],
               [(x) => x.name, "asc"],
             ),
           )

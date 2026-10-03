@@ -1,5 +1,37 @@
 # Features
 
+## Modes
+
+Press `tab` in the terminal UI to switch modes, or start in one with
+`--agent <mode>` (for example `yukioshi run --agent research "…"`).
+
+| Mode          | For                                                                 | Changes files? |
+| ------------- | ------------------------------------------------------------------- | -------------- |
+| **Build**     | everyday work: write and change code, fix bugs, run commands        | yes            |
+| **Plan**      | designing an approach before any change; writes a plan file          | no             |
+| **Goal**      | a larger objective: works step by step on its own, verifying as it goes, until it is done | yes |
+| **Reasoning** | hard questions: thinks it through and answers, using the model's high reasoning effort when available | no |
+| **Research**  | gathering information from the codebase and the web, reported with sources | no |
+| **Auto**      | picks one of the five above for each message                        | depends on the mode it picks |
+
+Auto asks the session's small model which mode fits each message (falling back
+to the message's wording if that fails), and the reply shows the mode it ran
+in. A message's mode stays fixed until it finishes; the next message is routed
+again.
+
+These modes decide *how* the agent works. Permission modes (`manual`, `auto`,
+`auto-all`, `plan`, see [Permissions and safety](permissions-and-safety.md))
+separately decide *what it may do without asking*; any mode can be combined
+with any permission mode.
+
+## Usage
+
+`/usage` (or `/cost`) shows the current session's model, context use, tokens,
+and cost, plus token and cost totals across all projects for today, the last 7
+days, and the last 30 days. Costs are estimates from each model's list price;
+subscription sign-ins such as ChatGPT and SuperGrok count against the plan's
+own limits instead. `yukioshi stats` gives a longer breakdown in the shell.
+
 ## Post-turn verification
 
 After a turn that changed files, YukiOshi can run your project's own checks and

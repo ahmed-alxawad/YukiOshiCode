@@ -436,12 +436,13 @@ it.instance(
 )
 
 it.instance(
-  "Agent.list keeps the default agent first and sorts the rest by name",
+  "Agent.list keeps the default agent first, then the built-in modes in Tab order, then the rest by name",
   () =>
     Effect.gen(function* () {
       const names = (yield* load((svc) => svc.list())).map((a) => a.name)
-      expect(names[0]).toBe("plan")
-      expect(names.slice(1)).toEqual(names.slice(1).toSorted((a, b) => a.localeCompare(b)))
+      expect(names.slice(0, 6)).toEqual(["plan", "build", "goal", "reasoning", "research", "auto"])
+      const rest = names.slice(6)
+      expect(rest).toEqual(rest.toSorted((a, b) => a.localeCompare(b)))
     }),
   {
     config: {
@@ -458,6 +459,30 @@ it.instance(
       },
     },
   },
+)
+
+it.instance("lists the built-in modes in Tab order: build, plan, goal, reasoning, research, auto", () =>
+  Effect.gen(function* () {
+    const primary = (yield* load((svc) => svc.list())).filter((a) => a.mode !== "subagent" && !a.hidden)
+    expect(primary.map((a) => a.name)).toEqual(["build", "plan", "goal", "reasoning", "research", "auto"])
+  }),
+)
+
+it.instance("reasoning and research modes are read-only; goal mode can edit", () =>
+  Effect.gen(function* () {
+    const get = (name: string) => load((svc) => svc.get(name))
+    for (const name of ["reasoning", "research"]) {
+      const agent = (yield* get(name))!
+      expect(Permission.evaluate("edit", "src/index.ts", agent.permission).action).toBe("deny")
+      expect(Permission.evaluate("task", "general", agent.permission).action).toBe("deny")
+    }
+    const research = (yield* get("research"))!
+    expect(Permission.evaluate("websearch", "*", research.permission).action).toBe("allow")
+    const goal = (yield* get("goal"))!
+    expect(Permission.evaluate("edit", "src/index.ts", goal.permission).action).toBe("allow")
+    expect((yield* get("reasoning"))!.variant).toBe("high")
+    expect((yield* get("mode-router"))!.hidden).toBe(true)
+  }),
 )
 
 it.instance("Agent.get returns undefined for non-existent agent", () =>
@@ -750,6 +775,10 @@ it.instance(
       agent: {
         build: { disable: true },
         plan: { disable: true },
+        goal: { disable: true },
+        reasoning: { disable: true },
+        research: { disable: true },
+        auto: { disable: true },
       },
     },
   },
