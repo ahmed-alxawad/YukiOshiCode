@@ -13,31 +13,31 @@ export function ErrorComponent(props: { error: Error; reset: () => void; mode?: 
   const clipboard = useClipboard()
   const [copied, setCopied] = createSignal(false)
 
-  // Safe fallback palette per mode (mirrors theme/assets/opencode.json) since the
+  // Safe fallback palette per mode (mirrors theme/assets/yukioshi.json) since the
   // theme context may be the thing that crashed.
   const isLight = props.mode === "light"
   const colors = isLight
     ? {
-        bg: "#ffffff",
-        element: "#f5f5f5",
-        borderSubtle: "#d4d4d4",
-        text: "#1a1a1a",
-        muted: "#8a8a8a",
-        primary: "#3b7dd8",
+        bg: "#f7fbff",
+        element: "#e2eef9",
+        borderSubtle: "#dbe7f2",
+        text: "#101828",
+        muted: "#667085",
+        primary: "#155eef",
         onPrimary: "#ffffff",
-        error: "#d1383d",
-        success: "#3d9a57",
+        error: "#b42318",
+        success: "#067a57",
       }
     : {
-        bg: "#0a0a0a",
-        element: "#1e1e1e",
-        borderSubtle: "#3c3c3c",
-        text: "#eeeeee",
-        muted: "#808080",
-        primary: "#fab283",
-        onPrimary: "#0a0a0a",
-        error: "#e06c75",
-        success: "#7fd88f",
+        bg: "#010614",
+        element: "#0c1836",
+        borderSubtle: "#15264a",
+        text: "#eaf7ff",
+        muted: "#7d91b3",
+        primary: "#5cb8f5",
+        onPrimary: "#010614",
+        error: "#f2798b",
+        success: "#7ee8c0",
       }
 
   const message = props.error.message || "An unknown error occurred."

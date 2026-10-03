@@ -582,13 +582,13 @@ function map(
 }
 
 const seed = {
-  highlight: RGBA.fromIndex(6, rgba("#38bdf8")),
-  muted: RGBA.fromIndex(8, rgba("#64748b")),
-  text: RGBA.defaultForeground(rgba("#f8fafc")),
-  panel: rgba("#0f172a"),
-  success: RGBA.fromIndex(2, rgba("#22c55e")),
-  warning: RGBA.fromIndex(3, rgba("#f59e0b")),
-  error: RGBA.fromIndex(1, rgba("#ef4444")),
+  highlight: RGBA.fromIndex(6, rgba("#5cb8f5")),
+  muted: RGBA.fromIndex(8, rgba("#7d91b3")),
+  text: RGBA.defaultForeground(rgba("#eaf7ff")),
+  panel: rgba("#071029"),
+  success: RGBA.fromIndex(2, rgba("#7ee8c0")),
+  warning: RGBA.fromIndex(3, rgba("#f2d479")),
+  error: RGBA.fromIndex(1, rgba("#f2798b")),
 }
 
 function tone(body: ColorInput, start?: ColorInput): Tone {
