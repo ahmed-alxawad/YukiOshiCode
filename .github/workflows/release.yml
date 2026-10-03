@@ -90,6 +90,9 @@ jobs:
           - os: windows-latest
             archive: yukioshi-windows-x64.zip
             binary: yukioshi.exe
+          - os: windows-11-arm
+            archive: yukioshi-windows-arm64.zip
+            binary: yukioshi.exe
           - os: ubuntu-24.04-arm
             archive: yukioshi-linux-arm64.tar.gz
             binary: yukioshi
