@@ -69,11 +69,20 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
     steps:
-      - name: Install YukiOshi Code
+      # Install the previous release first, so the second install is a real upgrade: the
+      # installer skips a version that is already installed, and only an upgrade keeps a backup.
+      - name: Install the previous release
+        shell: bash
+        run: |
+          previous="$(gh release list --exclude-drafts --limit 2 --json tagName --jq '.[1].tagName')"
+          echo "PREVIOUS_VERSION=${previous#v}" >> "$GITHUB_ENV"
+          curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install | bash -s -- --version "${previous#v}"
+
+      - name: Upgrade to the latest release
         shell: bash
         run: curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install | bash
 
-      - name: Verify installed version and built-in skills
+      - name: Verify installed version, built-in skills, and backup
         shell: bash
         run: |
           expected="$(gh release view --json tagName --jq '.tagName')"
@@ -92,12 +101,13 @@ jobs:
             exit 1
           fi
 
-      - name: Reinstall and verify backup
-        shell: bash
-        run: |
-          curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install | bash
           backup="$HOME/.yukioshi/bin/yukioshi.old"
           if [ ! -f "$backup" ]; then
-            echo "Second install did not retain $backup" >&2
+            echo "The upgrade did not keep $backup" >&2
+            exit 1
+          fi
+          backup_version="$("$backup" --version)"
+          if [ "$backup_version" != "$PREVIOUS_VERSION" ]; then
+            echo "Backup is version '$backup_version', expected '$PREVIOUS_VERSION'" >&2
             exit 1
           fi
