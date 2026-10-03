@@ -1,8 +1,8 @@
 # Notice
 
-YukiOshi Code is proprietary, source-available software (see
-[LICENSE](LICENSE)). It includes work from the following projects, which keep
-their own licenses.
+YukiOshi Code is proprietary, closed-source software (see [LICENSE](LICENSE));
+its source is published for review only. It includes work from the following
+projects, which keep their own licenses.
 
 ## opencode
 

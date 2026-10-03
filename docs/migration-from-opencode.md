@@ -35,13 +35,16 @@ workflow. Most opencode setups work after a few renames.
 - Project memory (`memory`), semantic code search (`indexing`), and a code
   graph tool (`code_graph`), all off by default.
 - Parallel subagents in isolated git worktrees (`task_parallel`, experimental).
-- Post-turn verification that runs the project's typecheck, lint, and test
-  commands and reports the evidence.
+- Optional post-turn verification (`--verify`) that runs the project's
+  typecheck, lint, and test commands and reports the evidence.
 - Bundled skills (`nightmare`, `disaster`, `bugfix`, and the `engineering:*`,
   `design:*`, and `productivity:*` families). Project skills are namespaced
   `project:<name>`.
-- Google AI Studio and OpenCode Zen provider presets and built-in ChatGPT /
-  Codex sign-in. See [providers.md](providers.md).
+- Built-in sign-in for ChatGPT (Codex), SuperGrok, Google AI Studio, and
+  Google Vertex AI, plus Google AI Studio and OpenCode Zen presets. See
+  [Providers](providers.md).
+- Its own YukiOshi theme for light and dark terminals. See
+  [Appearance](appearance.md).
 
 **Not included**: opencode's web and desktop apps. YukiOshi Code is a
 terminal application.

@@ -1,227 +1,170 @@
 # Providers
 
-YukiOshi Code can keep several providers configured at the same time. A model is
-selected as `provider/model`, for example `openai/gpt-5` or
-`anthropic/claude-sonnet-4-5`. The connection dialog intentionally presents a
-small, curated subset of the bundled `models.dev` catalog.
+YukiOshi Code works with many model providers, and several can be set up at
+once. Models are named `provider/model`, for example
+`anthropic/claude-sonnet-4-5` or `openai/gpt-5`. Model details come from the
+[models.dev](https://models.dev) catalog bundled with each release.
+
+## Connecting a provider
+
+```bash
+yukioshi providers login     # choose a provider and a sign-in method
+yukioshi providers list      # see what is connected
+yukioshi providers logout    # remove a credential
+```
+
+In the terminal UI, type `/connect`. Credentials are stored in your OS
+keychain (see [Permissions and safety](permissions-and-safety.md#credentials)).
+You can also set a provider's environment variable instead.
+
+These providers appear when you connect:
+
+| Name                | Provider ID             | Sign in with                                                        |
+| ------------------- | ----------------------- | ------------------------------------------------------------------- |
+| Claude (Anthropic)  | `anthropic`             | `ANTHROPIC_API_KEY` or an API key                                    |
+| Codex (OpenAI)      | `openai`                | ChatGPT Plus/Pro sign-in, or `OPENAI_API_KEY`                        |
+| Google Gemini       | `google`                | Google AI Studio sign-in (free and paid), or `GOOGLE_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `GEMINI_API_KEY` |
+| Google Vertex AI    | `google-vertex`         | Sign in with Google (your Google Cloud account)                      |
+| Grok (xAI)          | `xai`                   | SuperGrok sign-in, or `XAI_API_KEY`                                  |
+| OpenRouter          | `openrouter`            | `OPENROUTER_API_KEY`                                                 |
+| AgentRouter         | `agentrouter`           | `AGENTROUTER_API_KEY`                                                |
+| OpenCode            | `opencode`              | free models with no key, or OpenCode sign-in                         |
+| Abacus              | `abacus`                | `ABACUS_API_KEY`                                                     |
+| Kimi                | `kimi-code-plan-global` | `KIMI_API_KEY`                                                       |
+| Moonshot AI         | `moonshotai`            | `MOONSHOT_API_KEY`                                                   |
+| Z.AI (GLM)          | `zai`                   | `ZHIPU_API_KEY`                                                      |
+| NVIDIA NIM          | `nvidia`                | `NVIDIA_API_KEY`                                                     |
+
+When a provider lists several variables, the first one that is set wins.
+
+```bash
+yukioshi models             # every model you can use now
+yukioshi models anthropic   # one provider
+```
+
+## Google
+
+**Google Gemini (free and paid).** Choose **Sign in with Google AI Studio**.
+YukiOshi opens [Google AI Studio](https://aistudio.google.com/apikey) in your
+browser; sign in with your Google account, create an API key, and paste it
+back. AI Studio's free tier needs no billing, with rate limits; add billing in
+AI Studio for higher limits. You can also paste an existing Gemini API key.
+
+**Google Vertex AI (sign in with Google).** Choose **Google Vertex AI**, enter
+your Google Cloud project ID and a region, and sign in with your Google
+account in the browser window that opens. This uses Google's own sign-in
+(Application Default Credentials) through the
+[Google Cloud CLI](https://cloud.google.com/sdk/docs/install), so `gcloud`
+must be installed. Usage is billed to your Google Cloud project, which needs
+the Vertex AI API enabled; new Google Cloud accounts come with free trial
+credit. If you are already signed in with `gcloud auth application-default
+login`, YukiOshi reuses that sign-in.
+
+**Why there is no Antigravity-style sign-in.** Google's Antigravity and Gemini
+CLI apps let you use your personal Google account's Gemini allowance. That
+access belongs to Google's own apps: a third-party tool can only get it by
+presenting itself as one of them, which Google's terms do not allow and which
+has led to suspended accounts. YukiOshi does not include it. Community plugins
+such as `opencode-antigravity-auth` can still be installed through the `plugin`
+setting, at your own risk.
+
+## Other providers
+
+The catalog knows many more providers (Amazon Bedrock, Azure, Groq, Mistral,
+DeepSeek, Ollama, and others). To use one, add it to the `provider` block in
+`yukioshi.json`, even with no options, and provide its usual credentials:
+
+```json
+{ "provider": { "amazon-bedrock": {} } }
+```
+
+Then run `yukioshi models amazon-bedrock` to see its model names.
+
+`enabled_providers` and `disabled_providers` narrow which providers load.
 
 ## Configuration
 
-Put provider settings in `yukioshi.json` (normally in your project or in the
-user config directory). Existing `opencode.json` files remain supported and
-have lower precedence when both names exist at the same location:
+Provider settings go in `yukioshi.json` (see [Configuration](configuration.md)):
 
 ```json
 {
   "model": "openai/gpt-5",
   "provider": {
     "openai": {
-      "options": {
-        "apiKey": "{env:OPENAI_API_KEY}"
-      }
+      "options": { "apiKey": "{env:OPENAI_API_KEY}" }
     }
   }
 }
 ```
 
-`{env:NAME}` is expanded when the configuration is read. For a provider with
-catalog metadata, YukiOshi Code checks the provider's `env` list in order and
-uses the first non-empty variable. An explicit `provider.<id>.options.apiKey`
-wins over automatic environment discovery. In the examples below, the
-explicit `apiKey` is optional; it is shown when it makes the precedence clear.
-Do not commit literal API keys to `yukioshi.json`.
+An explicit `options.apiKey` wins over environment variables. Never put a
+literal key in a file you commit; use `{env:…}` or `yukioshi providers login`.
+`options.baseURL` points a provider at a different endpoint.
 
-You can also set a provider's `options.baseURL` when an endpoint needs a
-custom URL. A configured provider may define models explicitly:
+### Timeouts
 
-```json
-{
-  "model": "gateway/my-model",
-  "provider": {
-    "gateway": {
-      "npm": "@ai-sdk/openai-compatible",
-      "options": {
-        "baseURL": "https://gateway.example/v1",
-        "apiKey": "{env:GATEWAY_API_KEY}"
-      },
-      "models": {
-        "my-model": {
-          "name": "My model"
-        }
-      }
-    }
-  }
-}
-```
-
-### Interactive timeout policy
-
-YukiOshi is tuned for interactive use. It waits up to 15 seconds for response
-headers and up to 30 seconds between streamed chunks by default. Transient
-provider failures receive at most two retries, with each retry delay capped at
-10 seconds. When a provider reports sustained overload, switch to another
-model or provider instead of leaving the terminal waiting for several minutes.
-
-Providers that legitimately need longer can override the defaults:
+YukiOshi is tuned for interactive use: it waits up to 15 seconds for a response
+to start and up to 30 seconds between streamed chunks, and retries a failing
+provider at most twice, waiting no more than 10 seconds between tries. If a
+provider is overloaded, switch to another model instead of waiting. Providers
+that need longer can raise the limits (or set them to `false` to disable):
 
 ```json
 {
   "provider": {
-    "google": {
-      "options": {
-        "headerTimeout": 30000,
-        "chunkTimeout": 60000
-      }
-    }
+    "google": { "options": { "headerTimeout": 30000, "chunkTimeout": 60000 } }
   }
 }
 ```
 
-Set either option to `false` to disable that timeout. Full post-turn project
-verification is also off by default because repository-wide test, lint, and
-typecheck commands can dominate short interactions. Use `--verify` when you
-want those checks run automatically.
+## Sign-in providers
 
-## Curated providers
+### Codex (OpenAI)
 
-Only the following services appear in **Connect a provider**. Unselected
-catalog entries and the former **Other / custom provider** item are hidden.
-Environment variables are checked left-to-right.
+ChatGPT Plus and Pro sign-in is built in, with browser and headless (device
+code) options and automatic token refresh:
 
-| Display name               | Provider ID                                                 | Authentication or environment precedence                                                        |
-| -------------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| Claude (Anthropic)         | `anthropic`                                                 | `ANTHROPIC_API_KEY`                                                                             |
-| Codex (OpenAI)             | `openai`                                                    | Built-in ChatGPT Plus/Pro OAuth, or `OPENAI_API_KEY`                                            |
-| Antigravity OAuth (Google) | `google`                                                    | Antigravity OAuth plugin, or `GOOGLE_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `GEMINI_API_KEY` |
-| Grok (xAI)                 | `xai`                                                       | Built-in SuperGrok OAuth, or `XAI_API_KEY`                                                      |
-| OpenRouter                 | `openrouter`                                                | `OPENROUTER_API_KEY`                                                                            |
-| AgentRouter                | `agentrouter`                                               | `AGENTROUTER_API_KEY`                                                                           |
-| OpenCode                   | `opencode`                                                  | Public zero-cost models or normal OpenCode authentication                                       |
-| Abacus                     | `abacus`                                                    | `ABACUS_API_KEY`                                                                                |
-| Kimi                       | `kimi-code-plan-global` (older catalogs: `kimi-for-coding`) | `KIMI_API_KEY`                                                                                  |
-| Moonshot AI                | `moonshotai`                                                | `MOONSHOT_API_KEY`                                                                              |
-| Z.AI (GLM)                 | `zai`                                                       | `ZHIPU_API_KEY`                                                                                 |
-| NVIDIA NIM                 | `nvidia`                                                    | `NVIDIA_API_KEY`                                                                                |
-
-The picker filter is a product-level usability choice; provider metadata still
-comes from models.dev. `enabled_providers` and `disabled_providers` may narrow
-the curated list further.
-
-For example, native Anthropic setup can be as small as:
-
-```json
-{
-  "model": "anthropic/claude-sonnet-4-5"
-}
+```bash
+yukioshi providers login --provider openai --method "ChatGPT Pro/Plus (browser)"
 ```
 
-with `ANTHROPIC_API_KEY` exported in the environment. To make the source
-explicit in a checked-in config, use:
+On SSH or another machine without a browser, choose
+`ChatGPT Pro/Plus (headless)`. An OpenAI API key is a separate option.
 
-```json
-{
-  "provider": {
-    "anthropic": {
-      "options": {
-        "apiKey": "{env:ANTHROPIC_API_KEY}"
-      }
-    }
-  }
-}
+### Grok (xAI)
+
+SuperGrok sign-in is built in. It uses a device code, so it works over SSH and
+in containers: YukiOshi shows a web address and a short code to enter in any
+browser.
+
+```bash
+yukioshi providers login --provider xai --method "SuperGrok Subscription"
 ```
 
-### OpenCode service policy
+Tokens refresh automatically. An xAI API key remains available.
 
-The native `opencode` provider is displayed as **OpenCode**. Its public
-zero-cost models require no local API key; paid/service-account access uses the
-normal OpenCode authentication flow. OpenCode still enforces its own account,
-client, quota, and eligibility policies server-side, and currently restricts
-its free tier to the official OpenCode client. YukiOshi does not spoof that
-client identity.
+### OpenCode
 
-The upstream restriction is documented by an OpenCode maintainer in
-[anomalyco/opencode#49590](https://github.com/anomalyco/opencode/issues/49590).
-YukiOshi keeps the native provider wiring correct and transparent, but cannot
-override that external service policy.
+The `opencode` provider's free models need no key. Paid access uses OpenCode's
+own sign-in. OpenCode applies its own account and quota rules, and currently
+limits its free tier to the official OpenCode client; YukiOshi does not
+disguise itself as that client
+([anomalyco/opencode#49590](https://github.com/anomalyco/opencode/issues/49590)).
 
-The exact model list and metadata can change when the catalog refreshes, but
-the provider picker remains restricted to the IDs above.
+## Ready-made presets
 
-## Compatible presets
+Two OpenAI-compatible presets load automatically when one of their variables is
+set:
 
-YukiOshi bundles two OpenAI-compatible presets in the model catalog:
-
-| Preset | Provider ID | Default base URL | Environment-variable precedence |
-| --- | --- | --- | --- |
+| Preset           | Provider ID        | Endpoint                                                   | Variables                                         |
+| ---------------- | ------------------ | ---------------------------------------------------------- | ------------------------------------------------- |
 | Google AI Studio | `google-ai-studio` | `https://generativelanguage.googleapis.com/v1beta/openai/` | `GOOGLE_API_KEY`, `GEMINI_API_KEY`, `YUKIOSHI_API_KEY` |
-| OpenCode Zen | `opencode-zen` | `https://opencode.ai/zen/v1` | `OPENCODE_API_KEY`, `YUKIOSHI_API_KEY` |
+| OpenCode Zen     | `opencode-zen`     | `https://opencode.ai/zen/v1`                               | `OPENCODE_API_KEY`, `YUKIOSHI_API_KEY`            |
 
-These presets autoload when any of their environment variables are set. `google-ai-studio` mirrors the models from the `google` provider through Google's OpenAI-compatible endpoint. `opencode-zen` routes paid models to OpenCode's Zen endpoint using an API key, keeping them separate from the native zero-cost `opencode` provider.
+## Your own OpenAI-compatible server
 
-## OAuth providers
-
-### OpenAI Codex / ChatGPT
-
-Codex OAuth is built in. It supports browser and headless device login, token
-refresh, the ChatGPT account header, and the Codex Responses endpoint. Start
-the browser flow with:
-
-```sh
-yukioshi auth login --provider openai --method "ChatGPT Pro/Plus (browser)"
-```
-
-For SSH or another headless environment, select `ChatGPT Pro/Plus (headless)`
-instead. After login, choose one of the OAuth-enabled `openai/<model>` entries.
-An OpenAI API key remains a separate login method.
-
-### xAI Grok
-
-Grok OAuth is built in. It uses the RFC 8628 device-code flow, which works in
-headless environments, SSH sessions, and containers without running a local
-callback server. Start the login flow with:
-
-```sh
-yukioshi auth login --provider xai --method "SuperGrok Subscription"
-```
-
-The CLI prints a verification URL and a short code to enter in any browser.
-Access tokens refresh automatically before expiration. An xAI API key remains
-available through the `Manually enter API Key` method or `XAI_API_KEY`.
-
-### Google Antigravity
-
-YukiOshi can host an OpenCode-compatible Antigravity OAuth plugin under the
-native `google` provider. Authentication methods from multiple Google plugins
-are merged, so an Antigravity OAuth option is not hidden by another Google
-credential plugin. Example opt-in configuration:
-
-```json
-{
-  "plugin": ["opencode-antigravity-auth@latest"]
-}
-```
-
-Then run:
-
-```sh
-yukioshi auth login --provider google --method "OAuth with Google (Antigravity)"
-```
-
-Antigravity OAuth plugins are third-party integrations, not bundled Google or
-YukiOshi components. Some implementations reuse IDE credentials or private
-service endpoints, which may be unsupported by Google and may put an account
-at risk. Review the selected plugin and Google's current terms before enabling
-it. The supported first-party alternatives are the native `google` provider
-with a Gemini API key, Google Vertex through ADC, or Google's official `agy`
-client.
-
-## Configuration-only OpenAI-compatible endpoints
-
-The connection dialog no longer offers an **Other** provider. For backward
-compatibility, an explicit `yukioshi.json` entry can still address LM Studio,
-Ollama, vLLM, LiteLLM, or another OpenAI-compatible server. Such entries do
-not expand the curated connection list. Give the endpoint a unique ID and
-declare each model you want to use:
+LM Studio, Ollama, vLLM, LiteLLM, or any OpenAI-compatible server can be added
+in `yukioshi.json`. Give it an ID and list its models:
 
 ```json
 {
@@ -230,38 +173,12 @@ declare each model you want to use:
     "local": {
       "npm": "@ai-sdk/openai-compatible",
       "api": "http://127.0.0.1:1234/v1",
-      "models": {
-        "qwen2.5-coder": {
-          "name": "Qwen 2.5 Coder"
-        }
-      }
+      "models": { "qwen2.5-coder": { "name": "Qwen 2.5 Coder" } }
     }
   }
 }
 ```
 
-For a server requiring a key, add an `options.apiKey` reference and use the
-server's base URL in `api` (or `options.baseURL`):
-
-```json
-{
-  "provider": {
-    "vllm": {
-      "npm": "@ai-sdk/openai-compatible",
-      "api": "https://vllm.example/v1",
-      "options": {
-        "apiKey": "{env:VLLM_API_KEY}"
-      },
-      "models": {
-        "my-model": { "name": "My model" }
-      }
-    }
-  }
-}
-```
-
-The custom provider ID becomes the first half of the model name, so the model
-above is selected with `vllm/my-model`. The generic adapter does not invent an
-environment-variable name: put the key in `options.apiKey`, and put any
-provider-specific headers in the model or provider options supported by your
-configuration.
+For a server that needs a key, add `"options": { "apiKey": "{env:MY_SERVER_KEY}" }`.
+The ID is the first half of the model name, so the model above is
+`local/qwen2.5-coder`.
