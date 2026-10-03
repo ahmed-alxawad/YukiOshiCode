@@ -2,7 +2,7 @@ import { RGBA, TextAttributes } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/solid"
 import { For, Match, Switch, createMemo } from "solid-js"
 import { useTheme } from "../context/theme"
-import { logoArt, type LogoArt } from "../logo-art"
+import { logoArt, type EmblemArt, type LogoArt } from "../logo-art"
 
 type Segment = { text: string; part: string }
 
@@ -19,6 +19,22 @@ function segments(line: string, parts: string): Segment[] {
   return result
 }
 
+type Run = { text: string; fg?: string; bg?: string }
+
+// Splits an emblem line into runs of cells with the same colours, one text node per run.
+function runs(line: string, fg: string, bg: string): Run[] {
+  const fgs = fg.split(" ")
+  const bgs = bg.split(" ")
+  const result: Run[] = []
+  for (const [index, char] of Array.from(line).entries()) {
+    const run = { text: char, fg: fgs[index] || undefined, bg: bgs[index] || undefined }
+    const last = result.at(-1)
+    if (last && last.fg === run.fg && last.bg === run.bg) last.text += char
+    else result.push(run)
+  }
+  return result
+}
+
 export function Logo() {
   const { mode } = useTheme()
   const dimensions = useTerminalDimensions()
@@ -31,11 +47,12 @@ export function Logo() {
     return RGBA.fromHex(palette[Number(part)] ?? palette[0])
   }
 
-  // The full emblem needs about 19 rows, so smaller terminals get a shorter version.
+  // The full logo needs about 23 rows; shorter terminals get the 12-row emblem, and below 34 rows
+  // the emblem loses its detail, so only the wordmark is shown.
   const size = createMemo(() => {
     const { width, height } = dimensions()
     if (width < 72) return "text"
-    if (height >= 40) return "large"
+    if (height >= 44) return "large"
     if (height >= 34) return "medium"
     return "wordmark"
   })
@@ -49,6 +66,29 @@ export function Logo() {
               {(segment) => (
                 <text fg={colour(segment.part)} selectable={false}>
                   {segment.text}
+                </text>
+              )}
+            </For>
+          </box>
+        )}
+      </For>
+    </box>
+  )
+
+  // The emblem keeps its own colours per cell; a cell without a background is transparent.
+  const Emblem = (props: { art: EmblemArt }) => (
+    <box flexDirection="column" alignItems="flex-start">
+      <For each={props.art.lines}>
+        {(line, index) => (
+          <box flexDirection="row" height={1}>
+            <For each={runs(line, props.art.fg[index()] ?? "", props.art.bg[index()] ?? "")}>
+              {(run) => (
+                <text
+                  fg={run.fg ? RGBA.fromHex(`#${run.fg}`) : undefined}
+                  bg={run.bg ? RGBA.fromHex(`#${run.bg}`) : undefined}
+                  selectable={false}
+                >
+                  {run.text}
                 </text>
               )}
             </For>
@@ -76,11 +116,11 @@ export function Logo() {
     <box flexDirection="column" alignItems="center">
       <Switch>
         <Match when={size() === "large"}>
-          <Art art={variant().emblemLarge} />
+          <Emblem art={variant().emblemLarge} />
           <box height={1} />
         </Match>
         <Match when={size() === "medium"}>
-          <Art art={variant().emblemMedium} />
+          <Emblem art={variant().emblemMedium} />
           <box height={1} />
         </Match>
       </Switch>

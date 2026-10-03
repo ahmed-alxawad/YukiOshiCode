@@ -18,18 +18,33 @@ test("both logo variants are traced completely and fit the home layout", () => {
     for (const colour of [...variant.palette, variant.code.text, variant.code.bracket]) {
       expect(colour).toMatch(/^#[0-9a-f]{6}$/)
     }
-    for (const art of [variant.emblemLarge, variant.emblemMedium, variant.wordmark]) {
-      expect(art.parts).toHaveLength(art.lines.length)
-      art.lines.forEach((line, row) => {
-        expect(Array.from(line)).toHaveLength(art.parts[row].length)
-        // Every part is a palette index or a space.
-        for (const part of art.parts[row]) {
-          if (part !== " ") expect(Number(part)).toBeLessThan(variant.palette.length)
-        }
+    const art = variant.wordmark
+    expect(art.parts).toHaveLength(art.lines.length)
+    art.lines.forEach((line, row) => {
+      expect(Array.from(line)).toHaveLength(art.parts[row].length)
+      // Every part is a palette index or a space.
+      for (const part of art.parts[row]) {
+        if (part !== " ") expect(Number(part)).toBeLessThan(variant.palette.length)
+      }
+    })
+    for (const emblem of [variant.emblemLarge, variant.emblemMedium]) {
+      expect(emblem.fg).toHaveLength(emblem.lines.length)
+      expect(emblem.bg).toHaveLength(emblem.lines.length)
+      emblem.lines.forEach((line, row) => {
+        const cells = Array.from(line).length
+        // One foreground and one background entry per character; empty means none.
+        const fg = emblem.fg[row].split(" ")
+        const bg = emblem.bg[row].split(" ")
+        expect(fg).toHaveLength(cells)
+        expect(bg).toHaveLength(cells)
+        for (const colour of [...fg, ...bg]) expect(colour).toMatch(/^([0-9a-f]{6})?$/)
+        Array.from(line).forEach((char, index) => {
+          if (char !== " ") expect(fg[index]).not.toBe("")
+        })
       })
     }
-    expect(variant.emblemLarge.lines).toHaveLength(12)
-    expect(variant.emblemMedium.lines).toHaveLength(10)
+    expect(variant.emblemLarge.lines).toHaveLength(16)
+    expect(variant.emblemMedium.lines).toHaveLength(12)
     expect(variant.wordmark.lines).toHaveLength(5)
     // The home screen switches to plain text below 72 columns.
     expect(Math.max(...variant.wordmark.lines.map((line) => Array.from(line).length))).toBeLessThanOrEqual(72)

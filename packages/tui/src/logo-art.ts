@@ -4,10 +4,16 @@
 /** Quadrant-block lines; parts holds, per character, an index into the variant's palette. */
 export type LogoArt = { readonly lines: readonly string[]; readonly parts: readonly string[] }
 
+/**
+ * Emblem art with its own colours per cell: fg and bg hold one space-separated hex colour
+ * (without #) per character of the line; an empty bg entry means transparent.
+ */
+export type EmblemArt = { readonly lines: readonly string[]; readonly fg: readonly string[]; readonly bg: readonly string[] }
+
 export type LogoVariant = {
   readonly palette: readonly string[]
-  readonly emblemLarge: LogoArt
-  readonly emblemMedium: LogoArt
+  readonly emblemLarge: EmblemArt
+  readonly emblemMedium: EmblemArt
   readonly wordmark: LogoArt
   readonly code: { readonly text: string; readonly bracket: string }
 }
@@ -22,58 +28,102 @@ export const logoArt: { readonly dark: LogoVariant; readonly light: LogoVariant 
     ],
     "emblemLarge": {
       "lines": [
-        "                ▟▙",
-        "               ▟██▙",
-        "       ▄▖   ▐▄ ▝██▘ ▄▙   ▗▄",
-        "     ▄██▛▐█▙▞▜█ ██ ▟▛▚▟█▌▜██▄",
-        "  ▗▟██▛▘  ▀██▙▄▖██▗▄▟██▀  ▝▜██▙▖",
-        "▗▟██▀▘ ▄▄█▙▄▄▝██████▘▚▄▟█▄▄ ▝▀██▙▄",
-        "▀██▙▄  ▀▜██▀▀▀██████▀▀▀██▛▀  ▄▟██▀",
-        "  ▀▜██▄   ▄▟██▀▀██▀▀██▙▄   ▄██▛▀",
-        "    ▝▜██▖▐██▚▄█ ██ █▄▞██▌▗██▛▘",
-        "      ▝▜▛▝▘ ▟▀▘▗██▖▝▀▙ ▝▘▜▀▘",
-        "               ▜██▛",
-        "                ▜▛"
+        "                      ▟▙",
+        "                     ▟▌▌▙",
+        "                    ▝▖▛▖▛▘",
+        "         ▗▀▖ ▖  ▐▝▄  ▝▘▛▘  ▛▘▌  ▗ ▛▀▖",
+        "       ▛▘▘▀▌ ▖▝▄▖▀▖▝ ▐▛▖▌ ▌▛▀▗▄▀▞ ▌▖▝▝▖",
+        "    ▗▄▘▛▛▛▘  ▀▖▀▛▀▀▀ ▐▌▌▌ ▀▀▀▖▝▛▀  ▝▖▖▛▝▄▖",
+        "  ▗▀▘▘▛▀▘    ▖ ▀▀▝▖▀▀▀▘▝▀▀▀▛▘▀▀ ▗    ▝▀▖▀▝▄▖",
+        "▗▀▘▀▛▀▘  ▗▄▀▘▝▀▄▄▄▀▌▝▀▌▝▀▘▌▀▄▄▄▀▘▝▀▄▖  ▝▀▖▘▝▀▖",
+        "▀▖▀▀▝▄   ▝▀▀▀▘▛▀▀▀▀▛▀▞▖▀▞▀▖▀▀▀▀▖▀▀▀▀▘   ▄▘▌▀▛▀",
+        "  ▝▀▖▀▝▄▖   ▝▀ ▗▄▀▘▀▛▀▘▛▀▖▀▝▀▄▖ ▀▘   ▗▄▘▘▛▀▘",
+        "    ▝▀▖▀▝▀▖  ▄▀▘▛▀▀▘ ▐▌▌▌ ▝▀▀▖▝▀▄  ▗▀▘▘▛▀▘",
+        "      ▝▀▖▀▝▖ ▘▛▀▀▄▘▌ ▐▝▘▌ ▌▝▄▀▀▖▝ ▛▘▝▛▀▘",
+        "         ▀▖▌ ▀▘ ▗▛▀▘ ▗▌▝▌ ▝▀▖▖ ▝▀ ▌▛▀",
+        "                ▝▘  ▗▘▝▘▝▖  ▝▘",
+        "                    ▝▜▞▌▛",
+        "                      ▜▛"
       ],
-      "parts": [
-        "                01",
-        "               0011",
-        "       22   22 0111 22   22",
-        "     2222222222 11 2222222222",
-        "  222222  22200000000222  222222",
-        "222222 00000100000000000000 222222",
-        "22222  11112220000002222222  22222",
-        "  22222   22201100110222   22222",
-        "    22222222211 01 22222222222",
-        "      22221 1110012222 22222",
-        "               0022",
-        "                02"
+      "fg": [
+        "                      b0b2b7 64a1b5",
+        "                     b1b2b7 fafafc 96e6fd 66a5ba",
+        "                    878990 d1d2d5 f9fbfd 79e1fe 8ce3fd 50889a",
+        "         076a8f 03283c 0dbffc  033247   0a5772 093950 137da1   8f949b a0e8fd 71e0fe 5993a5   061c31 0b314c 125478   092e47  072741 08253e 156292",
+        "       021a2c 042d43 0cbcf8 0dc0fe 0ab6ef  0db9ee 064a67 0d9fd0 04415b 1bc5f8 1eb1df 0f5674  132635 82e2fc beeefd 213743  165d86 27affd 25acfa 0a3756 1f8bcc 155d8b 26aefc  072b46 22aafc 22a9f9 072943 1b84c4",
+        "    021a2b 078ebc 045573 0bbffd 0cc1fe 0aaee5 0a9ccc   0eafe2 0c7ea7 11c1fe 1bbef7 0b5678 051f31 1381a8  132635 8ce6fd f1fafe 213845  1970a1 061d33 134e73 7bcefd 26aefd 27adfa 239de3   1b88c8 092e4a 21aafa 24abfd 0f4c74 1a7dbb 04172a",
+        "  033d57 021829 067ca5 0ac0fd 0bc0fe 0abef8 07759b     141825  0c7398 19c2fc c0e4fc 76b5de a0dbeb 3c5461 0a1524 d3f5fd dcf3fc 111f2d 394f5c 9ed8e9 def4fd c2e4fa 27acfc 166698  0e1825     146699 21a6f7 1e99e3 22aafd 166da4 1e95dd 0b3857",
+        "056689 032f45 08a3d6 0ac0fd 0ac0fc 0aade5 034a65   1b1f2c 86888f 252935 8a8c92 d8d8db 5d6069 8dc2d1 7cb6c4 89b8c4 132b46 b6c3ce ebf9fe c0effe ddf5fe daf5fe c3effd edfafe f7f8fb 153250 90b8c4 87b6c4 8ec2d2 3f5a68 92cbdd 5b808e 182532 5c7f8e 111b29   0d4165 209be4 1876b0 24abfd 1b8fd6 092b47 125c8c",
+        "077eaa 034563 0fbdfd 0fbcfd 063a55 0c73a4    516d7a 81c7db 94e5fd 90e4fe 88e2fd 54cdf5 34c6fd 34c4fd 4bc7fd 50c6fd 55aede 82d2fd e4f4fd b1eafe e9f6fd c0ebfe 83d1fd e4eef6 53c0fd 4fbcfc 3fb7fc 3cb7fd 146999 3dbafd 3bbbfd 3ebbfd 37a4dc 2a5d7b    176ea6 0b385a 23a9fd 23aafd 219fec 1973ab",
+        "  0b81b3 15b6fc 16aff3 16b4fd 0d628b 1591ce 05263e    193343 295263  124c63 2aafd9 104e68 255f8b f4f9fd a1dff4 8dd8f0 eff8fd aaeafe 9bddf2 548091 f4f9fd 205a88 0e4b71 269bdf 12496d  0b4063 082a43    06263f 1c8acf 135c8c 23a8fc 24a9fd 23aafc 1777b1",
+        "    0b5b84 18abf2 1694d3 1db0fd 1582be 051e34 0d466b   1e83a4 135973 2bbfee 34c9fc b6e8fc 91dcf3 588a9c  1a2735 cff4fd a7eafe 153446  5c8898 a0def1 b7e6fc 67c8fd 26a7f2 115179 1972a8   10476d 061f36 197fc0 23a8fd 24a9fd 22a2f1 125681",
+        "      083552 1b97dc 146da3 22acfd 219de6 21aafb  2abfe8 2fccfd 2dcafa 166c8a 39b3d8 1f6882 44cffe  1a2735 ddf7fe 92e2fd 173444  1d71a0 175d8b 269ce0 165d89 26abf9 1e85c2 25a4ed  0a3352 209be6 24a8fc 24a8fb 1e93db 093351",
+        "         1a7eba 0f486e 1d92da  197592 061e2f  1a6076 43d2fb 3ebbe3 164c62  3f4955 a4e8fc 6ad5fc 173e54  0d3c5b 249de0 1871a3 115278  061a2e 156291  072741 209be7 1b7cb9",
+        "                104256 081e2f   9d9fa5 7d7f87 a3e9fe 3ecbfe 17628f 1774a8   05162a 0c3751",
+        "                    121624 cecfd4 f9fafd 2eb3fd 2094d5",
+        "                      b8babf 1d84bf"
+      ],
+      "bg": [
+        "                       ",
+        "                      fcfdfe 8fe5fd ",
+        "                    101522 fcfcfd aaebfe 8ce3fd 7cc6da 0b1624",
+        "          0abaf5 032d43      18b3e5     82e1fd 8ee5fc 0e1a28   2090cf 249ee3      21a9fa 21a5f4 ",
+        "       0995c4 0baae1 0cc0fe 0ac1fe 02344a  0ec0fa 0eafe6   0a4660 20c5fd 1baee0   a9ebfe 9ce6fc   26a9f1 269ce2 0d4164   27adfd 25aaf5  20a0eb 23acfd 23acfd 1e99e2 04172c",
+        "      0ab7f2 0cc0fe 0bbffb 02334a 021c2f   032033 11bffa 13c1fd 75d5fc b2ebfd 75a9bb 131e2c   edf9fe a8e9fb   101b29 75a5b6 b2e9fd 2cadf6 27aefd 1a73a8 061e33   05192e 209ae3 23abfd 23abfd 21a3f1  ",
+        "   09a8de 0abffb 0bc0fd 0ab0e5 033a52         08425d 208dc0 e2f6fd ebf9fe b3edfd 76a3b2 fbfcfe fcfcfe 76a3b2 b0ecfd e9f9fe 71b1de 207fbc 0d3c5d         0a3352 23aafd 23abfd 22a9fb  ",
+        " 09b9f3 0bc0fd 0bc0fd 0686b2 021d30      f4f4f6 edeef0 fafbfd d7f4fd    a2bcc4 f6f6f9 fbfbfd fafbfe f7fbfd f6fbfe fafcfe fbfcfe b9c7d2 a5bbc3    a8e9fd a6e8fd 9cdbef a2e2f5      051a2f 23aafc 23aafd 22aafd 22a4f3 ",
+        " 0cb0ed 11bafd 12b8fd 11adee       396e81 73d6f2 6fddfe 408399 0c2b3e 031c2f 031c2f 042139 e1ecf4 fcfcfe bceafe f4fafe aeeafe e6f6fd fcfdfe 58aee0 05223c 041a2f 04192e 07253e 33b1f5 23affd 21a8f2 115781       209eee 23aafd 23aafd 0c3e62 ",
+        "   094768 17b5fd 19b4fd 19aff7           3e98cb d1eaf8 a7e8fe 4f7e90 1d2c3a fafbfd 9ce6fc 1a3242 abe2f4 aeeafe d1eaf8 3d94cc           22a4f7 24a9fd 23a4f2 0c4266 ",
+        "     062a42 1db2fd 1fb0fd 1eaefd 1d9fe8     30cdfe 2fccfe 66d7fd 31a3cc 062337 194154   f9fbfe 7adbfc   143952 092035 3f9bcc 30b1fc 29aefd 29aefd     219be8 23a8fd 23a9fd 1e8ed1 082741 ",
+        "        1faafb 21abfd 22acfd 0a3554  2eccfb 229ec4 0c364a   41c7f1 2f91b5   b4edfd 72d9fc   29b1fd 29aaf3   0b2e49 28adfc 28adfc  24a9fa 24a9fd 24a9fd 156ba1  ",
+        "          1f9ce7 082a45      2b8eae 091d2e    a2e9fe 46cbfd    05172a 27affa      1e91d7 0d456c ",
+        "                     fafafc f0f9fd 30b8fd 29b1fd     ",
+        "                      fbfcfe 27b0fd ",
+        "                       "
       ]
     },
     "emblemMedium": {
       "lines": [
-        "             ▗█▖",
-        "             ███",
-        "     ▄█▌▄▄▐█▖▐█▌▗█▌▄▄▐█▄",
-        "  ▗▟██▀ ▀█▙▄▘▐█▌▞▄▟█▀ ▀██▙▖",
-        "▄▟█▛▀ ▄▄█▄▞▀█████▛▚▄▟▄▄ ▀▜█▙▄",
-        "▀██▄▖ ▀▜█▀▀▚█████▛▀▀█▀▀ ▗▄██▀",
-        "  ▝▜█▙▄ ▄██▀▘▗█▖▀▀██▄ ▄▟█▛▘",
-        "    ▝▜█▌█▀▗█▘▐█▌▝█▖▀█▐█▛▘",
-        "          ▝  ███  ▘",
-        "             ▝█▘"
+        "                ▟▙",
+        "               ▛▛▘▖",
+        "       ▄▖▗  ▛▄ ▝▖▛▘ ▄▖  ▖▗▄",
+        "    ▗▄▘▛▘▐▝▀▞▀▌ ▌▌ ▌▀▞▀▘▌▝▖▝▄▖",
+        "  ▗▀▘▛▀▘ ▝▀▀▝▀▀▖▌▌▗▀▀▘▀▀▘ ▝▀▖▝▀▖",
+        "▗▀▘▛▀▘ ▗▄▀▀▄▀▘▖▀▘▝▀▛▝▀▄▀▀▄▖ ▝▀▖▝▀▖",
+        "▝▖▀▝▖  ▀▀▖▀▀▀▀▀▞▖▀▞▀▀▀▀▀▛▀▀  ▛▘▘▛▘",
+        "  ▝▀▖▝▄▖  ▗▀▀▞▀▀▌▌▀▀▞▖▀▖  ▗▄▘▛▀▘",
+        "    ▝▀▖▝▖▐▛▀▜▀▌ ▌▌ ▌▀▛▀▖▌▛▘▛▀▘",
+        "      ▝▀▘▝▘ ▌▀▘▗▘▝▖▝▀▌ ▝▘▝▀▘",
+        "               ▌▝▘▌",
+        "                ▜▛"
       ],
-      "parts": [
-        "             001",
-        "             011",
-        "     2222222211122222222",
-        "  22222 2220010100222 22222",
-        "22222 00001000000000000 22222",
-        "22222 11112000000022222 22222",
-        "  22222 2220100110222 22222",
-        "    222222111011222222222",
-        "          1  002  2",
-        "             002"
+      "fg": [
+        "                acaeb3 649fb3",
+        "               484b56 fbfbfd 94e6fd 8ee4fd",
+        "       0881ac 0dbbf5 022032   062b3f 127ca1  74767e 508b9e 7ae0fc 467485  186c9e 29b1fc   051d32 21a6f3 1873ad",
+        "    03283d 099ccf 076b90 0cc0fd 0cbffc 0b96c3 0a7ca5 032134 1085ad 1ec6fd 1db8eb  4d899c b1ecfd  0b324c 27affd 05172b 061c32 186da2 1d89c6 23aafb 209ce5 136191 1d8ccf 08253e",
+        "  054c69 022033 078fbc 0bc0fd 0ab2ea 04506d  031d30 0c8ab6 13c1fd 96e2fd 639aaf 0f2332 4d6b78 5e8d9c f3fbfe 4a6774 0d1f2f 6596aa 99ddfd 27aefd 1c7db6 061b30  0e476d 209ee9 1982c1 197dbb 061d33 0d4368",
+        "067094 033750 09ade3 0abdf9 089fd2 032d43  63666f cfcfd3 656871 303440 6e96a4 0a3247 083555 a7b2bb bcedfc bde2ec c2e2ec bbedfb f3f9fd 073052 0a2c48 6d96a5 223240 426170 8ac0d1 46616e  082842 1d8cd1 146091 1f9ae4 093150 146497",
+        "09a1d7 053e5a 10bbfd 05334e 1292ce   517a8a 88def6 437f93 5dd6fd 2fb1e3 31a6d7 3ba3d5 5fbbeb d6f1fe a9e8fd e1f5fd b1e5fd 62bbec 3f9ed6 3799d5 30a2e2 35b7fd 2caaee 35b3f5 24658a   05192f 0a3250 23a9fc 209dea 1f92d7",
+        "  0f7daf 18b4fc 19acf3 0c547c 1683c0 04182c   1c7c9b 0a2b3e 2397c2 c0edfd afe9fb 4e7d90 8699a2 a7eafe 568091 b6ebfc 77afcd a0dcfc 0a2a44 186da0   05182d 1a80c1 10517d 24a9fd 24a9fc 1774ad",
+        "    0e5b85 1ea8f2 1b92d8 156ea4 22aafb 1f90b2 30cdfe 2eccfe 217fa0 0e354a 39afd7  6d909c 83dffe  0d3854 0c314d 1f72a3 28adfd 249fe6 1c7db7 051a2f 176ea5 24a9fd 21a2f2 125683",
+        "      0c3a5a 1e96df 22a9fc 11546d 0e4055  092333 3ab1d7 10374a 343843 628d9c 4189a5 0a2d48 092b45 2294d4 1d89c5  0c3653 0f476c 22a8fa 2096df 0b3858",
+        "               2d313c e7f8fd 35bbfd 2296d6",
+        "                b5b7bd 1e82bc"
+      ],
+      "bg": [
+        "                 ",
+        "               fcfcfd f2f9fd 8de4fd 2b4959",
+        "            1ac7fb    abe9fb 5b95a7    082940     ",
+        "      0cbdf9 0ab2e8 03364e  0fbef9 10b8f2 03192c 0f5875 0a3e57  9be8fd 6494a5  25a4ea 124f77 1a78b0 24a5f0 27abf8  092e4b 23abfd 23a9f9  ",
+        "   09b0e8 0ac0fd 0894c2 022337     0a5e7f 2fbaf0 cdedfc a3d5e3  f2fbfe 7197a5  a0d2e1 caeafa 39abef 12547f     061f36 23abfd 22aafc 1f9be7 ",
+        " 0abbf7 0bc0fd 056d93      fcfcfd e6f3f8  608b98 7490a1 f3f9fd fafbfd eff9fe f3fafe fafcfe abb7c2 7592a5 698b98  a4e5f8 a7e9fd      23a8f8 23aafd 22a7f7 ",
+        "021e32 0dadea 13b8fd 12a7e8 041b2f    112433 79d4ef 34697d   18374f dce5ed abe4fd eef8fe a7e9fe d8f2fe dde6ee 173550   11547d 136493 061e33    1d8bcf 209be9 23aafd 0b3858 061c32",
+        "   094567 1ab3fd 1babf4      2dc5f5 6fd5fb 6fafcf 27404f  f9fbfe 5493ab  293f4d c5ecfd 2a99da 28abf6      22a3f4 22a3f2 0d4166 ",
+        "     072b46 20acfd 22abfb 051b30  29bbe8 12536c  40c9f3 174960  ccf3fe 478ca5  2397d8 28aaf4  10476c 28aefd  25aafa 24a8fb 1e91d7 082a45 ",
+        "       051629 07243d    33a5c7    ace3f3 3ec0f5    061f34    07223b  ",
+        "               cfd0d4 fafbfd 2ab2fd 07253e",
+        "                 "
       ]
     },
     "wordmark": {
@@ -106,58 +156,102 @@ export const logoArt: { readonly dark: LogoVariant; readonly light: LogoVariant 
     ],
     "emblemLarge": {
       "lines": [
-        "               ▗█▖",
-        "              ▗███▖",
-        "       ▄▖   ▙▖ ▀█▛ ▗▟   ▗▄",
-        "    ▗▟██▌▐█▄▀▜▌ █▌▐▛▀▄█▌▐██▙▖",
-        "  ▗▟██▀   ▀██▄▖ █▘▄▟▜█▀   ▀██▙▖",
-        "▄▟█▛▀  ▄▄█▄▄▄▟▛▙█▀▜▙▄▄▄█▄▄  ▀▜█▙▄",
-        "▀▜██▄  ▀▜█▛▀▀▀▙▟█▙▟▛▀▀▜█▛▀  ▄██▛▀",
-        "  ▝▜██▄   ▄█▙▛▀ █▌▀▜▟█▄   ▄██▛▘",
-        "    ▝▜██▖▟█▀▗▟▌ █▌▐▙▄▀█▙▗██▛▘",
-        "      ▝▀▘   ▛▀ ▗█▙ ▀▜   ▝▀▘",
-        "              ▝███▘",
-        "               ▝█▘"
+        "                     ▗▛▖",
+        "                    ▗▘▌▝▖",
+        "                    ▖▛▌▀▛",
+        "         ▗▀▖ ▖  ▌▀▖  ▜▌▌  ▗▀▌  ▗ ▛▀▖",
+        "       ▄▘▀▛▌▐▝▀▄▝▖▖▌ ▐▌▌ ▐▛▀▘▄▀▘▌▐▖▀▝▄",
+        "    ▗▄▘▀▛▀▘ ▝▀▖▞▌▙▞▘ ▐▌▌ ▝▞▀▌▖▛▀▘ ▝▀▖▀▝▄▖",
+        "  ▗▀▘▀▛▀▘   ▗  ▀▖▝▛▀▄▐▌▌▄▘▛▘▛▀  ▖   ▝▀▖▝▝▀▖",
+        "▛▘▘▛▛▀   ▄▄▀▘▝▀▄▄▄▄▀▀▙▝▀▀▌▄▄▄▄▀▘▝▀▄▖   ▀▖▖▝▝▖",
+        "▝▖▖▝▝▄   ▝▀▖▖▛▀▀▀▀▀▀▞▀▛▀▘▀▀▀▀▀▀▖▛▀▀▘   ▄▘▝▛▛▘",
+        "  ▝▀▖▝▝▄▖   ▝▘ ▗▖▗▀▞▀▜▌▌▀▖▝▖▛▄ ▝▘   ▗▄▘▛▛▀▘",
+        "    ▝▀▖▞▝▀▖ ▗▄▘▀▝▀▀▖ ▐▌▌ ▗▝▜▘▀▝▄▖ ▗▀▘▛▛▀▘",
+        "      ▝▀▖▝▝▌▐▛▀▀▗▀▘▌ ▐▌▌ ▐▝▀▖▀▀▖▌▐▘▛▛▀▘",
+        "         ▀▀▘▝▘  ▌▀▀  ▟▌▌  ▀▀▌  ▝▘▝▀▀",
+        "                ▀   ▟▝▌▝▝   ▀",
+        "                    ▝▖▌▛▘",
+        "                     ▝▝▘"
       ],
-      "parts": [
-        "               022",
-        "              00222",
-        "       11   11 022 11   11",
-        "    11111111111 2211111111111",
-        "  11111   11100 2200111   11111",
-        "11111  0000220002000220000  11111",
-        "11111  2222222202022222222  11111",
-        "  11111   11111 2200111   11111",
-        "    11111111111 2211111111111",
-        "      111   11 022 11   111",
-        "              00222",
-        "               022"
+      "fg": [
+        "                     73d7fe 5abef6 5498e8",
+        "                    59d0fe 65d3fe 2bc2fc 418de5 3185e2",
+        "                    d0f1ff 2dc4fe 2dbefa 0169db 1a77de",
+        "         57b8fd bde3fe 0496fc  c8eafe   d1ebfe c7e7fe 78c7fe   75d9fe 33baf9 026bdc   74c4fe c5e5fe 22a2fc   c6e7fe  daeffe bde3fe 59b9fd",
+        "       52b7fd a2d7fe 0296fd 0196fd 2ea8fd a3defe 2eb9fd afe3fe 6fcefe 52b8fc aedcfe 0999fc 58bafd  88e0fd 70d5fb 026bdc  5bbafd 0396fd 0296fd 50b5fd 6cc6fd acdefe 28adfd a6dcfe 2da6fc 0696fc 0296fd a2d6fe 51b5fd",
+        "    b5dffe 26a3fd 67bffe 0297fe 0196fd 0a99fd 74c4fe  d1eeff 14affd 58c5fd 06aafe 12adfd 82d7fd a2dcfe 6abefb  88e0fd 82ddfd 026adc  6dbef8 d3f0ff ceeafe 68c9fe 029efd 059ffd 13a4fd d1ecfe  73c2fd 0a97fd 25a2fc 0295fe 68bffe 26a4fd b4dffe",
+        "  7cc7fd c3e4fe 2da5fc 0196fe 0497fd 22a3fd afdcfe    c8effe   65c9fe caecfe 58d0fd 7ddbfd ace8fe 9fe5fd 9ee5fe 80ddfd 047ee8 71d9fe 93e1fe 35c9fe 54d1fe 46b6fd 65c2fd   c9efff    addbfe 23a1fd 61bbfd 0195fd 2ca6fe c2e4fe 7bc7fe",
+        "dcf0ff c7e6fe 0897fd 0195fe 119cfd 4fb5fd    b0e5fd 4ccbfc 92e1fe 47cbfd 67d5fe c8eefe 8cdefc 8be0fd 87dffd 7cdcfd 36c5fe 55d0fe 99e1fd 0484ed 6cd0fb 75d7fe a9e6fd 75dafd 81ddfd 8ee1fd 7ddbfd c4edfe 63d3fe 48cdfd 95e2fe 4fccfd 97dffd    4cb2fd 9bd3fe 0295fd 0898fd c7e6fe 3dacfd",
+        "45b0fd cae8fe 0696fd 0196fd 90cffd 49b3fd    78adeb 1879e1 8dbcf1 076fde 026cdf 026bdd 026cde 026bdd 026bdd 026cdd 1f7de1 a4dafa b5e8fe a5e5fe b4e7fd accef4 207fe5 026bdc 026cdd 026bdc 036ddf 026edf 2982e3 026fe1 026edf 1a7ae2 7db4f0    46b0fd 8bccfd 0193fd 0194fd 21a1fd 46b0fe",
+        "  72c2fd 0997fd 1e9efc 0196fd 66c0fd 28a5fd bbe3fe    aaccf2 cee2f9  55cbfe 12b8fd 70d7fe 8ee0fd 22bffd 4ecefe 93e3fd 8fe1fd 0776e3 5ed6fe 7eddfe 9be2fe 5ed3fe a6e2fe 7cd5fe  cfe3f9 accef3    b8e0fe 26a2fd 61bbfd 0194fd 0294fd 0a97fd 74c3fe",
+        "    a2d7fe 1a9ffd 4bb2fd 0195fd 38acfd cdeaff 92d1fd  d2f0fe 28befd 79d5fe 0eb7fd 91ddfe 20bbfd 6bd3fe 9edbfc  94e4fd 8ee0fc 0268db  9bd4fc 83dbfe 63d1fd 9fe3fe 0bb2fe 74d2fe 23b9fe cceeff  8fcefc cbe8fe 33a6fc 0194fe 0294fd 1a9dfc a2d6fe",
+        "      cfeafe 38aafd 7ec7fd 0196fe 189ffd 4db4fc 99e0fe 0eb7fd 0eb7fe 4ecafe 76cffd b9e6fe 39bafd 46c0fd  98e4fd 7fd9fb 0269db  4db6fd 36acfc b6e0fd 68c1fd 55c8fe 0ab1fe 1db7fd 94ddfe 48affc 169afc 0194fd 0997fd 3aabfd d3ebff",
+        "         60bcfd 0296fe 139afa c8edfe a8e5fe   d6effe 06abfd 65ccfe   96e3fe 3abcf9 036adc   68c1fd 0198fd 0d9bfb   b0e4fe c2e9fd 0c95fb 0193fd 63bcfd",
+        "                d9f1fe    54cffe 3fcbfe 31bffb 026adc e0eefc    daf0fe",
+        "                    55d1fe 60d4fe 2bc3fc 026adc 3487e2",
+        "                     70d9fe 0269dc 5b9de7"
+      ],
+      "bg": [
+        "                      0268dc ",
+        "                     2fc5fe 026add 026adc ",
+        "                    45cbfe 2dc4fe 026adc 0269db c0daf6",
+        "          0497fd      23a6fd 0d9dfe     036cde 8db9ef    0b99fd d6edff     0494fb 0596fd ",
+        "        149dfd 0196fe 0697fd   06aafe 06a9fd   1da2fd 0499fd    026cde bcd5f7   0897fc 82cafe   039ffd 04a0fd   0195fd 0295fe 139dfd ",
+        "      0597fd 0196fe 26a4fd bfe3fe    d5effe 08aafe 05aafd 71d0fd      0276e4 bcd5f6   86d4fe 2cbcfd 13a3fd 039ffe 5bbffd d7efff    bde2fe 0294fd 0194fd 0596fd  ",
+        "   0b99fd 0195fd 0196fd 64befd          48c0fd cfeffe 2cc4fe 68d6fd   027de8 aed8f9  39c8fe 8ee0fe d1eefe c9e9fe          0495fd 0194fd 0295fd 0c99fd ",
+        "3dacfc 20a2fd 0195fe 0195fd 9fd6fe       3bc7fc 3ac7fd 41c9fd 67d3fc     b0e6fd a5e2fd  99d9fa bdebfe dcf1fe 72d8fd     4acbfc 3ac7fd 3ac7fd 3bc6fc       109afd 0194fe 0195fd 20a2fe dcf0ff",
+        " 1fa1fd 0195fe 0195fe 0d9afd       1778e1 026ddf 2a83e3 a4caf4     d2f0fe 65c0f6 72dafe 75caf9 57ccfb 6fcaf8 b3e9fe     a2c9f3 026edf 0971e0 6cabed       0b98fd 0194fd 0795fd cbe8fe ",
+        "   b8e0fe 0194fd 0195fe 0497fd          a9e4fe  29c0fd 5fd2fd   1c8fea 96d3f8 cef1ff 4fd0fe 4bcffe  0ab3fd          0495fd 0194fd 1f9ffd b9e1fe ",
+        "     d8eefe 0296fd 0195fe 0195fd 139efd     15b9fe 0cb8fe 2ec1fd b0e7fe     0172e0 bcd5f6   d5f0fe  31bcfd 0ab1fe 10b3fe     1199fd 0194fe 0294fe 4fb3fd d9eeff ",
+        "        0897fd 0195fe 0196fd   19bafd 90ddfe   0aadfd 06abfe    026add bcd5f6   039afd 0599fd   9adefe 0ab2fe   0193fc 0294fd 80c8fe  ",
+        "          91d0fd daefff     0faefd 8ed8fe     036ddf a2c6f3    91d1fd d0ebfe     d9eefe 95d2fd ",
+        "                     31c6fe 036de0 026bdd 2e85e4    ",
+        "                     2fc6fe 026add 4692e5 ",
+        "                      5ec2f6 "
       ]
     },
     "emblemMedium": {
       "lines": [
-        "             ▟▙",
-        "            ▐██▌",
-        "    ▗▄█▖▄▖▜▙ ▐█ ▟▛▗▄▐█▄▖",
-        "  ▗▟█▛▀ ▀█▙▖ ▐█ ▄▟█▀ ▀▜█▙▖",
-        "▄▟█▀▘ ▄▄▄▄▖▐█▟█▜▌▗▄▄▄▄ ▝▀█▙▄",
-        "▀▜█▙▖ ▀▜▛▀▀▜▟███▛▀▀▜▛▀ ▗▟█▛▀",
-        "  ▝▜█▙▖ ▄█▛▀ ▐▙ ▀▜█▄ ▗▟█▛▘",
-        "    ▝▜█ ▀▘▟▛ ▐█ ▜▙▝▀ █▛▘",
-        "          ▘ ▐██▌ ▝",
-        "             ▜▛"
+        "               ▗▛▖",
+        "              ▗▘▌▝▖",
+        "      ▗▄▖▗  ▀▖ ▝▌▛ ▗▀  ▖▗▄▖",
+        "    ▗▀▘▛▘▌▝▄▝▖▌▐▌▌▐▛▘▄▘▌▝▖▝▀▖",
+        "  ▗▀▘▛▀▘ ▝▀▖▛▀▄▐▌▌▗▀▖▛▀▘ ▝▀▖▝▀▖",
+        "▗▘▘▛▀ ▗▄▀▀▄▄▀▟▀▙▝▀▖▙▀▄▄▀▀▄▖ ▀▖▝▝▖",
+        "▝▖▖▝▄ ▝▀▀▀▀▀▀▀▞▖▛▀▝▀▀▀▀▀▀▀▘ ▄▘▛▛▘",
+        "  ▝▀▖▝▄  ▗▄▘▝▛▀▐▌▌▀▀▘▝▄▖  ▄▘▛▀▘",
+        "    ▝▀▖▝▖▌▛▀▛▀▌▐▌▌▐▀▖▀▖▌▗▘▛▀▘",
+        "      ▝▀▘▝  ▛▘ ▛▌▌ ▝▖  ▀▝▀▘",
+        "              ▝▖▌▛▘",
+        "               ▝▝▘"
       ],
-      "parts": [
-        "             02",
-        "            0022",
-        "    11111111 02 11111111",
-        "  11111 1111 02 0111 11111",
-        "11111 0000100020010000 11111",
-        "11111 2222222022222222 11111",
-        "  11111 1111 22 0111 11111",
-        "    111 1111 22 1111 111",
-        "          1 0022 1",
-        "             02"
+      "fg": [
+        "               7ad9fe 5fc0f6 5c9de9",
+        "              95e1fe 6fd7fe 2bc1fc 4e95e6 76adeb",
+        "      d3ecff 3cadfd 2da7fd daf0fe   c8e8fe 7cc9fe  39c8fd 3fc1fa 4d95e6  79c6fd c7e7fe   d8eefe 22a0fb 3dadfd d4ecfe",
+        "    a3d8fe daeefe 50b5fd 0296fe 1ba0fd ceedfe 9adafe 36bafe 089afd 8ecffd 9cd4fd b4ebfe 7ad9fc 5d9ee9 9ed4fd 139cfd 0898fd 34b0fd 98d6fe 049ffd 169cfc 4eb3fd 4fb5fd d9eeff a3d7fe",
+        "  73c3fd bae1fe 1fa1fd 0999fd 39acfd d2ebfe  c8ebfe 40bdfe 9edcfe 59c8fd cbeefe b4eafd b4ebfe 83defd 5ea0ea 52cffe a8e4fe bdedfe 17a5fd 3fb5fd c9e9fe  d0eafe 38aafd 7fc8fd 1fa0fd bae2fe 72c4fd",
+        "40aefd c8e6fe 0697fd 179ffd 65befe  daf0fe 86dbfd d1f1ff 89defe 64d3fc aae6fd d9f1fe 8ee0fe 4fcefd 8ddefd 0484ec 68cffb d4f0fe 8ee1fd d8effe a2e5fe 4fcdfd 88defe d2f1ff 88dcfd dbf1fe  62bbfd afdcfd 0696fd c7e7ff 40aefd",
+        "44b0fd c7e6fe 0596fd a9dafe 62bdfe  d2e5fa 64a4ea 036edf 026ddf 0c71df 3d8ce5 3d8ce5 3d8de4 91cff7 4ccdfd 9ce2fd 9edafa 4b99eb 3d8ce4 3d8ce4 3e8de5 0c73e0 026fe0 046fe0 67a7ec d6e8fb  5fbbfe a5d8fd 0194fd 1ea0fd 45b0fd",
+        "  68befd 0696fd 149cfd 87ccfe 45b1fd   daf2ff 57ccfe b4e7fe cef1ff 4acafd 5fd2fe b8ecfe 8ee1fd 5c9de9 7adcfe 4ed0fe c8eefe aee5fe 51c8fe d8f2ff   43aefd 84c9fe 0194fd 0695fd 69bffd",
+        "    8ecffe 119bfd 31a7fd 68bffd 33a9fc c8edfe 19bafe 28c0fe b6e8fe 90d8fe 9adbfd bcedfe 88ddfc 5d9de8 9dd6fd 8ed1fe 22a4fd 2abafe 8ad9fe 0bb2fd 2ea5fc 66bcfc 0194fd 129afd 90cffd",
+        "      b5dffe 24a3fd 35a9fb c3ecfe   39bcfd 49c2fd  cff1fe 4cc5fa 3989e4  4ab4fd d5ecfe   d4effe 30a5fb 25a1fd b8e0fe",
+        "              a1e3fe 6bd7fe 2dc2fc 026bdd 8fbdf0",
+        "               74d8fe 026adc 61a2e9"
+      ],
+      "bg": [
+        "                026add ",
+        "               2ec4fe 026adc 026adb ",
+        "            23a6fd   c0ecfe 026cdd    23a2fc      ",
+        "     1ca1fd 0296fd 4eb5fd  06aafd 1ab0fe  b5e2fe 149ffd   026dde   8ecffd b5e0fe  16a6fe d0ecff  0295fd 0296fd 1b9ffd ",
+        "   0998fd 0196fd 7fc9fe      19b0fd b6eafe 6bd7fd   0279e6   3ccafe 43bbfc 9fd8fe      0997fd 0294fd 0997fd ",
+        " 1fa1fd 0195fd b3defe     3dc8fd 3bc7fd   a7e7fd  95dffd  96dafb baeafe 67d5fd  a7e7fd   39c6fd 3dc8fd     179dfd 0194fd 1fa2fd ",
+        " 1ea0fd 0195fd 149dfd     bdd8f6 5b9fe9 d5e7fa   cdf0fe 4cb1f3 9bdefc 4bacf2 54cbfb 70cdf9 c3edfe   d4e6fa 5ca0ea bfdaf7     129bfd 0595fd c8e6fe ",
+        "   afdcfe 0296fe 0999fe      2cc0fd 55ccfd abe5fe   0276e2   aae6fe 64d0fd 26bbfe      0997fd 149afc afdcfe ",
+        "     cae8fe 0195fe 0497fd  0eb7fd 84d9fe  28b6fd 06abfd   026bdc   0298fd b6e3fe  18b5fe c4ebfe  0494fd 34a8fd cce8fe ",
+        "            d2efff   55d1fe 026dde d2e5fa   36acfc      ",
+        "               31c6fe 026bde 5298e6 ",
+        "                62c4f7 "
       ]
     },
     "wordmark": {

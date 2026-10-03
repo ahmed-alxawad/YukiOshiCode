@@ -23,6 +23,8 @@ VARIANTS = {
     "dark": {
         "source": ROOT / "assets/brand/yukioshi-code-emblem-dark.png",
         "background": (1, 6, 20),
+        # The YukiOshi theme background the emblem is shown on.
+        "theme_background": (1, 6, 20),
         "emblem": (281, 197, 973, 680),
         "wordmark": (162, 728, 1087, 867),
         "code": (383, 915, 872, 975),
@@ -30,6 +32,7 @@ VARIANTS = {
     "light": {
         "source": ROOT / "assets/brand/yukioshi-code-emblem-light.png",
         "background": (255, 255, 255),
+        "theme_background": (247, 251, 255),
         "emblem": (221, 140, 1033, 722),
         "wordmark": (97, 764, 1158, 928),
         "code": (352, 969, 901, 1053),
@@ -176,6 +179,84 @@ def trace(image, box, rows, background, palette):
     return {"lines": lines, "parts": parts}
 
 
+def trace_smooth(image, box, rows, background, theme_background):
+    """Traces the emblem the way terminal image viewers do.
+
+    For each cell, every quadrant shape is tried with the best foreground and background
+    colour for it, and the closest fit wins: edges blend like a downscaled image instead of
+    snapping to on or off. Background colours equal to the logo's backdrop become transparent,
+    and faint colours are shifted from the logo's backdrop to the theme's background.
+    """
+    crop = image.crop(box)
+    width, height = crop.size
+    cols = round(2 * rows * width / height)
+    sample = 6  # source pixels per quadrant, each way
+    resized = crop.resize((cols * 2 * sample, rows * 2 * sample), Image.LANCZOS)
+    # The brand images' backdrops carry faint noise; snap it to the exact backdrop so empty
+    # areas stay empty instead of filling with near-invisible shapes.
+    near = lambda colour, limit: sum(abs(a - b) for a, b in zip(colour, background)) < limit
+    resized.putdata([background if near(p, 40) else p for p in flat(resized)])
+    pixels = resized.load()
+    shift = [t - b for t, b in zip(theme_background, background)]
+
+    def adapt(colour):
+        # How much logo (vs backdrop) the colour holds: 0 for pure backdrop, 1 for solid logo.
+        strength = min(1.0, max(abs(a - b) for a, b in zip(colour, background)) / 160)
+        return tuple(round(min(255, max(0, c + s * (1 - strength)))) for c, s in zip(colour, shift))
+
+    def mean(values):
+        return tuple(sum(channel) / len(values) for channel in zip(*values))
+
+    lines, fgs, bgs = [], [], []
+    for row in range(rows):
+        line, fg_row, bg_row = "", [], []
+        for col in range(cols):
+            quadrants = []
+            for qy in (0, 1):
+                for qx in (0, 1):
+                    quadrants.append([
+                        pixels[(col * 2 + qx) * sample + i, (row * 2 + qy) * sample + j]
+                        for j in range(sample) for i in range(sample)
+                    ])
+            best = None
+            for mask in range(16):
+                on = [p for bit in range(4) if mask & (1 << bit) for p in quadrants[bit]]
+                off = [p for bit in range(4) if not mask & (1 << bit) for p in quadrants[bit]]
+                fg = mean(on) if on else background
+                bg = mean(off) if off else background
+                error = sum(distance(p, fg) for p in on) + sum(distance(p, bg) for p in off)
+                if best is None or error < best[0]:
+                    best = (error, mask, fg, bg)
+            _, mask, fg, bg = best
+            fg, bg = tuple(map(round, fg)), tuple(map(round, bg))
+            backdrop = lambda colour: near(colour, 40)
+            if mask == 0:  # one colour fills the cell
+                mask, fg = 15, bg
+            if mask == 15:
+                bg = background
+            # Never draw the backdrop as a foreground: if only the background part is logo,
+            # flip the cell so the logo part becomes the foreground.
+            if backdrop(fg) and not backdrop(bg):
+                mask, fg, bg = 15 - mask, bg, fg
+            if backdrop(fg) or mask == 0:
+                line += " "
+                fg_row.append("")
+                bg_row.append("")
+                continue
+            if backdrop(bg):
+                bg = None
+            line += QUADRANTS[mask]
+            fg_row.append(hex_colour(adapt(fg))[1:])
+            bg_row.append(hex_colour(adapt(bg))[1:] if bg else "")
+        # Trailing empty cells are dropped, as with the other art.
+        while line.endswith(" ") and not fg_row[-1]:
+            line, fg_row, bg_row = line[:-1], fg_row[:-1], bg_row[:-1]
+        lines.append(line)
+        fgs.append(" ".join(fg_row))
+        bgs.append(" ".join(bg_row))
+    return {"lines": lines, "fg": fgs, "bg": bgs}
+
+
 def hex_colour(colour):
     return "#%02x%02x%02x" % colour
 
@@ -188,8 +269,8 @@ def main():
         palette = measure_palette(solid_pixels(image, (variant["emblem"], variant["wordmark"]), background))
         data[name] = {
             "palette": [hex_colour(c) for c in palette],
-            "emblemLarge": trace(image, variant["emblem"], 12, background, palette),
-            "emblemMedium": trace(image, variant["emblem"], 10, background, palette),
+            "emblemLarge": trace_smooth(image, variant["emblem"], 16, background, variant["theme_background"]),
+            "emblemMedium": trace_smooth(image, variant["emblem"], 12, background, variant["theme_background"]),
             "wordmark": trace(image, variant["wordmark"], 5, background, palette),
             # The "< / CODE >" line is drawn as text: letters and brackets keep the logo's colours.
             "code": {
@@ -204,10 +285,16 @@ def main():
         "/** Quadrant-block lines; parts holds, per character, an index into the variant's palette. */",
         "export type LogoArt = { readonly lines: readonly string[]; readonly parts: readonly string[] }",
         "",
+        "/**",
+        " * Emblem art with its own colours per cell: fg and bg hold one space-separated hex colour",
+        " * (without #) per character of the line; an empty bg entry means transparent.",
+        " */",
+        "export type EmblemArt = { readonly lines: readonly string[]; readonly fg: readonly string[]; readonly bg: readonly string[] }",
+        "",
         "export type LogoVariant = {",
         "  readonly palette: readonly string[]",
-        "  readonly emblemLarge: LogoArt",
-        "  readonly emblemMedium: LogoArt",
+        "  readonly emblemLarge: EmblemArt",
+        "  readonly emblemMedium: EmblemArt",
         "  readonly wordmark: LogoArt",
         "  readonly code: { readonly text: string; readonly bracket: string }",
         "}",
