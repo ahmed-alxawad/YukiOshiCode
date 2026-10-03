@@ -31,12 +31,11 @@ export function Logo() {
     return RGBA.fromHex(palette[Number(part)] ?? palette[0])
   }
 
-  // The full logo needs about 23 rows, so smaller terminals get a shorter version. Below 12 rows
-  // the emblem's detail no longer survives, so small terminals show only the wordmark.
+  // The full emblem needs about 19 rows, so smaller terminals get a shorter version.
   const size = createMemo(() => {
     const { width, height } = dimensions()
     if (width < 72) return "text"
-    if (height >= 44) return "large"
+    if (height >= 40) return "large"
     if (height >= 34) return "medium"
     return "wordmark"
   })

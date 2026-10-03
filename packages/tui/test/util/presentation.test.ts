@@ -28,17 +28,8 @@ test("both logo variants are traced completely and fit the home layout", () => {
         }
       })
     }
-    expect(variant.emblemLarge.lines).toHaveLength(16)
-    expect(variant.emblemMedium.lines).toHaveLength(12)
-    // The emblem is traced symmetrically: every row reads the same mirrored left to right.
-    for (const art of [variant.emblemLarge, variant.emblemMedium]) {
-      const width = Math.max(...art.lines.map((line) => Array.from(line).length))
-      const mirror: Record<string, string> = { "▘": "▝", "▝": "▘", "▖": "▗", "▗": "▖", "▌": "▐", "▐": "▌", "▛": "▜", "▜": "▛", "▙": "▟", "▟": "▙", "▞": "▚", "▚": "▞" }
-      for (const line of art.lines) {
-        const cells = Array.from(line.padEnd(width, " "))
-        expect(cells.map((cell) => mirror[cell] ?? cell).reverse().join("")).toBe(cells.join(""))
-      }
-    }
+    expect(variant.emblemLarge.lines).toHaveLength(12)
+    expect(variant.emblemMedium.lines).toHaveLength(10)
     expect(variant.wordmark.lines).toHaveLength(5)
     // The home screen switches to plain text below 72 columns.
     expect(Math.max(...variant.wordmark.lines.map((line) => Array.from(line).length))).toBeLessThanOrEqual(72)

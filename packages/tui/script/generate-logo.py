@@ -13,7 +13,7 @@ Requires Pillow. Run from the repository root:
 import json
 import pathlib
 
-from PIL import Image, ImageChops, ImageOps
+from PIL import Image
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 OUTPUT = ROOT / "packages/tui/src/logo-art.ts"
@@ -24,7 +24,6 @@ VARIANTS = {
         "source": ROOT / "assets/brand/yukioshi-code-emblem-dark.png",
         "background": (1, 6, 20),
         "emblem": (281, 197, 973, 680),
-        "emblem_threshold": 90,
         "wordmark": (162, 728, 1087, 867),
         "code": (383, 915, 872, 975),
     },
@@ -32,8 +31,6 @@ VARIANTS = {
         "source": ROOT / "assets/brand/yukioshi-code-emblem-light.png",
         "background": (255, 255, 255),
         "emblem": (221, 140, 1033, 722),
-        # The light emblem's centre facets are nearly white, so a lower threshold keeps them.
-        "emblem_threshold": 40,
         "wordmark": (97, 764, 1158, 928),
         "code": (352, 969, 901, 1053),
     },
@@ -135,15 +132,6 @@ def cell_colour(source, background, palette, col, row, sub_w, sub_h, width, heig
     Anti-aliased edge pixels are blends with the background, so they are ignored;
     otherwise every shape picks up a fringe of the palette's lightest colour.
     """
-    votes = cell_votes(source, background, palette, col, row, sub_w, sub_h, width, height)
-    x0, y0 = int(col * 2 * sub_w), int(row * 2 * sub_h)
-    if not any(votes):
-        return min(range(len(palette)), key=lambda i: distance(source[min(x0, width - 1), min(y0, height - 1)], palette[i]))
-    return max(range(len(palette)), key=lambda i: votes[i])
-
-
-def cell_votes(source, background, palette, col, row, sub_w, sub_h, width, height):
-    """Strength-weighted votes of a cell's solid logo pixels for each palette colour."""
     votes = [0] * len(palette)
     x0, x1 = int(col * 2 * sub_w), min(width, int((col + 1) * 2 * sub_w) + 1)
     y0, y1 = int(row * 2 * sub_h), min(height, int((row + 1) * 2 * sub_h) + 1)
@@ -154,49 +142,9 @@ def cell_votes(source, background, palette, col, row, sub_w, sub_h, width, heigh
             if strength > 140:
                 # Fully coloured pixels outweigh tinted edge pixels.
                 votes[min(range(len(palette)), key=lambda i: distance(pixel, palette[i]))] += strength * strength
-    return votes
-
-
-def trace_symmetric(image, box, rows, background, palette, threshold):
-    """Traces the emblem, which is symmetric left-right and top-bottom.
-
-    Each sub-pixel takes how much of it the logo covers, averaged with its mirror images, so
-    matching arms come out identical instead of each picking up its own rounding noise.
-    Mirrored cells also share their colour vote.
-    """
-    crop = image.crop(box)
-    width, height = crop.size
-    cols = round(2 * rows * width / height)
-    cols += cols % 2  # an even column count keeps the vertical spine on the centre line
-    source = crop.load()
-    mask = Image.new("L", crop.size)
-    mask.putdata([255 if sum(abs(a - b) for a, b in zip(p, background)) > threshold else 0 for p in flat(crop)])
-    cover = mask.resize((cols * 2, rows * 2), Image.BOX)
-    cover = ImageChops.add(cover, ImageOps.mirror(cover), scale=2)
-    cover = ImageChops.add(cover, ImageOps.flip(cover), scale=2)
-    covered = cover.load()
-    sub_w, sub_h = width / (cols * 2), height / (rows * 2)
-    lines, parts = [], []
-    for row in range(rows):
-        line, colours = "", ""
-        for col in range(cols):
-            mask_bits = 0
-            for bit, (dx, dy) in enumerate(((0, 0), (1, 0), (0, 1), (1, 1))):
-                if covered[col * 2 + dx, row * 2 + dy] >= 0.45 * 255:
-                    mask_bits |= 1 << bit
-            line += QUADRANTS[mask_bits]
-            if not mask_bits:
-                colours += " "
-                continue
-            votes = [0] * len(palette)
-            for mirror_col, mirror_row in {(col, row), (cols - 1 - col, row), (col, rows - 1 - row), (cols - 1 - col, rows - 1 - row)}:
-                for index, value in enumerate(cell_votes(source, background, palette, mirror_col, mirror_row, sub_w, sub_h, width, height)):
-                    votes[index] += value
-            colours += str(max(range(len(palette)), key=lambda i: votes[i]) if any(votes) else 0)
-        trimmed = line.rstrip()
-        lines.append(trimmed)
-        parts.append(colours[: len(trimmed)])
-    return {"lines": lines, "parts": parts}
+    if not any(votes):
+        return min(range(len(palette)), key=lambda i: distance(source[min(x0, width - 1), min(y0, height - 1)], palette[i]))
+    return max(range(len(palette)), key=lambda i: votes[i])
 
 
 def trace(image, box, rows, background, palette):
@@ -240,8 +188,8 @@ def main():
         palette = measure_palette(solid_pixels(image, (variant["emblem"], variant["wordmark"]), background))
         data[name] = {
             "palette": [hex_colour(c) for c in palette],
-            "emblemLarge": trace_symmetric(image, variant["emblem"], 16, background, palette, variant["emblem_threshold"]),
-            "emblemMedium": trace_symmetric(image, variant["emblem"], 12, background, palette, variant["emblem_threshold"]),
+            "emblemLarge": trace(image, variant["emblem"], 12, background, palette),
+            "emblemMedium": trace(image, variant["emblem"], 10, background, palette),
             "wordmark": trace(image, variant["wordmark"], 5, background, palette),
             # The "< / CODE >" line is drawn as text: letters and brackets keep the logo's colours.
             "code": {
