@@ -1,5 +1,7 @@
 name: Installer smoke tests
 
+# Releases are published with GITHUB_TOKEN, whose events do not trigger other workflows, so the
+# release workflow starts this one with workflow_dispatch after publishing.
 on:
   workflow_dispatch:
   release:
@@ -36,7 +38,7 @@ jobs:
             throw "Version mismatch: got '$actual', expected '$expected'"
           }
 
-          $skillLines = & $binary debug skill 2>&1
+          $skillLines = & $binary debug skill
           if ($LASTEXITCODE -ne 0) {
             throw "Installed binary failed debug skill with exit code $LASTEXITCODE"
           }

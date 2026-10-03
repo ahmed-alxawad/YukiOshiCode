@@ -178,6 +178,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: write
+      actions: write
     env:
       TAG: ${{ inputs.tag || github.ref_name }}
       GH_TOKEN: ${{ github.token }}
@@ -185,3 +186,8 @@ jobs:
     steps:
       - name: Publish release
         run: gh release edit "$TAG" --draft=false --latest
+
+      # A release published with GITHUB_TOKEN does not trigger `release` workflows, so start the
+      # installer smoke tests explicitly.
+      - name: Test the published installers
+        run: gh workflow run installers.yml --ref main
