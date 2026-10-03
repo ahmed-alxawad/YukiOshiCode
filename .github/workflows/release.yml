@@ -136,9 +136,15 @@ jobs:
             exit 1
           fi
 
-          SKILLS=$("$BIN" debug skill)
+          SKILLS=$("$BIN" debug skill --print-logs --log-level WARN 2>skills-stderr.txt || true)
           if ! echo "$SKILLS" | grep -q '"name": "nightmare"'; then
             echo "Expected skill list to contain '\"name\": \"nightmare\"'"
+            echo "--- debug skill output (first 40 lines)"
+            echo "$SKILLS" | head -40
+            echo "--- stderr"
+            head -40 skills-stderr.txt
+            echo "--- debug paths"
+            "$BIN" debug paths || true
             exit 1
           fi
 
