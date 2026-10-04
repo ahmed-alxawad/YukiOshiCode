@@ -609,9 +609,13 @@ export const RunCommand = effectCmd({
         process.exit(1)
       }
 
-      function unknownAgent(name: string, agents: readonly { name: string; mode: string; hidden?: boolean }[]): never {
+      function unknownAgent(
+        name: string,
+        agents: readonly { name: string; mode: string; hidden?: boolean }[],
+        reason = "Agent not found",
+      ): never {
         const names = agents.filter((a) => a.mode !== "subagent" && !a.hidden).map((a) => a.name)
-        UI.error(`Agent not found: "${name}".${names.length ? ` Available: ${names.join(", ")}` : ""}`)
+        UI.error(`${reason}: "${name}".${names.length ? ` Available: ${names.join(", ")}` : ""}`)
         process.exit(1)
       }
 
@@ -630,12 +634,11 @@ export const RunCommand = effectCmd({
           unknownAgent(name, available)
         }
         if (entry.mode === "subagent") {
-          UI.println(
-            UI.Style.TEXT_WARNING_BOLD + "!",
-            UI.Style.TEXT_NORMAL,
-            `agent "${name}" is a subagent, not a primary agent. Falling back to default agent`,
+          // Like an unknown name: never run the task in a different mode than the one asked for.
+          const available = await Effect.runPromise(
+            agentSvc.list().pipe(Effect.provideService(InstanceRef, localInstance)),
           )
-          return undefined
+          unknownAgent(name, available, "Only other agents can start this subagent")
         }
         return name
       }
@@ -661,14 +664,7 @@ export const RunCommand = effectCmd({
         const agent = modes.find((a) => a.name === name)
         if (!agent) unknownAgent(name, modes)
 
-        if (agent.mode === "subagent") {
-          UI.println(
-            UI.Style.TEXT_WARNING_BOLD + "!",
-            UI.Style.TEXT_NORMAL,
-            `agent "${name}" is a subagent, not a primary agent. Falling back to default agent`,
-          )
-          return undefined
-        }
+        if (agent.mode === "subagent") unknownAgent(name, modes, "Only other agents can start this subagent")
 
         return name
       }
