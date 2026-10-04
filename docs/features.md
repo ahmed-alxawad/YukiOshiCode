@@ -144,7 +144,11 @@ finish.
 - **Headless server**: `yukioshi serve` runs YukiOshi without the terminal UI;
   `yukioshi attach <url>` connects a terminal UI to it, and `yukioshi run
   --attach <url>` sends it a prompt. Protect it with `YUKIOSHI_SERVER_PASSWORD`.
-- **GitHub**: `yukioshi github install` sets up the GitHub Actions agent, and
-  `yukioshi pr <number>` checks out a pull request and opens a session on it.
+- **GitHub**: `yukioshi pr <number>` checks out a pull request and opens a
+  session on it. To run YukiOshi in GitHub Actions, call `yukioshi run` from
+  your own workflow (a built-in GitHub agent is not available yet).
+- **Sharing**: `/share` and `run --share` only work with a share server you
+  configure (`"enterprise": { "url": "…" }`). YukiOshi has no public share
+  service and never uploads sessions anywhere else.
 - **Editors**: `yukioshi acp` speaks the Agent Client Protocol for editors that
   support it.

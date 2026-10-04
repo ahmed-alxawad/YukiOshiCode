@@ -68,7 +68,6 @@ interface), and `--verify` (turn on post-turn verification).
 | `yukioshi serve`                | run without the terminal UI (`--port`, `--hostname`; protect it with `YUKIOSHI_SERVER_PASSWORD`) |
 | `yukioshi attach <url>`         | open the terminal UI against a running server          |
 | `yukioshi acp`                  | start an Agent Client Protocol server for editors       |
-| `yukioshi github install`, `github run` | set up and run the GitHub Actions agent        |
 | `yukioshi pr <number>`          | check out a pull request and open a session on it       |
 
 ## Troubleshooting

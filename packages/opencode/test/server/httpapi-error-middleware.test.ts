@@ -7,6 +7,7 @@ import { HttpClient, HttpClientRequest, HttpRouter } from "effect/unstable/http"
 import { errorLayer } from "../../src/server/routes/instance/httpapi/middleware/error"
 import { NotFoundError } from "../../src/storage/storage"
 import { Provider } from "../../src/provider/provider"
+import { ShareNext } from "../../src/share/share-next"
 import { ProviderV2 } from "@yukioshi/core/provider"
 import { ModelV2 } from "@yukioshi/core/model"
 import { testEffect } from "../lib/effect"
@@ -81,6 +82,22 @@ describe("HttpApi error middleware", () => {
       const none = yield* HttpClientRequest.get("/no-model").pipe(HttpClient.execute)
       expect(none.status).toBe(400)
       expect(JSON.stringify(yield* none.json)).toContain("No model selected")
+    }),
+  )
+
+  it.live("explains why sharing is unavailable instead of a generic server error", () =>
+    Effect.gen(function* () {
+      yield* HttpRouter.add(
+        "GET",
+        "/share-unavailable",
+        Effect.die(new ShareNext.ShareUnavailableError("Sharing is not available: no share server is configured.")),
+      ).pipe(Layer.provide(errorLayer), HttpRouter.serve, Layer.build)
+
+      const response = yield* HttpClientRequest.get("/share-unavailable").pipe(HttpClient.execute)
+      expect(response.status).toBe(400)
+      expect(yield* response.json).toMatchObject({
+        data: { message: "Sharing is not available: no share server is configured." },
+      })
     }),
   )
 

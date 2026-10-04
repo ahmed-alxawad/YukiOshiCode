@@ -1,6 +1,7 @@
 import { NamedError } from "@yukioshi/core/util/error"
 import { ConfigErrorV1 } from "@yukioshi/core/v1/config/error"
 import { Provider } from "@/provider/provider"
+import { ShareNext } from "@/share/share-next"
 import { Cause, Effect } from "effect"
 import { HttpRouter, HttpServerError, HttpServerRespondable, HttpServerResponse } from "effect/unstable/http"
 
@@ -32,7 +33,8 @@ export const errorLayer = HttpRouter.middleware<{ handles: unknown }>()((effect)
       if (
         Provider.NoModelSelectedError.isInstance(error) ||
         Provider.NoProvidersError.isInstance(error) ||
-        Provider.ModelNotFoundError.isInstance(error)
+        Provider.ModelNotFoundError.isInstance(error) ||
+        error instanceof ShareNext.ShareUnavailableError
       ) {
         return Effect.succeed(
           HttpServerResponse.jsonUnsafe(new NamedError.Unknown({ message: error.message }).toObject(), { status: 400 }),

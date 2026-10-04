@@ -20,6 +20,11 @@ import { ProviderV2 } from "@yukioshi/core/provider"
 import { ModelV2 } from "@yukioshi/core/model"
 import { EventV2 } from "@yukioshi/core/event"
 
+/** Sharing cannot run (no share server configured, or turned off); the message says what to do. */
+export class ShareUnavailableError extends Error {
+  override readonly name = "ShareUnavailableError"
+}
+
 const disabled = process.env["YUKIOSHI_DISABLE_SHARE"] === "true" || process.env["YUKIOSHI_DISABLE_SHARE"] === "1"
 
 export type Api = {
@@ -207,7 +212,16 @@ const layer = Layer.effect(
       const headers: Record<string, string> = {}
       const active = yield* account.active()
       if (Option.isNone(active) || !active.value.active_org_id) {
-        const baseUrl = (yield* cfg.get()).enterprise?.url ?? "https://opncd.ai"
+        // There is no YukiOshi share service. Never fall back to a third party's (opencode's opncd.ai):
+        // sharing uploads whole sessions, code and tool output included.
+        const baseUrl = (yield* cfg.get()).enterprise?.url
+        if (!baseUrl) {
+          return yield* Effect.die(
+            new ShareUnavailableError(
+              'Sharing is not available: no share server is configured. Set "enterprise": { "url": "…" } in yukioshi.json to use your own.',
+            ),
+          )
+        }
         return { headers, api: legacyApi, baseUrl } satisfies Req
       }
 

@@ -306,8 +306,6 @@ Options:
 exports[`yukioshi CLI help-text snapshots every documented command emits stable help text: yukioshi github --help 1`] = `
 "yukioshi github
 
-manage GitHub agent
-
 Commands:
   yukioshi github install  install the GitHub agent
   yukioshi github run      run the GitHub agent
