@@ -1,6 +1,8 @@
 import { Effect, Schema } from "effect"
 import { InstanceState } from "@/effect/instance-state"
 import { Memory } from "../memory"
+import { MemoryStore } from "../memory/store"
+import { Config } from "@/config/config"
 import * as Tool from "./tool"
 
 const DESCRIPTION =
@@ -10,8 +12,8 @@ export const Parameters = Schema.Struct({
   action: Schema.Literals(["remember", "correct", "forget"]).annotate({
     description: "Memory write action to perform",
   }),
-  text: Schema.optional(Schema.String.check(Schema.isMaxLength(4_000))).annotate({
-    description: "Memory text to save for remember/correct. Keep it concise and durable.",
+  text: Schema.optional(Schema.String.check(Schema.isMaxLength(MemoryStore.ENTRY_MAX))).annotate({
+    description: `Memory text to save for remember/correct: a sentence or two, at most ${MemoryStore.ENTRY_MAX} characters.`,
   }),
   query: Schema.optional(Schema.String.check(Schema.isMaxLength(2_000))).annotate({
     description: "Key or substring to match for forget",
@@ -25,6 +27,7 @@ export const MemorySaveTool = Tool.define(
   "memory_save",
   Effect.gen(function* () {
     const memory = yield* Memory.Service
+    const config = yield* Config.Service
 
     return {
       description: DESCRIPTION,
@@ -71,10 +74,25 @@ export const MemorySaveTool = Tool.define(
             always: [],
             metadata: { action: params.action, ...(params.key ? { key: params.key } : {}), text },
           })
+          const maxChars = (yield* config.get()).memory?.max_chars
           const result =
             params.action === "correct"
-              ? yield* memory.correct({ root, text, key: params.key })
-              : yield* memory.remember({ root, text, key: params.key })
+              ? yield* memory.correct({ root, text, key: params.key, maxChars })
+              : yield* memory.remember({ root, text, key: params.key, maxChars })
+          if (result.full) {
+            // Memory is shown in every request, so it stays within its limit: the agent consolidates first.
+            const { bySource } = yield* memory.catalog({ root })
+            const entries = Object.values(bySource).flatMap((list) => list ?? [])
+            return {
+              title: "Memory full",
+              output: [
+                `Not saved: memory holds ${result.full.used} of ${result.full.max} characters and this entry does not fit.`,
+                "Make room first: forget entries that are no longer true, or save a shorter entry under an existing key to merge several into one. Current entries:",
+                ...entries.map((entry) => `- ${entry.key} :: ${entry.text}`),
+              ].join("\n"),
+              metadata: { sources: [] as string[] },
+            }
+          }
           const source = params.action === "correct" ? "corrections.md" : "project.md"
           return {
             title: result.changed

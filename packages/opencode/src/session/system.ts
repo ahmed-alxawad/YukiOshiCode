@@ -24,6 +24,8 @@ import { LocationServiceMap, locationServiceMapLayer } from "@yukioshi/core/loca
 import { Reference } from "@yukioshi/core/reference"
 import { MCP } from "@/mcp"
 import { PermissionV1 } from "@yukioshi/core/v1/permission"
+import { Memory } from "@/memory"
+import { Config } from "@/config/config"
 
 export function provider(model: Provider.Model) {
   if (model.api.id.includes("muse")) {
@@ -54,6 +56,8 @@ export interface Interface {
   readonly environment: (model: Provider.Model) => Effect.Effect<string[]>
   readonly skills: (agent: Agent.Info) => Effect.Effect<string | undefined>
   readonly mcp: (agent: Agent.Info, permission?: PermissionV1.Ruleset) => Effect.Effect<string | undefined>
+  /** The project's saved memory (memory.enabled), kept small by memory.max_chars. */
+  readonly memory: () => Effect.Effect<string | undefined>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@yukioshi/SystemPrompt") {}
@@ -64,6 +68,8 @@ const layer = Layer.effect(
     const skill = yield* Skill.Service
     const mcp = yield* MCP.Service
     const locations = yield* LocationServiceMap.Service
+    const memoryStore = yield* Memory.Service
+    const config = yield* Config.Service
 
     return Service.of({
       environment: Effect.fn("SystemPrompt.environment")(function* (model: Provider.Model) {
@@ -118,6 +124,13 @@ const layer = Layer.effect(
         ].join("\n")
       }),
 
+      memory: Effect.fn("SystemPrompt.memory")(function* () {
+        const cfg = (yield* config.get()).memory
+        if (cfg?.enabled !== true) return
+        const root = yield* memoryStore.root(yield* InstanceState.context)
+        return yield* memoryStore.prompt({ root, maxChars: cfg.max_chars })
+      }),
+
       mcp: Effect.fn("SystemPrompt.mcp")(function* (agent: Agent.Info, permission?: PermissionV1.Ruleset) {
         const ruleset = Permission.merge(agent.permission, permission ?? [])
         const instructions = (yield* mcp.instructions()).filter(
@@ -148,7 +161,7 @@ const locationServiceMapNode = LayerNode.make({
 export const node = LayerNode.make({
   service: Service,
   layer: layer,
-  deps: [Skill.node, MCP.node, locationServiceMapNode],
+  deps: [Skill.node, MCP.node, locationServiceMapNode, Memory.node, Config.node],
 })
 
 export * as SystemPrompt from "./system"

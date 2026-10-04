@@ -87,7 +87,7 @@ Keep API keys out of checked-in config files: use `{env:…}` or
 | `sandbox`              | OS sandbox for shell commands and file edits                        | [Permissions and safety](permissions-and-safety.md) |
 | `hooks`                | your commands at fixed points in the agent's work                   | [Hooks](hooks.md)                           |
 | `skills`               | extra skill folders (`paths`), skill indexes (`urls`), and skills YukiOshi writes itself (`learn`, off by default) | [Skills](skills.md)                         |
-| `memory`, `indexing`, `code_graph` | optional features                                       | [Features](features.md)                     |
+| `memory`, `indexing`, `code_graph` | optional features (`memory.max_chars` caps memory, default 4000) | [Features](features.md)                     |
 | `mcp`                  | MCP servers (`local` command or `remote` URL)                       |                                             |
 | `agent`                | custom agents and per-agent models, prompts, and permissions        |                                             |
 | `instructions`         | extra instruction files                                             |                                             |

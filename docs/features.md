@@ -104,11 +104,18 @@ all with one `YUKIOSHI_VERIFY_COMMAND`. `YUKIOSHI_SKIP_VERIFY=1` or
 { "memory": { "enabled": true } }
 ```
 
-Adds two tools: `memory_save` to keep durable facts about a project (how to run
-it, environment notes, corrections you gave), and `memory_recall` to look them
-up in later sessions. Memory is plain Markdown in YukiOshi's data folder, one
-set per repository, so you can read and edit it. Recalling is low-risk;
-saving counts as a change, so `auto` mode asks first.
+Off by default. Adds two tools: `memory_save` to keep durable facts about a
+project (how to run it, environment notes, corrections you gave), and
+`memory_recall` to look them up. Saved memory is also shown to the agent at the
+start of every request, corrections first, so it follows them without having to
+look them up. Memory is plain Markdown in YukiOshi's data folder, one set per
+repository, so you can read and edit it. Recalling is low-risk; saving counts as
+a change, so `auto` mode asks first.
+
+Because memory goes into every request, it is kept small: at most
+`memory.max_chars` characters across all entries (default 4000), and 500 per
+entry. When it is full, a save is refused and the agent sees the current entries
+so it can forget stale ones or merge several into one before saving more.
 
 ## Semantic code search
 

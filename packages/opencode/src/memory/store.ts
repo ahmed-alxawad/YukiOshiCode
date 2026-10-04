@@ -10,6 +10,25 @@ import { MemorySchema } from "./schema"
 import { MemorySlug } from "./slug"
 
 export namespace MemoryStore {
+  /** Default size limit for one project's memory, across all entries. */
+  export const DEFAULT_MAX_CHARS = 4000
+  /** Longest single entry: a memory is a sentence or two, not a document. */
+  export const ENTRY_MAX = 500
+
+  export type Saved = { key: string; changed: boolean; full?: { used: number; max: number } }
+
+  function entrySize(entry: { key: string; text: string }) {
+    return entry.key.length + entry.text.length
+  }
+
+  /** Characters used by all memory entries of a project. */
+  export async function used(root: string) {
+    let total = 0
+    for (const name of MemorySchema.Sources)
+      for (const entry of MemoryMarkdown.parse(await readSource(root, name))) total += entrySize(entry)
+    return total
+  }
+
   export type SearchHit = { source: MemorySchema.Source; section: string; key: string; text: string; score: number }
 
   const queues = new Map<string, Promise<unknown>>()
@@ -53,7 +72,8 @@ export namespace MemoryStore {
     file: MemorySchema.Source
     text: string
     key?: string
-  }): Promise<{ key: string; changed: boolean }> {
+    maxChars?: number
+  }): Promise<Saved> {
     return queue(input.root, async () => {
       await ensureDir(input.root)
       const file = MemoryPaths.source(input.root, input.file)
@@ -65,7 +85,14 @@ export namespace MemoryStore {
         section: defaultSection(input.file),
         line: MemoryMarkdown.line(key, input.text),
       })
-      if (changed) await fs.writeFile(file, text)
+      if (!changed) return { key, changed }
+      // The size limit counts what memory would hold after this save (a replaced entry no longer counts).
+      const max = input.maxChars ?? DEFAULT_MAX_CHARS
+      const before = MemoryMarkdown.parse(current).reduce((sum, entry) => sum + entrySize(entry), 0)
+      const after = MemoryMarkdown.parse(text).reduce((sum, entry) => sum + entrySize(entry), 0)
+      const total = (await used(input.root)) - before + after
+      if (total > max && after > before) return { key, changed: false, full: { used: total - after + before, max } }
+      await fs.writeFile(file, text)
       return { key, changed }
     })
   }
