@@ -2,8 +2,9 @@
 
 ## Modes
 
-Press `tab` in the terminal UI to switch modes, or start in one with
-`--agent <mode>` (for example `yukioshi run --agent research "…"`).
+Press `tab` in the terminal UI to switch modes (or pick one with `/modes`), or
+start in one with `--agent <mode>` (for example
+`yukioshi run --agent research "…"`).
 
 | Mode          | For                                                                 | File tools |
 | ------------- | ------------------------------------------------------------------- | ---------- |

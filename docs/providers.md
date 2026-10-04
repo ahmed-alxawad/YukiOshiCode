@@ -48,6 +48,11 @@ remembered for next time. To set one up front, put `"model": "provider/model"`
 in `yukioshi.json`, or pass `--model provider/model` to `yukioshi` or
 `yukioshi run`.
 
+`/models` lists only models that can use tools. Image, video, speech, and
+embedding models cannot do an agent's work, so they are left out. If a
+configured model no longer exists (for example after a provider was
+removed), YukiOshi says "Model not found" and suggests close matches.
+
 ## Google
 
 **Google Gemini (free and paid).** Choose **Sign in with Google AI Studio**.

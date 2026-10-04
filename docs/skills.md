@@ -6,7 +6,9 @@ needs it. Each skill has a `SKILL.md` file: YAML front matter with a `name` and
 the same format Claude Code and Claude plugins use.
 
 The agent sees every skill's name and description and loads the full
-instructions with the `skill` tool when one fits. Every skill is also a slash
+instructions with the `skill` tool when one fits. That list goes into every
+request, so descriptions longer than 300 characters are shortened in it (the
+full text is used when the skill loads); put the trigger words first. Every skill is also a slash
 command in the terminal UI:
 
 ```

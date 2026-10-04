@@ -93,6 +93,7 @@ Keep API keys out of checked-in config files: use `{env:…}` or
 | `instructions`         | extra instruction files                                             |                                             |
 | `lsp`, `formatter`     | language servers and formatters                                     |                                             |
 | `compaction`           | how long conversations are summarised to stay within context        |                                             |
+| `share`, `enterprise.url` | session sharing (`manual`, `auto`, `disabled`) and the share server it needs | [Features](features.md) |
 | `autoupdate`           | update behaviour                                                    | [Installation](installation.md)             |
 
 In a repository you have not trusted, `hooks`, `plugin`, local MCP servers, and

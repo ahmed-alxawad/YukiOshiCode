@@ -38,10 +38,28 @@ interface), and `--verify` (turn on post-turn verification).
 | `--thinking`               | show the model's reasoning                                  |
 | `--variant`                | provider-specific reasoning effort, such as `high` or `minimal` |
 | `--command`                | run a slash command; the message becomes its arguments      |
-| `--title`                  | name the session                                            |
+| `--title`                  | name the session (by default a one-shot run is named after its message) |
+| `--share`                  | share the session; needs your own share server (see [Features](features.md)) |
 | `--attach <url>`           | send the message to a running `yukioshi serve`              |
 | `--dir`                    | folder to run in                                            |
 | `--verify`, `--skip-verify` | turn post-turn verification on or off                      |
+
+The exit code is 0 when the turn finishes and 1 when it cannot start or fails
+(no model chosen, an unknown model or `--agent`, a provider error).
+
+#### Piping input
+
+Text piped into `run` becomes the message, or is added to it:
+
+```bash
+git diff | yukioshi run "review this change"
+cat error.log | yukioshi run
+```
+
+When you give a message and nothing arrives on stdin within 3 seconds,
+`run` continues without stdin and says so. This keeps scripts and other
+programs that start YukiOshi with an open, unused pipe from waiting forever.
+Run with `< /dev/null` to skip the wait.
 
 ## Sessions and data
 
