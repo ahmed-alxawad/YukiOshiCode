@@ -1,4 +1,5 @@
 import { cmd } from "@/cli/cmd/cmd"
+import { readPipedInput } from "../stdin"
 import { Rpc } from "@/util/rpc"
 import { type rpc } from "../tui/worker"
 import path from "path"
@@ -57,7 +58,7 @@ async function target() {
 }
 
 async function input(value?: string) {
-  const piped = process.stdin.isTTY ? undefined : await Bun.stdin.text()
+  const piped = await readPipedInput(Boolean(value))
   if (!value) return piped
   if (!piped) return value
   return piped + "\n" + value

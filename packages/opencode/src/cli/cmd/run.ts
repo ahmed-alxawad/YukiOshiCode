@@ -26,6 +26,7 @@ import { Filesystem } from "@/util/filesystem"
 import { createOpencodeClient, type OpencodeClient, type ToolPart } from "@yukioshi/sdk/v2"
 import { FormatError, FormatUnknownError } from "../error"
 import { INTERACTIVE_INPUT_ERROR, resolveInteractiveStdin } from "./run/runtime.stdin"
+import { readPipedInput } from "../stdin"
 import { executePostTurnVerification } from "./run/verification"
 
 type ModelInput = Parameters<OpencodeClient["session"]["prompt"]>[0]["model"]
@@ -302,9 +303,13 @@ export const RunCommand = effectCmd({
         throw error
       }
 
-      let message = [...args.message, ...(args["--"] || [])]
-        .map((arg) => (arg.includes(" ") ? `"${arg.replace(/"/g, '\\"')}"` : arg))
-        .join(" ")
+      const words = [...args.message, ...(args["--"] || [])]
+      // One argument (the usual `yukioshi run "fix the login bug"`) is the message exactly as typed;
+      // with several, arguments containing spaces are quoted so their grouping survives the join.
+      let message =
+        words.length === 1
+          ? words[0]!
+          : words.map((arg) => (arg.includes(" ") ? `"${arg.replace(/"/g, '\\"')}"` : arg)).join(" ")
 
       if (interactive && args.command) {
         die("--mini cannot be used with --command")
@@ -430,7 +435,7 @@ export const RunCommand = effectCmd({
         }
       }
 
-      const piped = process.stdin.isTTY ? undefined : await Bun.stdin.text()
+      const piped = await readPipedInput(message.trim().length > 0 || Boolean(args.command))
       message = resolveRunInput(message, piped) ?? ""
       const initialInput = resolveRunInput(rawMessage, piped)
 
@@ -465,8 +470,10 @@ export const RunCommand = effectCmd({
           ]
 
       function title() {
-        if (args.title === undefined) return
-        if (args.title !== "") return args.title
+        if (args.title) return args.title
+        // A one-shot run is named after its prompt instead of spending an extra model call on a title.
+        if (args.title === undefined && interactive) return
+        if (!message.trim()) return
         return message.slice(0, 50) + (message.length > 50 ? "..." : "")
       }
 
@@ -553,12 +560,8 @@ export const RunCommand = effectCmd({
         const cfg = await sdk.config.get()
         if (!cfg.data) return
         if (cfg.data.share !== "auto" && !flags.autoShare && !args.share) return
-        const res = await sdk.session.share({ sessionID }).catch((error) => {
-          if (error instanceof Error && error.message.includes("disabled")) {
-            UI.println(UI.Style.TEXT_DANGER_BOLD + "!  " + error.message)
-          }
-          return { error }
-        })
+        const res = await sdk.session.share({ sessionID }).catch((error) => ({ error }))
+        if (res.error) UI.println(UI.Style.TEXT_DANGER_BOLD + "!  " + formatRunError(res.error))
         if (!res.error && "data" in res && res.data?.share?.url) {
           UI.println(UI.Style.TEXT_INFO_BOLD + "~  " + res.data.share.url)
         }
