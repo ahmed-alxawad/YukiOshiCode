@@ -17,6 +17,7 @@ import { ConfigCodeGraphV1 } from "./code-graph"
 import { ConfigMemoryV1 } from "./memory"
 import { ConfigGoalV1 } from "./goal"
 import { ConfigFallbackV1 } from "./fallback"
+import { ConfigToolLimitsV1 } from "./tool-limits"
 import { ConfigPermissionV1 } from "./permission"
 import { ConfigPluginV1 } from "./plugin"
 import { ConfigProviderV1 } from "./provider"
@@ -54,6 +55,9 @@ export const Info = Schema.Struct({
   }),
   fallback: Schema.optional(ConfigFallbackV1.Info).annotate({
     description: "Switch to backup models and rotate API keys when a provider fails (off by default)",
+  }),
+  tool_limits: Schema.optional(ConfigToolLimitsV1.Info).annotate({
+    description: "A note when the model repeats an identical tool call, and optional time limits per tool",
   }),
   goal: Schema.optional(ConfigGoalV1.Info).annotate({
     description: "Standing goals (/goal) that YukiOshi keeps working on across turns until they are met",

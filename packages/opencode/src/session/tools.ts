@@ -21,6 +21,7 @@ import { MessageV2 } from "./message-v2"
 import { Session } from "./session"
 import { SessionProcessor } from "./processor"
 import { PartID } from "./schema"
+import { ToolLimits } from "./tool-limits"
 import { EffectBridge } from "@/effect/bridge"
 import { ProviderV2 } from "@yukioshi/core/provider"
 import { ModelV2 } from "@yukioshi/core/model"
@@ -94,6 +95,25 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
         .pipe(Effect.orDie),
   })
 
+  // tool_limits: an optional time limit per tool, and a note on results the model keeps asking for again.
+  const limits = (yield* config.get()).tool_limits
+  const withTimeout = <A, E, R>(tool: string, effect: Effect.Effect<A, E, R>) => {
+    const ms = ToolLimits.timeoutFor(limits, tool)
+    if (ms === undefined) return effect
+    return effect.pipe(
+      Effect.timeoutOrElse({
+        duration: ms,
+        orElse: () => Effect.die(new Error(ToolLimits.timeoutMessage(tool, ms))),
+      }),
+    )
+  }
+  const withRepeatNote = <T extends { output: string }>(tool: string, args: unknown, result: T): T => {
+    if (limits?.repeat_nudge === false) return result
+    const calls = ToolLimits.priorRepeats(input.messages, tool, args, result.output) + 1
+    const note = ToolLimits.nudge(tool, calls)
+    return note ? { ...result, output: result.output + note } : result
+  }
+
   for (const item of yield* registry.tools({
     modelID: ModelV2.ID.make(input.model.api.id),
     providerID: input.model.providerID,
@@ -136,7 +156,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
               }
               return output
             }
-            const result = yield* item.execute(args, ctx)
+            const result = yield* withTimeout(item.id, item.execute(args, ctx))
             const output = {
               ...result,
               attachments: result.attachments?.map((attachment) => ({
@@ -160,9 +180,13 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
               toolName: item.id,
               signal: ctx.abort,
             })
-            const finalOutput = post.blocked
-              ? { ...output, output: `${output.output}\n\n[PostToolUse hook feedback]: ${post.blocked}` }
-              : output
+            const finalOutput = withRepeatNote(
+              item.id,
+              args,
+              post.blocked
+                ? { ...output, output: `${output.output}\n\n[PostToolUse hook feedback]: ${post.blocked}` }
+                : output,
+            )
             yield* plugin.trigger(
               "tool.execute.after",
               { tool: item.id, sessionID: ctx.sessionID, callID: ctx.callID, args },
@@ -451,7 +475,10 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
           )
           const result: Awaited<ReturnType<NonNullable<typeof execute>>> = yield* Effect.gen(function* () {
             yield* ctx.ask({ permission: key, metadata: {}, patterns: ["*"], always: ["*"] })
-            return yield* Effect.promise(() => execute(args, opts))
+            return yield* withTimeout(
+              key,
+              Effect.promise(() => execute(args, opts)),
+            )
           }).pipe(
             Effect.withSpan("Tool.execute", {
               attributes: {
@@ -516,7 +543,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
           const output = {
             title: "",
             metadata,
-            output: truncated.content,
+            output: withRepeatNote(key, args, { output: truncated.content }).output,
             attachments: attachments.map((attachment) => ({
               ...attachment,
               id: PartID.ascending(),

@@ -95,6 +95,7 @@ Keep API keys out of checked-in config files: use `{env:…}` or
 | `compaction`           | how long conversations are summarised to stay within context        |                                             |
 | `goal`                 | `/goal`: `enabled` and `max_rounds` (default 20)                    | [Features](features.md)                     |
 | `fallback`             | backup `models` and API-key rotation when a provider fails (off by default) | [Providers](providers.md#fallback-models-and-key-rotation) |
+| `tool_limits`          | repeated-call note (`repeat_nudge`) and per-tool time limits (`timeout`) | [Tool limits](#tool-limits)                 |
 | `share`, `enterprise.url` | session sharing (`manual`, `auto`, `disabled`) and the share server it needs | [Features](features.md) |
 | `autoupdate`           | update behaviour                                                    | [Installation](installation.md)             |
 
@@ -102,6 +103,31 @@ In a repository you have not trusted, `hooks`, `plugin`, local MCP servers, and
 `lsp` and `formatter` entries with their own command are ignored until you run
 `yukioshi trust .`. See
 [Permissions and safety](permissions-and-safety.md#repository-trust).
+
+## Tool limits
+
+When the model calls the same tool with the same input three times in one turn
+and gets the same result each time, YukiOshi adds a note to that result telling
+it to use what it already has or change approach. From the fifth time the note
+is firmer. A call whose result changed (tests re-run after an edit) never
+counts. Turn the note off with `"repeat_nudge": false`.
+
+Tools have no time limit of their own by default. `timeout` (milliseconds)
+stops a tool call that runs too long; the model is told it was stopped and the
+turn continues:
+
+```json
+{
+  "tool_limits": {
+    "timeout": { "*": 120000, "webfetch": 30000, "my-mcp-server_query": 60000 }
+  }
+}
+```
+
+MCP tools are named `<server>_<tool>`. A single number applies to every tool. `"*"` covers every tool not named, except
+`bash` (it has its own `timeout`), `task`, `task_parallel`, `question`, and
+`plan_exit`, which wait on a command, a subagent, or you; name one of them to
+limit it anyway. `0` turns a limit off.
 
 ## Environment variables
 
