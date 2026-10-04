@@ -1,5 +1,3 @@
-import path from "path"
-
 // Ensure local addresses bypass any proxy set in the environment (e.g. http_proxy on
 // corporate networks), so requests to test-local servers (127.0.0.1, or 0.0.0.0 when a test server
 // listens on all interfaces) never go to a proxy.
@@ -7,8 +5,3 @@ const LOCAL_BYPASS = "127.0.0.1,localhost,::1,0.0.0.0"
 for (const key of ["NO_PROXY", "no_proxy"]) {
   process.env[key] = process.env[key] ? `${process.env[key]},${LOCAL_BYPASS}` : LOCAL_BYPASS
 }
-
-process.env.YUKIOSHI_DB = ":memory:"
-process.env.NPM_CONFIG_AUDIT = "false"
-process.env.YUKIOSHI_MODELS_PATH = path.join(import.meta.dir, "plugin", "fixtures", "models-dev.json")
-process.env.YUKIOSHI_DISABLE_MODELS_FETCH = "true"
