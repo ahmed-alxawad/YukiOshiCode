@@ -1,16 +1,6 @@
 import { describe, expect } from "bun:test"
-import fs from "node:fs"
-import os from "node:os"
-import path from "node:path"
 import { Effect } from "effect"
 import { cliIt } from "../lib/cli-process"
-
-// Ensure any temporary directory created during test execution falls under ~/.cache
-const cacheTmp = path.join(os.homedir(), ".cache", "tmp")
-fs.mkdirSync(cacheTmp, { recursive: true })
-if (!process.env.TMPDIR) {
-  process.env.TMPDIR = cacheTmp
-}
 
 describe("CLI options and commands", () => {
   cliIt.concurrent(
@@ -22,6 +12,17 @@ describe("CLI options and commands", () => {
         expect(result.stderr).toContain(
           'Agent not found: "nonexistent-agent". Available: build, plan, goal, reasoning, research, auto',
         )
+      }),
+    60_000,
+  )
+
+  cliIt.concurrent(
+    "yukioshi run --agent with a subagent exits 1 instead of running in another mode",
+    ({ opencode }) =>
+      Effect.gen(function* () {
+        const result = yield* opencode.spawn(["run", "--agent", "explore", "hi"])
+        opencode.expectExit(result, 1, "run --agent explore")
+        expect(result.stderr).toContain('Only other agents can start this subagent: "explore".')
       }),
     60_000,
   )
