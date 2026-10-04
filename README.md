@@ -71,6 +71,7 @@ yukioshi run --mode auto "fix the failing test in test/api.test.ts"
 yukioshi run --format json "list the TODO comments" > events.jsonl
 yukioshi run -c "now add a test for it"   # continue the last session
 ```
+`--mode` sets the permission mode; to let YukiOshi pick the working mode for each message, use `--agent auto`.
 
 ## What it does
 

@@ -29,7 +29,7 @@ interface), and `--verify` (turn on post-turn verification).
 | -------------------------- | ----------------------------------------------------------- |
 | `-m, --model`              | model as `provider/model`                                   |
 | `--agent`                  | mode or agent: `build`, `plan`, `goal`, `reasoning`, `research`, `auto`, or a custom agent |
-| `--mode`                   | `manual`, `auto`, `auto-all`, or `plan`                     |
+| `--mode`                   | permission mode: `manual`, `auto`, `auto-all`, or `plan` (what it may do without asking; not the same as `--agent auto`) |
 | `-c, --continue`           | continue the last session                                   |
 | `-s, --session`            | continue a session by id                                    |
 | `--fork`                   | fork the session before continuing                          |
