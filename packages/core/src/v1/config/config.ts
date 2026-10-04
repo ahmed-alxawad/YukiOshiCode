@@ -15,6 +15,7 @@ import { ConfigHooksV1 } from "./hooks"
 import { ConfigIndexingV1 } from "./indexing"
 import { ConfigCodeGraphV1 } from "./code-graph"
 import { ConfigMemoryV1 } from "./memory"
+import { ConfigGoalV1 } from "./goal"
 import { ConfigPermissionV1 } from "./permission"
 import { ConfigPluginV1 } from "./plugin"
 import { ConfigProviderV1 } from "./provider"
@@ -49,6 +50,9 @@ export const Info = Schema.Struct({
   skills: Schema.optional(ConfigSkillsV1.Info).annotate({ description: "Additional skill folder paths" }),
   sandbox: Schema.optional(ConfigSandboxV1.Info).annotate({
     description: "OS-level sandbox for bash tool execution",
+  }),
+  goal: Schema.optional(ConfigGoalV1.Info).annotate({
+    description: "Standing goals (/goal) that YukiOshi keeps working on across turns until they are met",
   }),
   memory: Schema.optional(ConfigMemoryV1.Info).annotate({
     description: "Explicit cross-session project memory (memory_recall/memory_save tools)",

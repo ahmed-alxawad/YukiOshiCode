@@ -15,6 +15,7 @@ import PROMPT_EXPLORE from "./prompt/explore.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
 import PROMPT_MODE_ROUTER from "./prompt/mode-router.txt"
+import PROMPT_GOAL_JUDGE from "./prompt/goal-judge.txt"
 import * as Mode from "./mode"
 import { Permission } from "@/permission"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
@@ -262,6 +263,22 @@ const layer = Layer.effect(
             ),
             mode: "primary",
             native: true,
+          },
+          "goal-judge": {
+            name: "goal-judge",
+            mode: "primary",
+            options: {},
+            native: true,
+            hidden: true,
+            temperature: 0,
+            permission: Permission.merge(
+              defaults,
+              Permission.fromConfig({
+                "*": "deny",
+              }),
+              user,
+            ),
+            prompt: PROMPT_GOAL_JUDGE,
           },
           "mode-router": {
             name: "mode-router",

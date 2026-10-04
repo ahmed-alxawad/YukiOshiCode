@@ -34,6 +34,7 @@ import { SessionCompaction } from "../../src/session/compaction"
 import { SessionSummary } from "../../src/session/summary"
 import { Instruction } from "../../src/session/instruction"
 import { SessionProcessor } from "../../src/session/processor"
+import { SessionGoal } from "../../src/session/goal"
 import { SessionPrompt } from "../../src/session/prompt"
 import { SessionRevert } from "../../src/session/revert"
 import { SessionRunState } from "../../src/session/run-state"
@@ -888,6 +889,57 @@ it.instance("auto mode routes each message to the mode the router picks", () =>
     // The message keeps "auto", so the next message is routed again.
     const user = (yield* sessions.messages({ sessionID: session.id })).find((msg) => msg.info.role === "user")
     expect(user?.info.role === "user" && user.info.agent).toBe("auto")
+  }),
+)
+
+it.instance("/goal keeps working until the judge says the goal is met", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const session = yield* sessions.create({
+      title: "Goal",
+      permission: [{ permission: "*", pattern: "*", action: "allow" }],
+    })
+
+    // Turn 1, judge says continue, turn 2, judge says done.
+    yield* llm.text("worked on it")
+    yield* llm.text("CONTINUE: tests have not been run")
+    yield* llm.text("ran the tests, all pass")
+    yield* llm.text("DONE: tests pass")
+
+    yield* prompt.command({ sessionID: session.id, command: "goal", arguments: "make the tests pass" })
+
+    const hits = yield* llm.hits
+    expect(hits).toHaveLength(4)
+    expect(JSON.stringify(hits[2]?.body)).toContain("Continue working toward the goal (round 1 of 20)")
+    expect(JSON.stringify(hits[2]?.body)).toContain("tests have not been run")
+    const goal = yield* Effect.promise(() => SessionGoal.get(session.id))
+    expect(goal).toMatchObject({ status: "done", rounds: 1, note: "tests pass" })
+  }),
+)
+
+it.instance("/goal pauses when the judge says the assistant needs the user", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig(providerCfg)
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const session = yield* sessions.create({
+      title: "Goal blocked",
+      permission: [{ permission: "*", pattern: "*", action: "allow" }],
+    })
+    yield* llm.text("I need the database password to continue")
+    yield* llm.text("BLOCKED: needs the database password")
+
+    yield* prompt.command({ sessionID: session.id, command: "goal", arguments: "migrate the database" })
+
+    expect(yield* llm.hits).toHaveLength(2)
+    const goal = yield* Effect.promise(() => SessionGoal.get(session.id))
+    expect(goal).toMatchObject({ status: "paused", rounds: 0, note: "needs the database password" })
+
+    const status = yield* prompt.command({ sessionID: session.id, command: "goal", arguments: "status" })
+    expect(status.parts.some((part) => part.type === "text" && part.text.includes("Why: needs the database password"))).toBe(true)
+    expect(yield* llm.hits).toHaveLength(2)
   }),
 )
 

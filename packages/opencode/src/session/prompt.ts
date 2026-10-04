@@ -9,6 +9,7 @@ import { SessionRevert } from "./revert"
 import { Session } from "./session"
 import { Agent } from "../agent/agent"
 import * as Mode from "../agent/mode"
+import { SessionGoal } from "./goal"
 import { Provider } from "@/provider/provider"
 
 import { type Tool as AITool, tool, jsonSchema } from "ai"
@@ -1483,10 +1484,231 @@ const layer = Layer.effect(
       },
     )
 
+    // ---- Standing goals (/goal) ------------------------------------------------------------------------
+
+    const pauseGoal = (sessionID: SessionID, note: string) =>
+      Effect.promise(async () => {
+        const goal = await SessionGoal.get(sessionID)
+        if (goal?.status === "active") await SessionGoal.update(sessionID, { status: "paused", note })
+      })
+
+    // Asks a small model whether the goal is met, from the goal and the end of the latest turn.
+    const judgeGoal = Effect.fn("SessionPrompt.judgeGoal")(function* (input: {
+      sessionID: SessionID
+      goal: SessionGoal.Goal
+      user: SessionV1.User
+    }) {
+      const msgs = yield* MessageV2.filterCompactedEffect(input.sessionID).pipe(
+        Effect.provideService(Database.Service, database),
+      )
+      const turn = msgs.filter((msg) => msg.info.role === "assistant" && msg.info.parentID === input.user.id)
+      const reply = turn
+        .flatMap((msg) => msg.parts.flatMap((part) => (part.type === "text" && !part.synthetic ? [part.text] : [])))
+        .join("\n")
+        .trim()
+      const tools = turn
+        .flatMap((msg) =>
+          msg.parts.flatMap((part) => (part.type === "tool" ? [`- ${part.tool}: ${part.state.status}`] : [])),
+        )
+        .slice(-40)
+        .join("\n")
+
+      const judge = yield* agents.get("goal-judge")
+      if (!judge) return { verdict: "blocked", reason: "The goal check is not available." } as SessionGoal.Verdict
+      const model =
+        (yield* provider.getSmallModel(input.user.model.providerID)) ??
+        (yield* provider
+          .getModel(input.user.model.providerID, input.user.model.modelID)
+          .pipe(Effect.catch(() => Effect.succeed(undefined))))
+      if (!model) return { verdict: "blocked", reason: "No model is available to check the goal." } as SessionGoal.Verdict
+
+      const answer = yield* llm
+        .stream({
+          agent: judge,
+          user: input.user,
+          system: [],
+          small: true,
+          tools: {},
+          model,
+          sessionID: input.sessionID,
+          retries: 1,
+          messages: [{ role: "user", content: SessionGoal.judgeInput(input.goal, reply, tools) }],
+        })
+        .pipe(
+          Stream.filter(LLMEvent.is.textDelta),
+          Stream.map((event) => event.text),
+          Stream.mkString,
+          Effect.timeout("45 seconds"),
+          Effect.catchCause((cause) =>
+            Cause.hasInterrupts(cause)
+              ? Effect.interrupt
+              : Effect.logWarning("goal check failed", { error: Cause.squash(cause) }).pipe(Effect.as("")),
+          ),
+        )
+      return answer ? SessionGoal.parseVerdict(answer) : ({ verdict: "blocked", reason: "The goal check failed." } as const)
+    })
+
+    // Runs the loop, then keeps going while a goal is active and the judge says it is not met yet.
+    const runWithGoal = (sessionID: SessionID): Effect.Effect<SessionV1.WithParts> =>
+      Effect.gen(function* () {
+        let result = yield* runLoop(sessionID)
+        if ((yield* config.get()).goal?.enabled === false) return result
+        while (true) {
+          const goal = yield* Effect.promise(() => SessionGoal.get(sessionID))
+          if (!goal || goal.status !== "active") return result
+          const info = result.info
+          if (info.role !== "assistant") return result
+          if (info.error) {
+            yield* pauseGoal(sessionID, "The last turn ended with an error.")
+            return result
+          }
+          const refused = result.parts.some(
+            (part) => part.type === "tool" && part.state.status === "error" && /reject|denied/i.test(part.state.error),
+          )
+          if (refused) {
+            yield* pauseGoal(sessionID, "A permission was refused or denied.")
+            return result
+          }
+          if (goal.rounds >= goal.maxRounds) {
+            yield* pauseGoal(sessionID, `It used all ${goal.rounds} rounds (goal.max_rounds).`)
+            return result
+          }
+
+          const msgs = yield* MessageV2.filterCompactedEffect(sessionID).pipe(
+            Effect.provideService(Database.Service, database),
+          )
+          const user = MessageV2.latest(msgs).user
+          if (!user) return result
+          const verdict = yield* judgeGoal({ sessionID, goal, user })
+          if (verdict.verdict === "done") {
+            yield* Effect.promise(() => SessionGoal.update(sessionID, { status: "done", note: verdict.reason }))
+            return result
+          }
+          if (verdict.verdict === "blocked") {
+            yield* pauseGoal(sessionID, verdict.reason)
+            return result
+          }
+
+          yield* Effect.promise(() => SessionGoal.update(sessionID, { rounds: goal.rounds + 1, note: verdict.reason }))
+          yield* createUserMessage({
+            sessionID,
+            agent: user.agent,
+            model: user.model,
+            variant: user.model.variant,
+            parts: [{ type: "text", text: SessionGoal.continuation(goal, verdict.reason) }],
+          }).pipe(Effect.orDie)
+          result = yield* runLoop(sessionID)
+        }
+      }).pipe(Effect.onInterrupt(() => pauseGoal(sessionID, "You interrupted it.")))
+
+    // Writes "/goal …" and YukiOshi's reply into the session without a model call.
+    const goalReply = Effect.fn("SessionPrompt.goalReply")(function* (input: CommandInput, text: string) {
+      const ctx = yield* InstanceState.context
+      const model = input.model ? Provider.parseModel(input.model) : yield* currentModel(input.sessionID)
+      const agentName = input.agent ?? (yield* agents.defaultAgent())
+      const now = Date.now()
+      const user: SessionV1.User = {
+        id: MessageID.ascending(),
+        sessionID: input.sessionID,
+        time: { created: now },
+        role: "user",
+        agent: agentName,
+        model: { providerID: model.providerID, modelID: model.modelID },
+      }
+      yield* sessions.updateMessage(user)
+      yield* sessions.updatePart({
+        id: PartID.ascending(),
+        messageID: user.id,
+        sessionID: input.sessionID,
+        type: "text",
+        text: `/goal ${input.arguments}`.trim(),
+      })
+      const reply: SessionV1.Assistant = {
+        id: MessageID.ascending(),
+        sessionID: input.sessionID,
+        parentID: user.id,
+        mode: agentName,
+        agent: agentName,
+        cost: 0,
+        path: { cwd: ctx.directory, root: ctx.worktree },
+        time: { created: now, completed: now },
+        role: "assistant",
+        tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+        modelID: model.modelID,
+        providerID: model.providerID,
+        finish: "stop",
+      }
+      yield* sessions.updateMessage(reply)
+      const part = yield* sessions.updatePart({
+        id: PartID.ascending(),
+        messageID: reply.id,
+        sessionID: input.sessionID,
+        type: "text",
+        text,
+        time: { start: now, end: now },
+      })
+      // No model ran, so nothing else reports the session as idle; clients such as `run` wait for it.
+      yield* status.set(input.sessionID, { type: "idle" })
+      return { info: reply, parts: [part] } satisfies SessionV1.WithParts
+    })
+
+    const goalCommand = Effect.fn("SessionPrompt.goalCommand")(function* (input: CommandInput) {
+      const cfg = yield* config.get()
+      const sessionID = input.sessionID
+      const args = input.arguments.trim()
+      const sub = args.toLowerCase()
+      if (cfg.goal?.enabled === false)
+        return yield* goalReply(input, 'Goals are turned off ("goal": { "enabled": false } in yukioshi.json).')
+      const current = yield* Effect.promise(() => SessionGoal.get(sessionID))
+
+      if (!args || sub === "status") return yield* goalReply(input, SessionGoal.status(current))
+      if (sub === "clear") {
+        yield* Effect.promise(() => SessionGoal.clear(sessionID))
+        return yield* goalReply(input, current ? "Goal cleared." : "There was no goal to clear.")
+      }
+      if (sub === "pause") {
+        if (current?.status === "active")
+          yield* Effect.promise(() => SessionGoal.update(sessionID, { status: "paused", note: "You paused it." }))
+        return yield* goalReply(input, SessionGoal.status(yield* Effect.promise(() => SessionGoal.get(sessionID))))
+      }
+
+      const model = input.model ? Provider.parseModel(input.model) : undefined
+      const maxRounds = cfg.goal?.max_rounds ?? SessionGoal.DEFAULT_MAX_ROUNDS
+      if (sub === "resume") {
+        if (!current) return yield* goalReply(input, SessionGoal.status(undefined))
+        if (current.status === "done") return yield* goalReply(input, SessionGoal.status(current))
+        // A resumed goal gets a fresh allowance of rounds.
+        const goal = yield* Effect.promise(() =>
+          SessionGoal.set(sessionID, { ...current, status: "active", note: undefined, maxRounds: current.rounds + maxRounds }),
+        )
+        return yield* prompt({
+          sessionID,
+          agent: input.agent,
+          model,
+          variant: input.variant,
+          parts: [{ type: "text", text: SessionGoal.continuation(goal, "") }],
+        })
+      }
+
+      yield* Effect.promise(() => SessionGoal.set(sessionID, { objective: args, status: "active", rounds: 0, maxRounds }))
+      return yield* prompt({
+        sessionID,
+        agent: input.agent,
+        model,
+        variant: input.variant,
+        parts: [
+          {
+            type: "text",
+            text: `Goal: ${args}\n\nWork toward this goal until it is fully done and verified. Keep going step by step; ask me only if you are truly blocked.`,
+          },
+        ],
+      })
+    })
+
     const loop: (input: LoopInput) => Effect.Effect<SessionV1.WithParts> = Effect.fn("SessionPrompt.loop")(function* (
       input: LoopInput,
     ) {
-      return yield* state.ensureRunning(input.sessionID, lastAssistant(input.sessionID), runLoop(input.sessionID))
+      return yield* state.ensureRunning(input.sessionID, lastAssistant(input.sessionID), runWithGoal(input.sessionID))
     })
 
     const shell: (input: ShellInput) => Effect.Effect<SessionV1.WithParts, Session.BusyError> = Effect.fn(
@@ -1502,6 +1724,7 @@ const layer = Layer.effect(
         command: input.command,
         agent: input.agent,
       })
+      if (input.command === "goal") return yield* goalCommand(input)
       const cmd = yield* commands.get(input.command)
       if (!cmd) {
         const available = (yield* commands.list()).map((c) => c.name)

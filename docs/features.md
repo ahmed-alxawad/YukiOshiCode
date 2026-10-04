@@ -37,6 +37,32 @@ These modes decide *how* the agent works. Permission modes (`manual`, `auto`,
 separately decide *what it may do without asking*; any mode can be combined
 with any permission mode.
 
+## Goals
+
+`/goal <what you want done>` gives the session a standing objective. YukiOshi
+works on it, and after every turn a small model checks whether the goal is
+met. If it is not, YukiOshi continues on its own with a note of what is still
+missing, until the goal is done.
+
+```
+/goal make every test in packages/api pass and fix the lint errors
+```
+
+| Command          | Does                                              |
+| ---------------- | ------------------------------------------------- |
+| `/goal <text>`   | set the goal and start working on it             |
+| `/goal`          | show the goal, its status, and rounds used        |
+| `/goal pause`    | stop continuing after the current turn            |
+| `/goal resume`   | continue a paused goal (with a fresh round allowance) |
+| `/goal clear`    | remove the goal                                    |
+
+A goal pauses by itself when you interrupt, when a permission is refused, when
+a turn ends with an error, when the check says it needs you (a question, a
+decision, or missing access), or after `goal.max_rounds` continuation rounds
+(default 20). Each check is one small-model call. It also works from scripts:
+`yukioshi run --command goal "…"`. Turn it off with
+`"goal": { "enabled": false }`.
+
 ## Usage
 
 `/usage` (or `/cost`) shows the current session's model, context use, tokens,
