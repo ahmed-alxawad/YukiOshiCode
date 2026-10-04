@@ -1,11 +1,18 @@
 name: Installer smoke tests
 
 # Releases are published with GITHUB_TOKEN, whose events do not trigger other workflows, so the
-# release workflow starts this one with workflow_dispatch after publishing.
+# release workflow starts this one with workflow_dispatch after publishing. It also runs whenever the
+# install scripts change, because users run them straight from main: the scripts are tested from
+# this checkout against the latest published release.
 on:
   workflow_dispatch:
   release:
     types: [published]
+  push:
+    branches: [main]
+    paths: [install, install.ps1, .github/workflows/installers.yml]
+  pull_request:
+    paths: [install, install.ps1, .github/workflows/installers.yml]
 
 permissions:
   contents: read
@@ -18,9 +25,11 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
     steps:
+      - uses: actions/checkout@v4
+
       - name: Install YukiOshi Code
         shell: pwsh
-        run: irm https://raw.githubusercontent.com/${{ github.repository }}/main/install.ps1 | iex
+        run: ./install.ps1
 
       - name: Verify installed version and built-in skills
         shell: pwsh
@@ -50,7 +59,7 @@ jobs:
       - name: Reinstall and verify backup
         shell: pwsh
         run: |
-          irm https://raw.githubusercontent.com/${{ github.repository }}/main/install.ps1 | iex
+          ./install.ps1
           $backup = Join-Path $env:USERPROFILE '.yukioshi\bin\yukioshi.exe.old'
           if (-not (Test-Path -LiteralPath $backup -PathType Leaf)) {
             throw "Second install did not retain $backup"
@@ -69,6 +78,8 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
     steps:
+      - uses: actions/checkout@v4
+
       # Install the previous release first, so the second install is a real upgrade: the
       # installer skips a version that is already installed, and only an upgrade keeps a backup.
       - name: Install the previous release
@@ -76,11 +87,11 @@ jobs:
         run: |
           previous="$(gh release list --exclude-drafts --limit 2 --json tagName --jq '.[1].tagName')"
           echo "PREVIOUS_VERSION=${previous#v}" >> "$GITHUB_ENV"
-          curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install | bash -s -- --version "${previous#v}"
+          bash ./install --version "${previous#v}"
 
       - name: Upgrade to the latest release
         shell: bash
-        run: curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install | bash
+        run: bash ./install
 
       - name: Verify installed version, built-in skills, and backup
         shell: bash
