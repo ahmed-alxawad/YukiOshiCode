@@ -16,6 +16,7 @@ import { isOverflow } from "./overflow"
 import { PartID } from "./schema"
 import type { SessionID } from "./schema"
 import { SessionRetry } from "./retry"
+import { SessionFallback } from "./fallback"
 import { SessionStatus } from "./status"
 import { SessionSummary } from "./summary"
 import type { Provider } from "@/provider/provider"
@@ -635,7 +636,11 @@ const layer = Layer.effect(
           sessionID: ctx.assistantMessage.sessionID,
           error: ctx.assistantMessage.error,
         })
-        yield* status.set(ctx.sessionID, { type: "idle" })
+        // When a fallback model will take over (fallback.enabled), the turn is not over: the session
+        // runner reports idle once the loop really ends.
+        const cfg = yield* config.get()
+        if (!(cfg.fallback?.enabled === true && SessionFallback.eligible(error)))
+          yield* status.set(ctx.sessionID, { type: "idle" })
       })
 
       const process = Effect.fn("SessionProcessor.process")(function* (streamInput: LLM.StreamInput) {

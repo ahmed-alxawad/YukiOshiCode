@@ -115,7 +115,8 @@ literal key in a file you commit; use `{env:…}` or `yukioshi providers login`.
 YukiOshi is tuned for interactive use: it waits up to 15 seconds for a response
 to start and up to 30 seconds between streamed chunks, and retries a failing
 provider at most twice, waiting no more than 10 seconds between tries. If a
-provider is overloaded, switch to another model instead of waiting. Providers
+provider is overloaded, switch to another model instead of waiting, or let
+YukiOshi do it with [fallback models](#fallback-models-and-key-rotation). Providers
 that need longer can raise the limits (or set them to `false` to disable):
 
 ```json
@@ -125,6 +126,38 @@ that need longer can raise the limits (or set them to `false` to disable):
   }
 }
 ```
+
+### Fallback models and key rotation
+
+Off by default. When it is on and a provider fails after its normal retries
+(rate limit, quota, overload, server error, billing or sign-in failure), the
+turn carries on with the next model in `fallback.models`, and a provider with
+several keys moves to its next key:
+
+```json
+{
+  "fallback": {
+    "enabled": true,
+    "models": ["anthropic/claude-sonnet-5", "google/gemini-3.1-pro"]
+  },
+  "provider": {
+    "openai": {
+      "options": { "apiKeys": ["{env:OPENAI_KEY_1}", "{env:OPENAI_KEY_2}"] }
+    }
+  }
+}
+```
+
+- Each fallback model is tried once per turn, in order. The error from the
+  failed model still shows, followed by the reply from the one that took over.
+- A key that hits a rate limit, quota, or sign-in error rests for the
+  provider's `retry-after` time (a minute if it gives none), and the request is
+  sent again with the next key.
+- Problems another model would not fix never switch: stopping the turn, a
+  refused permission, a content filter, or a conversation too long for the
+  context.
+- `"rotate_keys": false` keeps fallback models but turns key rotation off.
+  Without `fallback.enabled`, only the first key in `apiKeys` is used.
 
 ## Sign-in providers
 

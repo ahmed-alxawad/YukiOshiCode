@@ -16,6 +16,7 @@ import { ConfigIndexingV1 } from "./indexing"
 import { ConfigCodeGraphV1 } from "./code-graph"
 import { ConfigMemoryV1 } from "./memory"
 import { ConfigGoalV1 } from "./goal"
+import { ConfigFallbackV1 } from "./fallback"
 import { ConfigPermissionV1 } from "./permission"
 import { ConfigPluginV1 } from "./plugin"
 import { ConfigProviderV1 } from "./provider"
@@ -50,6 +51,9 @@ export const Info = Schema.Struct({
   skills: Schema.optional(ConfigSkillsV1.Info).annotate({ description: "Additional skill folder paths" }),
   sandbox: Schema.optional(ConfigSandboxV1.Info).annotate({
     description: "OS-level sandbox for bash tool execution",
+  }),
+  fallback: Schema.optional(ConfigFallbackV1.Info).annotate({
+    description: "Switch to backup models and rotate API keys when a provider fails (off by default)",
   }),
   goal: Schema.optional(ConfigGoalV1.Info).annotate({
     description: "Standing goals (/goal) that YukiOshi keeps working on across turns until they are met",

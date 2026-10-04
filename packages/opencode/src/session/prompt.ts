@@ -10,6 +10,7 @@ import { Session } from "./session"
 import { Agent } from "../agent/agent"
 import * as Mode from "../agent/mode"
 import { SessionGoal } from "./goal"
+import { SessionFallback } from "./fallback"
 import { Provider } from "@/provider/provider"
 
 import { type Tool as AITool, tool, jsonSchema } from "ai"
@@ -1209,6 +1210,33 @@ const layer = Layer.effect(
         const ctx = yield* InstanceState.context
         let structured: unknown
         let step = 0
+        // Fallback models (fallback.enabled): once a provider fails a step, the rest of this run uses the
+        // next configured model; every model tried is remembered so none is tried twice.
+        let fallbackModel: Provider.Model | undefined
+        const fallbackTried = new Set<string>()
+        const switchToFallback = Effect.fnUntraced(function* (
+          error: SessionV1.Assistant["error"],
+          current: Provider.Model,
+        ) {
+          const cfg = yield* config.get()
+          if (cfg.fallback?.enabled !== true || !SessionFallback.eligible(error)) return undefined
+          fallbackTried.add(`${current.providerID}/${current.id}`)
+          for (const candidate of SessionFallback.candidates(cfg.fallback.models, fallbackTried)) {
+            fallbackTried.add(candidate)
+            const parsed = Provider.parseModel(candidate)
+            const next = yield* provider
+              .getModel(parsed.providerID, parsed.modelID)
+              .pipe(Effect.catch(() => Effect.succeed(undefined)))
+            if (!next) continue
+            yield* Effect.logInfo("switching to fallback model", {
+              "session.id": sessionID,
+              from: `${current.providerID}/${current.id}`,
+              to: candidate,
+            })
+            return next
+          }
+          return undefined
+        })
         const session = yield* sessions.get(sessionID).pipe(Effect.orDie)
 
         while (true) {
@@ -1264,7 +1292,7 @@ const layer = Layer.effect(
               history: msgs,
             }).pipe(Effect.ignore, Effect.forkIn(scope))
 
-          const model = yield* getModel(lastUser.model.providerID, lastUser.model.modelID, sessionID)
+          const model = fallbackModel ?? (yield* getModel(lastUser.model.providerID, lastUser.model.modelID, sessionID))
           const task = tasks.pop()
 
           if (task?.type === "subtask") {
@@ -1446,7 +1474,12 @@ const layer = Layer.effect(
               }
             }
 
-            if (result === "stop") return "break" as const
+            if (result === "stop") {
+              const next = yield* switchToFallback(handle.message.error, model)
+              if (!next) return "break" as const
+              fallbackModel = next
+              return "continue" as const
+            }
             if (result === "compact") {
               yield* compaction.create({
                 sessionID,

@@ -8,6 +8,7 @@ import { NoSuchModelError, type Provider as SDK } from "ai"
 import { Npm } from "@yukioshi/core/npm"
 import { Hash } from "@yukioshi/core/util/hash"
 import { Plugin } from "../plugin"
+import { KeyRotation } from "./key-rotation"
 import { serviceUse } from "@yukioshi/core/effect/service-use"
 import { type LanguageModelV3 } from "@ai-sdk/provider"
 import { ModelsDev } from "@yukioshi/core/models-dev"
@@ -1287,6 +1288,8 @@ interface State {
   sdk: Map<string, BundledSDK>
   modelLoaders: Record<string, CustomModelLoader>
   varsLoaders: Record<string, CustomVarsLoader>
+  /** Rotate between a provider's options.apiKeys on rate-limit, quota, or sign-in errors (fallback.rotate_keys). */
+  rotateKeys: boolean
 }
 
 export class Service extends Context.Service<Service, Interface>()("@yukioshi/Provider") {}
@@ -1806,6 +1809,7 @@ const layer = Layer.effect(
           sdk,
           modelLoaders,
           varsLoaders,
+          rotateKeys: cfg.fallback?.enabled === true && cfg.fallback.rotate_keys !== false,
         }
       }),
     )
@@ -1859,6 +1863,12 @@ const layer = Layer.effect(
         })
 
         if (baseURL !== undefined) options["baseURL"] = baseURL
+        // Several keys for one provider (options.apiKeys): the first is used unless rotation moves on.
+        const apiKeys = Array.isArray(options["apiKeys"])
+          ? (options["apiKeys"] as unknown[]).filter((item): item is string => typeof item === "string" && item !== "")
+          : []
+        delete options["apiKeys"]
+        if (options["apiKey"] === undefined && apiKeys.length > 0) options["apiKey"] = apiKeys[0]
         if (options["apiKey"] === undefined && provider.key) options["apiKey"] = provider.key
         if (model.headers)
           options["headers"] = {
@@ -1882,8 +1892,13 @@ const layer = Layer.effect(
         delete options["chunkTimeout"]
         delete options["headerTimeout"]
 
+        const rotation =
+          s.rotateKeys && apiKeys.length > 1 && options["apiKey"] === apiKeys[0]
+            ? KeyRotation.rotate(apiKeys, (input, init) => (customFetch ?? fetch)(input, init))
+            : undefined
+
         options["fetch"] = async (input: any, init?: BunFetchRequestInit) => {
-          const fetchFn = customFetch ?? fetch
+          const fetchFn = rotation?.fetch ?? customFetch ?? fetch
           const opts = init ?? {}
           const chunkAbortCtl = typeof chunkTimeout === "number" && chunkTimeout > 0 ? new AbortController() : undefined
           const headerTimeoutMs = headerTimeout === false ? undefined : headerTimeout

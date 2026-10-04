@@ -734,6 +734,18 @@ export const RunCommand = effectCmd({
               toggles.set("start", true)
             }
 
+            // A later reply that completes cleanly (for example on a fallback model after the first model
+            // failed) means the turn succeeded; the exit code reflects how the turn ended.
+            if (
+              event.type === "message.updated" &&
+              event.properties.sessionID === sessionID &&
+              event.properties.info.role === "assistant" &&
+              event.properties.info.time.completed &&
+              !event.properties.info.error
+            ) {
+              error = undefined
+            }
+
             if (event.type === "message.part.updated") {
               const part = event.properties.part
               if (part.sessionID !== sessionID) continue

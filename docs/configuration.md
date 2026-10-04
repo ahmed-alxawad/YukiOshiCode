@@ -94,6 +94,7 @@ Keep API keys out of checked-in config files: use `{env:…}` or
 | `lsp`, `formatter`     | language servers and formatters                                     |                                             |
 | `compaction`           | how long conversations are summarised to stay within context        |                                             |
 | `goal`                 | `/goal`: `enabled` and `max_rounds` (default 20)                    | [Features](features.md)                     |
+| `fallback`             | backup `models` and API-key rotation when a provider fails (off by default) | [Providers](providers.md#fallback-models-and-key-rotation) |
 | `share`, `enterprise.url` | session sharing (`manual`, `auto`, `disabled`) and the share server it needs | [Features](features.md) |
 | `autoupdate`           | update behaviour                                                    | [Installation](installation.md)             |
 
