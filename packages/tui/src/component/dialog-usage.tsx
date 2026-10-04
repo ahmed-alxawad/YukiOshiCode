@@ -188,7 +188,7 @@ export function DialogUsage() {
 
       <box>
         <text fg={theme.text} attributes={TextAttributes.BOLD}>
-          All projects <span style={{ fg: theme.textMuted }}>(sessions used in each period, counted in full)</span>
+          All projects
         </text>
         <Show
           when={history()}
@@ -209,9 +209,9 @@ export function DialogUsage() {
       </box>
 
       <text fg={theme.textMuted} wrapMode="word">
-        Costs are estimates from each model's list price. Token totals leave out cached tokens and background calls
-        (session titles, Auto's mode choice). Subscription sign-ins (ChatGPT, SuperGrok) count against your plan's own
-        limits, shown on the provider's account page.
+        A session counts in full in every period it was used. Costs are estimates from list prices. Totals leave out
+        cached tokens and background calls such as session titles. ChatGPT and SuperGrok sign-ins use your plan's
+        limits instead; check them on the provider's website.
       </text>
     </box>
   )

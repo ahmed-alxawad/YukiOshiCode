@@ -66,6 +66,8 @@ export function DialogModel(props: { providerID?: string }) {
           provider.models,
           entries(),
           filter(([_, info]) => info.status !== "deprecated"),
+          // An agent needs tools; image, video, speech, and embedding models cannot do the work.
+          filter(([_, info]) => info.capabilities.toolcall),
           filter(([_, info]) => (props.providerID ? info.providerID === props.providerID : true)),
           map(([model, info]) => ({
             value: { providerID: provider.id, modelID: model },

@@ -265,7 +265,8 @@ export function providerLoginOptions(
       label: ProviderV2.selectedName(provider.id) ?? provider.name ?? provider.id,
       value: provider.id,
       hint: {
-        openai: "ChatGPT Plus/Pro OAuth or API key",
+        openai: "ChatGPT sign-in or API key",
+        xai: "SuperGrok sign-in or API key",
         google: "Google AI Studio sign-in or API key",
       }[provider.id],
     })),
