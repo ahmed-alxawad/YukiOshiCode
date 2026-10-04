@@ -96,6 +96,7 @@ Keep API keys out of checked-in config files: use `{env:…}` or
 | `goal`                 | `/goal`: `enabled` and `max_rounds` (default 20)                    | [Features](features.md)                     |
 | `fallback`             | backup `models` and API-key rotation when a provider fails (off by default) | [Providers](providers.md#fallback-models-and-key-rotation) |
 | `tool_limits`          | repeated-call note (`repeat_nudge`) and per-tool time limits (`timeout`) | [Tool limits](#tool-limits)                 |
+| `tool_search`          | load MCP tool schemas on demand (`auto`, `true`, `false`) and size threshold | [MCP tool search](#mcp-tool-search) |
 | `share`, `enterprise.url` | session sharing (`manual`, `auto`, `disabled`) and the share server it needs | [Features](features.md) |
 | `autoupdate`           | update behaviour                                                    | [Installation](installation.md)             |
 
@@ -128,6 +129,23 @@ MCP tools are named `<server>_<tool>`. A single number applies to every tool. `"
 `bash` (it has its own `timeout`), `task`, `task_parallel`, `question`, and
 `plan_exit`, which wait on a command, a subagent, or you; name one of them to
 limit it anyway. `0` turns a limit off.
+
+## MCP tool search
+
+When you configure MCP servers with many tools, sending all tool schemas on every request can consume tens of kilobytes of context. Tool search defers loading MCP tool definitions until the model searches or selects them.
+
+By default (`"enabled": "auto"`), tool search turns on when total MCP tool definitions exceed 20,000 characters. You can force it on (`true`), turn it off (`false`), or adjust the threshold:
+
+```json
+{
+  "tool_search": {
+    "enabled": "auto",
+    "threshold": 20000
+  }
+}
+```
+
+When search mode is active, the model receives a `tool_search` tool listing available deferred tool names and brief summaries. When the model searches or selects a tool (`select:tool_name`), the tool's full definition is loaded for all subsequent steps in the session.
 
 ## Environment variables
 

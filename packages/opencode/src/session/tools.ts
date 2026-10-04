@@ -27,6 +27,14 @@ import { ProviderV2 } from "@yukioshi/core/provider"
 import { ModelV2 } from "@yukioshi/core/model"
 import { isRecord } from "@/util/record"
 import { RuntimeFlags } from "@/effect/runtime-flags"
+import {
+  calculateMcpDefinitionsSize,
+  executeToolSearch,
+  formatToolSearchDescription,
+  isSearchMode,
+  loadedToolsFromHistory,
+  type DeferredTool,
+} from "./tool-search"
 
 const MCP_RESOURCE_TOOLS = {
   list: "list_mcp_resources",
@@ -456,7 +464,24 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
 
   if (flags.experimentalCodeMode) return tools
 
-  for (const [key, entry] of Object.entries(yield* mcp.tools())) {
+  const mcpTools = yield* mcp.tools()
+  const searchConfig = (yield* config.get()).tool_search
+  const mcpDefsSize = calculateMcpDefinitionsSize(mcpTools)
+  const searchMode = isSearchMode(searchConfig, mcpDefsSize)
+  const loadedNames = searchMode ? loadedToolsFromHistory(input.messages) : new Set<string>()
+
+  const deferredTools: DeferredTool[] = []
+
+  for (const [key, entry] of Object.entries(mcpTools)) {
+    if (searchMode && !loadedNames.has(key)) {
+      deferredTools.push({
+        name: key,
+        description: entry.def.description ?? "",
+        inputSchema: entry.def.inputSchema ?? {},
+      })
+      continue
+    }
+
     const item = McpCatalog.convertTool(entry.def, entry.client, entry.timeout)
     const execute = item.execute
     if (!execute) continue
@@ -559,6 +584,111 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
         }),
       )
     tools[key] = item
+  }
+
+  if (searchMode) {
+    const deferredToolNames = new Set(deferredTools.map((t) => t.name))
+
+    tools["tool_search"] = tool({
+      description: formatToolSearchDescription(deferredTools),
+      inputSchema: jsonSchema(
+        ProviderTransform.schema(input.model, {
+          type: "object",
+          properties: {
+            query: {
+              type: "string",
+              description:
+                "Keywords to search deferred MCP tools by name/description, or 'select:name1,name2' for exact tools.",
+            },
+          },
+          required: ["query"],
+          additionalProperties: false,
+        }),
+      ),
+      execute(args, opts) {
+        return run.promise(
+          Effect.gen(function* () {
+            const rawArgs = toRecord(args)
+            const query = typeof rawArgs.query === "string" ? rawArgs.query : ""
+            const ctx = context(rawArgs, opts)
+            yield* plugin.trigger(
+              "tool.execute.before",
+              { tool: "tool_search", sessionID: ctx.sessionID, callID: opts.toolCallId },
+              { args },
+            )
+
+            const selected = executeToolSearch(deferredTools, query)
+            const loaded = selected.map((t) => t.name)
+
+            let outputContent = ""
+            if (selected.length === 0) {
+              outputContent = `No matching tools found for query: "${query}"`
+            } else {
+              const lines = [`Loaded ${selected.length} tool(s):`]
+              for (const t of selected) {
+                lines.push(`\n### Tool: ${t.name}`)
+                if (t.description) lines.push(`Description: ${t.description}`)
+                lines.push(`Input Schema:\n${JSON.stringify(t.inputSchema, null, 2)}`)
+              }
+              outputContent = lines.join("\n")
+            }
+
+            const truncated = yield* truncate.output(outputContent, {}, input.agent)
+            const output = {
+              title: `Tool search: ${query}`,
+              metadata: {
+                query,
+                loaded,
+                count: selected.length,
+                truncated: truncated.truncated,
+                ...(truncated.truncated && { outputPath: truncated.outputPath }),
+              },
+              output: withRepeatNote("tool_search", rawArgs, { output: truncated.content }).output,
+            }
+
+            yield* plugin.trigger(
+              "tool.execute.after",
+              { tool: "tool_search", sessionID: ctx.sessionID, callID: opts.toolCallId, args },
+              output,
+            )
+            if (opts.abortSignal?.aborted) {
+              yield* input.processor.completeToolCall(opts.toolCallId, output)
+            }
+            return output
+          }),
+        )
+      },
+    })
+
+    if (deferredToolNames.size > 0 && tools["invalid"]) {
+      const originalInvalid = tools["invalid"]
+      tools["invalid"] = tool({
+        description: originalInvalid.description,
+        inputSchema: originalInvalid.inputSchema,
+        execute(args, opts) {
+          const record = toRecord(args)
+          const toolName = typeof record.tool === "string" ? record.tool : undefined
+          if (toolName && deferredToolNames.has(toolName)) {
+            const message = `Tool "${toolName}" is not loaded yet. Call tool_search first with query "select:${toolName}" to load its definition.`
+            return run.promise(
+              Effect.gen(function* () {
+                const ctx = context(record, opts)
+                const output = {
+                  title: `Tool Not Loaded: ${toolName}`,
+                  output: message,
+                  metadata: { tool: toolName, notLoaded: true },
+                }
+                if (opts.abortSignal?.aborted) {
+                  yield* input.processor.completeToolCall(opts.toolCallId, output)
+                }
+                return output
+              }),
+            )
+          }
+          return originalInvalid.execute!(args, opts)
+        },
+      })
+    }
   }
 
   return tools

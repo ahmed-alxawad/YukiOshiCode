@@ -18,6 +18,7 @@ import { ConfigMemoryV1 } from "./memory"
 import { ConfigGoalV1 } from "./goal"
 import { ConfigFallbackV1 } from "./fallback"
 import { ConfigToolLimitsV1 } from "./tool-limits"
+import { ConfigToolSearchV1 } from "./tool-search"
 import { ConfigPermissionV1 } from "./permission"
 import { ConfigPluginV1 } from "./plugin"
 import { ConfigProviderV1 } from "./provider"
@@ -58,6 +59,9 @@ export const Info = Schema.Struct({
   }),
   tool_limits: Schema.optional(ConfigToolLimitsV1.Info).annotate({
     description: "A note when the model repeats an identical tool call, and optional time limits per tool",
+  }),
+  tool_search: Schema.optional(ConfigToolSearchV1.Info).annotate({
+    description: "MCP tool search so tool definitions load only when needed",
   }),
   goal: Schema.optional(ConfigGoalV1.Info).annotate({
     description: "Standing goals (/goal) that YukiOshi keeps working on across turns until they are met",
