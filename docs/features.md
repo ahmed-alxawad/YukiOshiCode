@@ -147,6 +147,13 @@ fine-tune it.
 Code search and code-graph results are hints for finding code, not proof: the
 agent still reads the files and runs checks before it treats a change as done.
 
+## Files changed summary
+
+After a completed turn, YukiOshi can show the files changed, additions, and
+deletions. The TUI setting is on by default; use `/changes` to show the latest
+summary on demand. Headless `yukioshi run` prints the same summary to stderr;
+use `--no-summary` to suppress it.
+
 ## Subagents
 
 The `task` tool lets the main agent hand a focused job to a subagent with its

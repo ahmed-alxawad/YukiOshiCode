@@ -71,6 +71,8 @@ Run with `< /dev/null` to skip the wait.
 | `yukioshi import <file or url>` | import a session                                        |
 | `yukioshi stats`                | token use and cost (`--days`, `--models`, `--tools`, `--project`) |
 
+In the TUI, `/changes` shows the files changed by the latest turn.
+
 ## Agents, plugins, and MCP
 
 | Command                                  | Does                                     |

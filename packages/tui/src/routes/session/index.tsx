@@ -37,7 +37,9 @@ import type {
   UserMessage,
   TextPart,
   ReasoningPart,
+  SnapshotFileDiff,
 } from "@yukioshi/sdk/v2"
+import { summarizeFileChanges } from "@yukioshi/core/files-changed-summary"
 import { useLocal } from "../../context/local"
 import { Locale } from "../../util/locale"
 import { webSearchProviderLabel } from "../../util/tool-display"
@@ -242,6 +244,8 @@ export function Session() {
   const [diffWrapMode] = kv.signal<"word" | "none">("diff_wrap_mode", "word")
   const [_animationsEnabled, _setAnimationsEnabled] = kv.signal("animations_enabled", true)
   const [showGenericToolOutput, setShowGenericToolOutput] = kv.signal("generic_tool_output_visibility", false)
+  const [showFileChanges, setShowFileChanges] = kv.signal("file_changes_visibility", true)
+  const [showLatestChanges, setShowLatestChanges] = createSignal(false)
 
   const wide = createMemo(() => dimensions().width > 120)
   const sidebarVisible = createMemo(() => {
@@ -741,6 +745,28 @@ export function Session() {
       },
       run: () => {
         setTimestamps((prev) => (prev === "show" ? "hide" : "show"))
+        dialog.clear()
+      },
+    },
+    {
+      title: showFileChanges() ? "Hide files changed after each turn" : "Show files changed after each turn",
+      value: "session.toggle.file_changes",
+      category: "Session",
+      run: () => {
+        setShowFileChanges((prev) => !prev)
+        dialog.clear()
+      },
+    },
+    {
+      title: "Show files changed for the latest turn",
+      value: "session.show.file_changes",
+      category: "Session",
+      slash: {
+        name: "changes",
+      },
+      run: () => {
+        setShowLatestChanges(true)
+        toBottom()
         dialog.clear()
       },
     },
@@ -1328,6 +1354,8 @@ export function Session() {
                           last={lastAssistant()?.id === message.id}
                           message={message as AssistantMessage}
                           parts={sync.data.part[message.id] ?? []}
+                          showChanges={showFileChanges() || showLatestChanges()}
+                          directory={sync.session.get(route.sessionID)?.directory}
                         />
                       </Match>
                     </Switch>
@@ -1507,7 +1535,13 @@ function UserMessage(props: {
   )
 }
 
-function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; last: boolean }) {
+function AssistantMessage(props: {
+  message: AssistantMessage
+  parts: Part[]
+  last: boolean
+  showChanges: boolean
+  directory?: string
+}) {
   const ctx = use()
   const local = useLocal()
   const { theme } = useTheme()
@@ -1525,6 +1559,16 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
     const user = messages().find((x) => x.role === "user" && x.id === props.message.parentID)
     if (!user || !user.time) return 0
     return props.message.time.completed - user.time.created
+  })
+
+  const turnChanges = createMemo<SnapshotFileDiff[]>(() => {
+    if (!props.message.time.completed || !final()) return []
+    const user = messages().find((item) => item.role === "user" && item.id === props.message.parentID)
+    if (!user || user.role !== "user" || !user.summary?.diffs?.length) return []
+    const lastAssistant = messages().findLast(
+      (item) => item.role === "assistant" && item.parentID === props.message.parentID,
+    )
+    return lastAssistant?.id === props.message.id ? user.summary.diffs : []
   })
 
   const childShortcut = useCommandShortcut("session.child.first")
@@ -1613,6 +1657,9 @@ function AssistantMessage(props: { message: AssistantMessage; parts: Part[]; las
           </box>
         </Match>
       </Switch>
+      <Show when={props.showChanges && turnChanges().length > 0}>
+        <FileChangesSummary diffs={turnChanges()} directory={props.directory} />
+      </Show>
     </>
   )
 }
@@ -2222,6 +2269,38 @@ function Read(props: ToolProps) {
         )}
       </For>
     </>
+  )
+}
+
+function FileChangesSummary(props: { diffs: SnapshotFileDiff[]; directory?: string }) {
+  const { theme } = useTheme()
+  const summary = createMemo(() => summarizeFileChanges(props.diffs, props.directory))
+  return (
+    <box marginTop={1}>
+      <text fg={theme.textMuted}>
+        Changed {summary().files} file{summary().files === 1 ? "" : "s"}
+        <span style={{ fg: theme.diffAdded }}>+{summary().additions}</span>
+        <span style={{ fg: theme.diffRemoved }}>−{summary().deletions}</span>
+      </text>
+      <For each={summary().entries}>
+        {(entry) => (
+          <text>
+            <span
+              style={{ fg: theme.textMuted }}
+            >{`  ${entry.path}${entry.status === "added" ? " (new)" : entry.status === "deleted" ? " (deleted)" : ""}`}</span>
+            <Show when={entry.additions > 0}>
+              <span style={{ fg: theme.diffAdded }}>{`  +${entry.additions}`}</span>
+            </Show>
+            <Show when={entry.deletions > 0}>
+              <span style={{ fg: theme.diffRemoved }}>{` −${entry.deletions}`}</span>
+            </Show>
+          </text>
+        )}
+      </For>
+      <Show when={summary().remaining > 0}>
+        <text fg={theme.textMuted}>{`  … and ${summary().remaining} more`}</text>
+      </Show>
+    </box>
   )
 }
 

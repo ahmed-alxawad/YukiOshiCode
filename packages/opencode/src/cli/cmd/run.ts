@@ -28,6 +28,7 @@ import { FormatError, FormatUnknownError } from "../error"
 import { INTERACTIVE_INPUT_ERROR, resolveInteractiveStdin } from "./run/runtime.stdin"
 import { readPipedInput } from "../stdin"
 import { executePostTurnVerification } from "./run/verification"
+import { formatFileChanges, type FileChange } from "@yukioshi/core/files-changed-summary"
 
 type ModelInput = Parameters<OpencodeClient["session"]["prompt"]>[0]["model"]
 
@@ -250,6 +251,10 @@ export const RunCommand = effectCmd({
       .option("skip-verify", {
         type: "boolean",
         describe: "skip verification checks after turn completion",
+      })
+      .option("no-summary", {
+        type: "boolean",
+        describe: "do not print the files-changed summary after the turn",
       })
       .option("auto", {
         type: "boolean",
@@ -711,6 +716,7 @@ export const RunCommand = effectCmd({
         // to stdout/UI. `client` is passed explicitly because attach mode may
         // rebind the SDK to the session's directory after the subscription is
         // created, and replies issued from inside the loop must use that client.
+        let summaryDiffs: FileChange[] = []
         async function loop(client: OpencodeClient, events: Awaited<ReturnType<typeof sdk.event.subscribe>>) {
           const toggles = new Map<string, boolean>()
           const sessions = new Set([sessionID])
@@ -732,6 +738,10 @@ export const RunCommand = effectCmd({
               UI.println(`> ${event.properties.info.agent} · ${event.properties.info.modelID}`)
               UI.empty()
               toggles.set("start", true)
+            }
+
+            if (event.type === "message.updated" && event.properties.sessionID === sessionID) {
+              if (event.properties.info.role === "user") summaryDiffs = event.properties.info.summary?.diffs ?? []
             }
 
             // A later reply that completes cleanly (for example on a fallback model after the first model
@@ -879,6 +889,10 @@ export const RunCommand = effectCmd({
             if (args.attach) return
             const error = await completed
             if (error) process.exitCode = 1
+            if (!args["no-summary"]) {
+              const summary = formatFileChanges(summaryDiffs, cwd)
+              if (summary) process.stderr.write(summary + EOL)
+            }
           }
 
           if (args.command) {
@@ -1074,6 +1088,8 @@ export async function runMini(input: MiniCommandInput) {
     verify: false,
     "skip-verify": false,
     skipVerify: false,
+    "no-summary": false,
+    noSummary: false,
     demo: input.demo ?? false,
   })
 }

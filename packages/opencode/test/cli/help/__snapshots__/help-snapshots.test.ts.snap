@@ -107,6 +107,7 @@ Options:
       --verify       run full project verification on changed files (off by default)
                                                                           [boolean] [default: false]
       --skip-verify  skip verification checks after turn completion                        [boolean]
+      --no-summary   do not print the files-changed summary after the turn                 [boolean]
       --auto         auto-approve permissions that are not explicitly denied (dangerous!)
                                                                           [boolean] [default: false]
       --mode         permission mode for this session: manual asks for anything not explicitly
