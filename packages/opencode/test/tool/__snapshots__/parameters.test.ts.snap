@@ -464,3 +464,31 @@ exports[`tool parameters JSON Schema (wire shape) write 1`] = `
   "type": "object",
 }
 `;
+
+exports[`tool parameters JSON Schema (wire shape) session_search 1`] = `
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "limit": {
+      "description": "Maximum number of matching sessions to return (default 10, max 25).",
+      "type": "number",
+    },
+    "query": {
+      "description": "Search words. A session matches when its text contains all words (case-insensitive).",
+      "type": "string",
+    },
+    "scope": {
+      "description": "Search scope: "project" (default, current project only) or "all" (every project).",
+      "enum": [
+        "project",
+        "all",
+      ],
+      "type": "string",
+    },
+  },
+  "required": [
+    "query",
+  ],
+  "type": "object",
+}
+`;

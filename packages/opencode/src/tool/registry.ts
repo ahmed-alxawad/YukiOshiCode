@@ -19,6 +19,7 @@ import { SkillTool } from "./skill"
 import { MemoryRecallTool } from "./memory-recall"
 import { MemorySaveTool } from "./memory-save"
 import { TaskParallelTool } from "./task-parallel"
+import { SessionSearchTool } from "./session-search"
 import * as Tool from "./tool"
 import { Config } from "@/config/config"
 import { type ToolContext as PluginToolContext, type ToolDefinition } from "@yukioshi/plugin"
@@ -128,6 +129,7 @@ const layer = Layer.effect(
     const memoryRecallTool = yield* MemoryRecallTool
     const memorySaveTool = yield* MemorySaveTool
     const taskParallelTool = yield* TaskParallelTool
+    const sessionSearchTool = yield* SessionSearchTool
     const codeSearchTool = yield* CodeSearchTool
     const codeGraphTool = yield* CodeGraphTool
     const agent = yield* Agent.Service
@@ -239,6 +241,7 @@ const layer = Layer.effect(
           fetch: Tool.init(webfetch),
           todo: Tool.init(todo),
           search: Tool.init(websearch),
+          sessionSearch: Tool.init(sessionSearchTool),
           skill: Tool.init(skilltool),
           patch: Tool.init(patchtool),
           ...(memoryEnabled
@@ -268,6 +271,7 @@ const layer = Layer.effect(
             tool.fetch,
             tool.todo,
             tool.search,
+            tool.sessionSearch,
             tool.skill,
             tool.patch,
             ...(tool.memoryRecall ? [tool.memoryRecall] : []),

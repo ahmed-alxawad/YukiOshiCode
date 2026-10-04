@@ -191,6 +191,7 @@ describe("RiskClassifier", () => {
     expect(RiskClassifier.classify("glob")).toBe("low")
     expect(RiskClassifier.classify("memory_recall")).toBe("low")
     expect(RiskClassifier.classify("code_search")).toBe("low")
+    expect(RiskClassifier.classify("session_search")).toBe("low")
   })
 
   test("classifies network actions as medium", () => {

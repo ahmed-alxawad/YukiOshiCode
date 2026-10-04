@@ -1,0 +1,6 @@
+- Search past conversation sessions by keywords or phrases
+- Finds sessions where user and assistant messages contain all search words (case-insensitive)
+- Searches text content across messages, excluding tool outputs and synthetic context
+- Excludes the current active session
+- Returns matching sessions newest first with title, session ID, last updated time, matching role, and a context snippet
+- Use this tool when the user asks about previous discussions, past decisions, or earlier bug fixes

@@ -25,6 +25,7 @@ import { Parameters as Todo } from "../../src/tool/todo"
 import { Parameters as WebFetch } from "../../src/tool/webfetch"
 import { Parameters as WebSearch } from "../../src/tool/websearch"
 import { Parameters as Write } from "../../src/tool/write"
+import { Parameters as SessionSearch } from "../../src/tool/session-search"
 
 const parse = <S extends Schema.Decoder<unknown>>(schema: S, input: unknown): S["Type"] =>
   Schema.decodeUnknownSync(schema)(input)
@@ -52,6 +53,7 @@ describe("tool parameters", () => {
     test("webfetch", () => expect(toJsonSchema(WebFetch)).toMatchSnapshot())
     test("websearch", () => expect(toJsonSchema(WebSearch)).toMatchSnapshot())
     test("write", () => expect(toJsonSchema(Write)).toMatchSnapshot())
+    test("session_search", () => expect(toJsonSchema(SessionSearch)).toMatchSnapshot())
 
     test("inlines named child schemas for provider compatibility", () => {
       const schema = toJsonSchema(Question)
@@ -285,6 +287,25 @@ describe("tool parameters", () => {
     })
     test("rejects missing filePath", () => {
       expect(accepts(Write, { content: "hi" })).toBe(false)
+    })
+  })
+
+  describe("session_search", () => {
+    test("accepts query", () => {
+      expect(parse(SessionSearch, { query: "auth login" }).query).toBe("auth login")
+    })
+    test("accepts query, limit, and scope", () => {
+      expect(parse(SessionSearch, { query: "auth", limit: 5, scope: "all" })).toEqual({
+        query: "auth",
+        limit: 5,
+        scope: "all",
+      })
+    })
+    test("rejects missing query", () => {
+      expect(accepts(SessionSearch, {})).toBe(false)
+    })
+    test("rejects invalid scope", () => {
+      expect(accepts(SessionSearch, { query: "auth", scope: "invalid" })).toBe(false)
     })
   })
 })
