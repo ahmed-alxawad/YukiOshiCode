@@ -252,9 +252,11 @@ export const RunCommand = effectCmd({
         type: "boolean",
         describe: "skip verification checks after turn completion",
       })
-      .option("no-summary", {
+      // Defined as `summary` so yargs' own negation handles --no-summary.
+      .option("summary", {
         type: "boolean",
-        describe: "do not print the files-changed summary after the turn",
+        default: true,
+        describe: "print the files changed after the turn (--no-summary to turn off)",
       })
       .option("auto", {
         type: "boolean",
@@ -889,7 +891,7 @@ export const RunCommand = effectCmd({
             if (args.attach) return
             const error = await completed
             if (error) process.exitCode = 1
-            if (!args["no-summary"]) {
+            if (args.summary !== false) {
               const summary = formatFileChanges(summaryDiffs, cwd)
               if (summary) process.stderr.write(summary + EOL)
             }
@@ -1088,8 +1090,7 @@ export async function runMini(input: MiniCommandInput) {
     verify: false,
     "skip-verify": false,
     skipVerify: false,
-    "no-summary": false,
-    noSummary: false,
+    summary: true,
     demo: input.demo ?? false,
   })
 }
