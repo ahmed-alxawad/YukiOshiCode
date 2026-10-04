@@ -804,14 +804,14 @@ function defaultModelFromConfig(
   const configured = configuredModel ? Provider.parseModel(configuredModel) : undefined
   if (configured && providers[configured.providerID]?.models[configured.modelID]) return configured
 
-  // First-session ACP startup must not scan historical sessions just to infer
-  // a default. Configured model, opencode provider, then sorted best model keep
-  // the protocol response deterministic without extra session/message reads.
-  const opencodeProvider = providers[ProviderV2.ID.make("opencode")]
-  const opencodeModel = opencodeProvider ? Provider.sort(Object.values(opencodeProvider.models))[0] : undefined
-  if (opencodeProvider && opencodeModel) return { providerID: opencodeProvider.id, modelID: opencodeModel.id }
-
-  const best = Provider.sort(Object.values(providers).flatMap((provider) => Object.values(provider.models)))[0]
+  // ACP sessions need a starting model, and first-session startup must not scan historical sessions
+  // to infer one. Use the configured model, else the best-ranked model that can use tools (an agent
+  // cannot work without them; this skips image-only and other tool-less models).
+  const best = Provider.sort(
+    Object.values(providers).flatMap((provider) =>
+      Object.values(provider.models).filter((model) => model.capabilities.toolcall),
+    ),
+  )[0]
   if (best) return { providerID: best.providerID, modelID: best.id }
   if (configured) return configured
 }

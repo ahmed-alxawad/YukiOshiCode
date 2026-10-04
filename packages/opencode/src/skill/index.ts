@@ -40,7 +40,20 @@ export const BUILTIN_SKILLS_DIR = fileURLToPath(new URL("../../skills", import.m
 // Set once the embedded skills of a compiled binary are extracted, so isBuiltin() recognizes them.
 let extractedSkillsDir: string | undefined
 
-const extractEmbeddedSkills = Effect.fnUntraced(function* (cache: string) {
+// One extraction per process: every instance that starts at the same time shares it, so two
+// extractions can never race over the same folders.
+const extractions = new Map<string, Promise<string | undefined>>()
+
+const extractEmbeddedSkills = (cache: string) =>
+  Effect.promise(() => {
+    const existing = extractions.get(cache)
+    if (existing) return existing
+    const started = Effect.runPromise(extractEmbeddedSkillsOnce(cache))
+    extractions.set(cache, started)
+    return started
+  })
+
+const extractEmbeddedSkillsOnce = Effect.fnUntraced(function* (cache: string) {
   const embedded = yield* Effect.promise(() =>
     // @ts-expect-error - generated file at build time
     import("yukioshi-skills.gen.ts")
@@ -53,7 +66,7 @@ const extractEmbeddedSkills = Effect.fnUntraced(function* (cache: string) {
   const extracted = yield* Effect.promise(async () => {
     if (await Bun.file(marker).exists()) return true
     // Extract into a private directory, then rename, so concurrent instances never see a partial tree.
-    const staging = `${target}.${process.pid}.tmp`
+    const staging = `${target}.${process.pid}.${crypto.randomUUID()}.tmp`
     await fs.rm(staging, { recursive: true, force: true })
     for (const [file, source] of Object.entries(embedded)) {
       const dest = path.join(staging, file)
