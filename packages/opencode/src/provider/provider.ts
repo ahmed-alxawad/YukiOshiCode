@@ -1483,7 +1483,7 @@ const layer = Layer.effect(
         addCompatiblePreset(catalog, "google-ai-studio", "google")
         // OpenCode limits its providers, including the free models, to the official OpenCode client,
         // so neither OpenCode Zen nor OpenCode Go is offered.
-        for (const id of ["opencode", "opencode-go"]) delete catalog[ProviderV2.ID.make(id)]
+        for (const id of REMOVED_PROVIDERS) delete catalog[ProviderV2.ID.make(id)]
         const database = mapValues(catalog, toPublicInfo)
 
         const providers: Record<ProviderV2.ID, Info> = {} as Record<ProviderV2.ID, Info>
@@ -2120,7 +2120,15 @@ const layer = Layer.effect(
   }),
 )
 
-const priority = ["gpt-5", "claude-sonnet-4", "big-pickle", "gemini-3-pro"]
+/**
+ * Providers YukiOshi no longer offers: OpenCode limits them, including the free models, to its own client.
+ * Credentials saved for them by older versions are kept but cannot be used.
+ */
+export const REMOVED_PROVIDERS: readonly string[] = ["opencode", "opencode-zen", "opencode-go"]
+
+// Later entries rank higher. Keep these to current coding-model families: an entry that matches no
+// real model (or only image models) silently weakens every default that relies on this order.
+const priority = ["gpt-5", "claude-sonnet-4", "claude-sonnet-5", "gemini-3.1-pro"]
 const smallModelFamilyPriority = ["gemini-flash", "gpt-nano", "claude-haiku"]
 export function sort<T extends { id: string }>(models: T[]) {
   return sortBy(

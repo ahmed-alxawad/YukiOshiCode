@@ -828,6 +828,23 @@ test("provider.sort prioritizes preferred models", () => {
   expect(sorted[sorted.length - 1].id).not.toContain("sonnet-4")
 })
 
+test("provider.sort ranks current coding models above older and unrelated ones", () => {
+  const sorted = Provider.sort([
+    { id: "gemini-flash-lite-latest" },
+    { id: "big-pickle" },
+    { id: "gemini-3.1-pro-preview" },
+    { id: "claude-sonnet-5" },
+    { id: "claude-sonnet-4-5" },
+  ])
+  expect(sorted.map((model) => model.id)).toEqual([
+    "gemini-3.1-pro-preview",
+    "claude-sonnet-5",
+    "claude-sonnet-4-5",
+    "gemini-flash-lite-latest",
+    "big-pickle",
+  ])
+})
+
 it.instance(
   "multiple providers can be configured simultaneously",
   Effect.gen(function* () {

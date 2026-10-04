@@ -6,6 +6,7 @@ import { UI } from "../ui"
 import * as Prompt from "../effect/prompt"
 import { ModelsDev } from "@yukioshi/core/models-dev"
 import { ProviderV2 } from "@yukioshi/core/provider"
+import { Provider } from "@/provider/provider"
 
 import { map, pipe, sortBy, values } from "remeda"
 import path from "path"
@@ -299,6 +300,12 @@ export const ProvidersListCommand = effectCmd({
     const database = yield* modelsDev.get()
 
     for (const [providerID, result] of results) {
+      if (Provider.REMOVED_PROVIDERS.includes(providerID)) {
+        yield* Prompt.log.warn(
+          `${providerID} ${UI.Style.TEXT_DIM}${result.type} · no longer offered; remove it with \`yukioshi providers logout\``,
+        )
+        continue
+      }
       const name = database[providerID]?.name || providerID
       yield* Prompt.log.info(`${name} ${UI.Style.TEXT_DIM}${result.type}`)
     }
