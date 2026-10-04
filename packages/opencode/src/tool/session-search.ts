@@ -2,7 +2,7 @@ import { Effect, Schema } from "effect"
 import { Database } from "@yukioshi/core/database/database"
 import { SessionTable, MessageTable, PartTable } from "@yukioshi/core/session/sql"
 import { InstanceState } from "@/effect/instance-state"
-import { eq, ne, and, or, like, desc, type SQL } from "drizzle-orm"
+import { eq, ne, and, or, like, desc, sql, type SQL } from "drizzle-orm"
 import DESCRIPTION from "./session-search.txt"
 import * as Tool from "./tool"
 
@@ -17,6 +17,9 @@ export const Parameters = Schema.Struct({
     description: 'Search scope: "project" (default, current project only) or "all" (every project).',
   }),
 })
+
+/** Upper bound on text parts read per search, newest sessions first. */
+const MAX_ROWS = 5000
 
 function parseJson<T>(val: unknown): T | undefined {
   if (typeof val === "object" && val !== null) return val as T
@@ -108,11 +111,10 @@ export const SessionSearchTool = Tool.define(
             sessionConditions.push(eq(SessionTable.project_id, ins.project.id))
           }
 
-          const wordLikes = words.flatMap((w) => [
+          // SQLite LIKE ignores ASCII case; the lower and upper forms only add patterns for other scripts.
+          const wordLikes = [...new Set(words.flatMap((w) => [w, w.toLowerCase(), w.toUpperCase()]))].map((w) =>
             like(PartTable.data, `%${w}%`),
-            like(PartTable.data, `%${w.toLowerCase()}%`),
-            like(PartTable.data, `%${w.toUpperCase()}%`),
-          ])
+          )
 
           const rows = yield* db
             .select({
@@ -130,8 +132,13 @@ export const SessionSearchTool = Tool.define(
             .from(PartTable)
             .innerJoin(MessageTable, eq(MessageTable.id, PartTable.message_id))
             .innerJoin(SessionTable, eq(SessionTable.id, PartTable.session_id))
-            .where(and(...sessionConditions, or(...wordLikes)))
+            // Only text parts are searched, so filter them in SQL: tool outputs can be large and would
+            // otherwise be read and thrown away.
+            .where(
+              and(...sessionConditions, sql`json_extract(${PartTable.data}, '$.type') = 'text'`, or(...wordLikes)),
+            )
             .orderBy(desc(SessionTable.time_updated), SessionTable.id, PartTable.time_created)
+            .limit(MAX_ROWS)
             .all()
             .pipe(Effect.orDie)
 

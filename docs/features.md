@@ -168,6 +168,9 @@ finish.
 - **Long sessions**: conversations are compacted automatically to stay within
   the model's context.
 - **Sessions**: list, continue (`-c`, `-s`), fork, export, and import them.
+  The agent can search your past conversations with the `session_search` tool
+  ("what did we decide about the cache last week?"); it searches this
+  project's sessions unless asked to look across all projects.
 - **Headless server**: `yukioshi serve` runs YukiOshi without the terminal UI;
   `yukioshi attach <url>` connects a terminal UI to it, and `yukioshi run
   --attach <url>` sends it a prompt. Protect it with `YUKIOSHI_SERVER_PASSWORD`.
