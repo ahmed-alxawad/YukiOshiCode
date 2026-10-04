@@ -9,21 +9,17 @@ YukiOshi validates its own config strictly and refuses to start when a field
 is wrong. The shapes below cover the common surface area, but they are a
 **summary, not the source of truth**.
 
-## Full schema reference
+## Checking a config
 
-The authoritative list of every config option — with field types, enums,
-defaults, and descriptions — lives in the published JSON Schema:
+YukiOshi has no published JSON Schema. Its own config has fields that
+opencode's schema at opencode.ai does not (for example `hooks`, `sandbox`,
+`memory`, `indexing`, `code_graph`), so never validate a YukiOshi config
+against opencode's schema and never add an opencode `$schema` line.
 
-**<https://opencode.ai/config.json>**
-
-If a field is not documented in this skill, or you need to confirm an exact
-shape before writing config, **fetch that URL and read the schema directly**
-rather than guessing. YukiOshi hard-fails on invalid config, so the cost of a
-wrong shape is a broken startup.
-
-Independently, every `yukioshi.json` should declare
-`"$schema": "https://opencode.ai/config.json"` so the user's editor catches
-mistakes as they type.
+When you are unsure of a field's shape, rely on this skill, the project's
+`docs/configuration.md`, and YukiOshi itself: it validates the config strictly
+at startup and names the exact field that is wrong. `yukioshi debug config`
+prints the merged config YukiOshi actually loaded.
 
 ## Applying changes
 
@@ -58,7 +54,6 @@ Every field is optional.
 
 ```json
 {
-  "$schema": "https://opencode.ai/config.json",
   "username": "string",
   "model": "provider/model-id",
   "small_model": "provider/model-id",
@@ -122,10 +117,10 @@ Every field is optional.
   },
 
   "plugin": [
-    "opencode-gemini-auth",
-    "opencode-foo@1.2.3",
+    "some-plugin",
+    "some-plugin@1.2.3",
     "./local-plugin.ts",
-    ["opencode-bar", { "option": "value" }]
+    ["another-plugin", { "option": "value" }]
   ],
 
   "permission": {
@@ -276,8 +271,9 @@ file, `disable: true` in frontmatter.
 
 ### Built-in agents
 
-YukiOshi ships with `build`, `plan`, `general`, `explore`. Hidden internal agents:
-`compaction`, `title`, `summary`. To override a built-in's fields, define the
+YukiOshi ships with the modes `build`, `plan`, `goal`, `reasoning`, `research`,
+and `auto`, and the subagents `general` and `explore`. Hidden internal agents:
+`compaction`, `title`, `summary`, `mode-router`. To override a built-in's fields, define the
 same key in `agent: { <name>: { ... } }`.
 
 ## Commands
@@ -311,11 +307,11 @@ model: anthropic/claude-sonnet-4-6
 
 ```json
 "plugin": [
-  "opencode-gemini-auth",            // npm spec, latest
-  "opencode-foo@1.2.3",              // npm spec, pinned
-  "./local-plugin.ts",               // file path, relative to the declaring config
-  "file:///abs/path/plugin.js",      // file URL
-  ["opencode-bar", { "key": "val" }] // tuple form with options
+  "some-plugin",                       // npm spec, latest
+  "some-plugin@1.2.3",                 // npm spec, pinned
+  "./local-plugin.ts",                 // file path, relative to the declaring config
+  "file:///abs/path/plugin.js",        // file URL
+  ["another-plugin", { "key": "val" }] // tuple form with options
 ]
 ```
 
@@ -430,7 +426,7 @@ When a user's config is broken and YukiOshi won't start, these env vars help:
   and start from globals only. Run from the project directory, YukiOshi loads,
   the user edits the broken file, then they restart without the flag.
 - `YUKIOSHI_CONFIG=/path/to/file.json`: load an additional explicit config.
-- `YUKIOSHI_CONFIG_CONTENT='{"$schema":"https://opencode.ai/config.json"}'`:
+- `YUKIOSHI_CONFIG_CONTENT='{"model":"anthropic/claude-sonnet-4-6"}'`:
   inject inline JSON as a final local-scope merge.
 - `YUKIOSHI_DISABLE_DEFAULT_PLUGINS=1`: skip default plugins.
 - `YUKIOSHI_PURE=1`: skip external plugins entirely.
@@ -440,9 +436,8 @@ When a user's config is broken and YukiOshi won't start, these env vars help:
 
 ## When proposing edits
 
-- Validate against the schema before writing. If you are unsure of a field's
-  exact shape, or the field is not covered in this skill, fetch
-  `https://opencode.ai/config.json` and read the schema rather than guessing.
+- If you are unsure of a field's exact shape, check `docs/configuration.md` or
+  this skill rather than guessing; never use opencode's schema for YukiOshi.
 - Preserve `$schema` and any existing fields the user did not ask to change.
 - For agent, command, skill, and plugin definitions, prefer creating new files
   in the correct location over inlining everything in `yukioshi.json`.

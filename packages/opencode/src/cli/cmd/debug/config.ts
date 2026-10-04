@@ -9,15 +9,6 @@ export const ConfigCommand = effectCmd({
   handler: Effect.fn("Cli.debug.config")(function* () {
     const { Config } = yield* Effect.promise(() => import("@/config/config"))
     const config = yield* Config.Service.use((cfg) => cfg.get())
-    const redacted = redactConfig(config)
-    if (
-      redacted &&
-      typeof redacted === "object" &&
-      "$schema" in redacted &&
-      (redacted as Record<string, unknown>).$schema === "https://opencode.ai/config.json"
-    ) {
-      delete (redacted as Record<string, unknown>).$schema
-    }
-    process.stdout.write(JSON.stringify(redacted, null, 2) + EOL)
+    process.stdout.write(JSON.stringify(redactConfig(config), null, 2) + EOL)
   }),
 })
