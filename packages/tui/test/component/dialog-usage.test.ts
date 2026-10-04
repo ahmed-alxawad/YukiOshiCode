@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { usagePeriods, usageTotals } from "../../src/component/dialog-usage"
+import { loadSessionsSince, usagePeriods, usageTotals } from "../../src/component/dialog-usage"
 
 const DAY = 24 * 60 * 60 * 1000
 
@@ -47,5 +47,24 @@ describe("usage", () => {
       usagePeriods(now).slice(0, 1),
     )
     expect(today).toEqual({ sessions: 1, tokens: 1650, cost: 1.25 })
+  })
+
+  test("loads every session across pages, including ones that share a timestamp", async () => {
+    // Six sessions; pages of 3 end in the middle of tied timestamps.
+    const all = [
+      { id: "a", time: { created: 0, updated: 500 } },
+      { id: "b", time: { created: 0, updated: 500 } },
+      { id: "c", time: { created: 0, updated: 400 } },
+      { id: "d", time: { created: 0, updated: 400 } },
+      { id: "e", time: { created: 0, updated: 300 } },
+      { id: "f", time: { created: 0, updated: 200 } },
+    ] as any[]
+    // Behaves like the server: updated >= start and < cursor, newest first, up to limit.
+    const list = async (query: { start: number; cursor?: number; limit: number }) =>
+      all
+        .filter((s) => s.time.updated >= query.start && (query.cursor === undefined || s.time.updated < query.cursor))
+        .slice(0, query.limit)
+    const sessions = await loadSessionsSince(0, list, 3)
+    expect(sessions.map((s) => s.id).sort()).toEqual(["a", "b", "c", "d", "e", "f"])
   })
 })

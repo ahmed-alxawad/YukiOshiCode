@@ -52,6 +52,28 @@ export function usageTotals(
   )
 }
 
+type ListPage = (query: { start: number; cursor?: number; limit: number }) => Promise<GlobalSession[]>
+
+/**
+ * Loads every session updated since `since`, newest first, page by page. The list returns sessions
+ * updated strictly before the cursor, so pages overlap by one millisecond (sessions sharing the last
+ * timestamp are not skipped) and duplicates are dropped by id.
+ */
+export async function loadSessionsSince(since: number, list: ListPage, pageSize = PAGE_SIZE) {
+  const sessions = new Map<string, GlobalSession>()
+  let cursor: number | undefined
+  while (true) {
+    const page = await list({ start: since, cursor, limit: pageSize })
+    if (!page.length) break
+    for (const session of page) sessions.set(session.id, session)
+    if (page.length < pageSize) break
+    const last = page[page.length - 1]!.time.updated
+    // Overlap by one millisecond; if that makes no progress (a full page shares one timestamp), step past it.
+    cursor = cursor === last + 1 ? last : last + 1
+  }
+  return [...sessions.values()]
+}
+
 export function DialogUsage() {
   const sync = useSync()
   const sdk = useSDK()
@@ -64,22 +86,10 @@ export function DialogUsage() {
   // Every session, in every project, updated within the longest period.
   const [history] = createResource(async () => {
     const since = periods[periods.length - 1]!.since
-    const sessions: GlobalSession[] = []
-    let cursor: number | undefined
-    while (true) {
+    const sessions = await loadSessionsSince(since, (query) =>
       // An empty directory overrides the client's own folder, so every project is included.
-      const { data } = await sdk.client.experimental.session.list({
-        directory: "",
-        start: since,
-        cursor,
-        limit: PAGE_SIZE,
-        archived: true,
-      })
-      if (!data?.length) break
-      sessions.push(...data)
-      if (data.length < PAGE_SIZE) break
-      cursor = data[data.length - 1]!.time.updated
-    }
+      sdk.client.experimental.session.list({ directory: "", archived: true, ...query }).then((r) => r.data ?? []),
+    )
     return usageTotals(sessions, periods)
   })
 
