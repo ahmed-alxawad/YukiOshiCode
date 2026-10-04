@@ -122,6 +122,12 @@ export function FormatError(input: unknown): string | undefined {
   if (isTaggedError(input, "UICancelledError") || NamedError.hasName(input, "UICancelledError")) {
     return ""
   }
+
+  // UnknownError: { message: string } - the server's plain error; show the sentence, not the JSON.
+  if (NamedError.hasName(input, "UnknownError") && isRecord(input) && isRecord(input.data)) {
+    const message = stringField(input.data, "message")
+    if (message) return message
+  }
   return undefined
 }
 

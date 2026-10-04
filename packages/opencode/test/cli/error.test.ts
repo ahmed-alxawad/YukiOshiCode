@@ -4,6 +4,12 @@ import { FormatError } from "../../src/cli/error"
 import { UI } from "../../src/cli/ui"
 
 describe("cli.error", () => {
+  test("prints the message of a plain server error instead of its JSON", () => {
+    expect(
+      FormatError({ name: "UnknownError", data: { message: 'No model selected. Set "model" in yukioshi.json' } }),
+    ).toBe('No model selected. Set "model" in yukioshi.json')
+  })
+
   test("formats legacy and tagged config errors the same way", () => {
     const cases = [
       {

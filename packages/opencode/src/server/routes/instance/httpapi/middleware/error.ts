@@ -27,8 +27,13 @@ export const errorLayer = HttpRouter.middleware<{ handles: unknown }>()((effect)
         return Effect.succeed(HttpServerResponse.jsonUnsafe(error.toObject(), { status: 400 }))
       }
 
-      // No model chosen yet, or nothing connected: tell the user what to do.
-      if (Provider.NoModelSelectedError.isInstance(error) || Provider.NoProvidersError.isInstance(error)) {
+      // No model chosen yet, nothing connected, or the configured model does not exist (for example a
+      // typo, or a provider that was removed): tell the user what to do instead of a generic error.
+      if (
+        Provider.NoModelSelectedError.isInstance(error) ||
+        Provider.NoProvidersError.isInstance(error) ||
+        Provider.ModelNotFoundError.isInstance(error)
+      ) {
         return Effect.succeed(
           HttpServerResponse.jsonUnsafe(new NamedError.Unknown({ message: error.message }).toObject(), { status: 400 }),
         )

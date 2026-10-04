@@ -6,6 +6,9 @@ import { Effect, Layer } from "effect"
 import { HttpClient, HttpClientRequest, HttpRouter } from "effect/unstable/http"
 import { errorLayer } from "../../src/server/routes/instance/httpapi/middleware/error"
 import { NotFoundError } from "../../src/storage/storage"
+import { Provider } from "../../src/provider/provider"
+import { ProviderV2 } from "@yukioshi/core/provider"
+import { ModelV2 } from "@yukioshi/core/model"
 import { testEffect } from "../lib/effect"
 
 const it = testEffect(Layer.mergeAll(NodeHttpServer.layerTest, NodeServices.layer))
@@ -50,6 +53,34 @@ describe("HttpApi error middleware", () => {
       expect(response.status).toBe(500)
       expectUnknownErrorBody(body)
       expect(JSON.stringify(body)).not.toContain("secret named marker")
+    }),
+  )
+
+  it.live("explains a missing or unknown model instead of a generic server error", () =>
+    Effect.gen(function* () {
+      const notFound = new Provider.ModelNotFoundError({
+        providerID: ProviderV2.ID.make("opencode"),
+        modelID: ModelV2.ID.make("big-pickle"),
+        suggestions: [],
+      })
+      yield* HttpRouter.add("GET", "/model-not-found", Effect.die(notFound)).pipe(
+        Layer.provide(errorLayer),
+        HttpRouter.serve,
+        Layer.build,
+      )
+      yield* HttpRouter.add("GET", "/no-model", Effect.die(new Provider.NoModelSelectedError())).pipe(
+        Layer.provide(errorLayer),
+        HttpRouter.serve,
+        Layer.build,
+      )
+
+      const missing = yield* HttpClientRequest.get("/model-not-found").pipe(HttpClient.execute)
+      expect(missing.status).toBe(400)
+      expect(yield* missing.json).toMatchObject({ name: "UnknownError", data: { message: "Model not found: opencode/big-pickle." } })
+
+      const none = yield* HttpClientRequest.get("/no-model").pipe(HttpClient.execute)
+      expect(none.status).toBe(400)
+      expect(JSON.stringify(yield* none.json)).toContain("No model selected")
     }),
   )
 
