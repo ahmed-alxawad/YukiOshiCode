@@ -111,10 +111,24 @@ describe("skill", () => {
         { verbose: true },
       )
 
-      expect(output).toContain("<location>/tmp/plugin.git#v1.3.0/SKILL.md</location>")
-      expect(output).toContain("<location>&lt;built-in&gt;</location>")
-      expect(output).not.toContain("file://")
-      expect(output).not.toContain("%23")
+      // File paths are left out: the skill tool returns the folder when a skill is loaded.
+      expect(output).toContain("<name>tagged-skill</name>")
+      expect(output).toContain("<description>A built-in skill.</description>")
+      expect(output).not.toContain("<location>")
+      expect(output).not.toContain("/tmp/plugin.git")
+    }),
+  )
+
+  it.effect("shortens long skill descriptions in the list sent to the model", () =>
+    Effect.sync(() => {
+      const long = "Use this skill when " + "the user asks about something quite specific ".repeat(20)
+      const output = Skill.fmt([{ name: "long-skill", description: long, location: "/x/SKILL.md", content: "" }], {
+        verbose: true,
+      })
+      const description = output.match(/<description>(.*)<\/description>/s)![1]!
+      expect(description.length).toBeLessThanOrEqual(301)
+      expect(description.endsWith("…")).toBe(true)
+      expect(long.startsWith(description.slice(0, -1))).toBe(true)
     }),
   )
 

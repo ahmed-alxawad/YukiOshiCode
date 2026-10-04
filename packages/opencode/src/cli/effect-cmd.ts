@@ -8,7 +8,7 @@ import { cmd, type WithDoubleDash } from "./cmd/cmd"
  * User-visible command failure. Throw via `fail("...")` from an effectCmd handler
  * to surface a printed message + non-zero exit. Recognised by the global error
  * formatter in `src/cli/error.ts` (FormatError), so the existing top-level
- * catch + cleanup in `src/index.ts` runs normally.
+ * catch + cleanup in `src/main.ts` runs normally.
  */
 export class CliError extends Schema.TaggedErrorClass<CliError>()("CliError", {
   message: Schema.String,
@@ -58,7 +58,7 @@ interface EffectCmdOpts<Args, A> {
  * on every Exit — success, typed failure, defect, or interruption. Matches the
  * legacy `bootstrap()` finally-disposal semantics without per-handler boilerplate.
  *
- * Errors propagate to the existing top-level handler in `src/index.ts`; use
+ * Errors propagate to the existing top-level handler in `src/main.ts`; use
  * `fail("...")` for user-visible domain failures (clean exit, formatted message).
  *
  * Handlers are typically `Effect.fn("Cli.<name>")(function*(args) { ... })`,

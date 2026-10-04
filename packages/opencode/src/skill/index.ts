@@ -20,7 +20,6 @@ import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Glob } from "@yukioshi/core/util/glob"
 import { Discovery } from "./discovery"
 import { isRecord } from "@/util/record"
-import { escapeHtml } from "@/util/html"
 import { Filesystem } from "@/util/filesystem"
 
 const CLAUDE_EXTERNAL_DIR = ".claude"
@@ -442,6 +441,17 @@ export function isBuiltin(info: Pick<Info, "location">): boolean {
   )
 }
 
+// The list goes into every request, so keep each entry short: the full description and the skill's
+// folder are returned by the skill tool when the model loads the skill.
+const LISTED_DESCRIPTION_MAX = 300
+
+function listedDescription(description: string) {
+  if (description.length <= LISTED_DESCRIPTION_MAX) return description
+  const cut = description.slice(0, LISTED_DESCRIPTION_MAX)
+  const end = cut.lastIndexOf(" ")
+  return (end > LISTED_DESCRIPTION_MAX / 2 ? cut.slice(0, end) : cut).trimEnd() + "…"
+}
+
 export function fmt(list: Info[], opts: { verbose: boolean }) {
   const described = list.filter((skill) => skill.description !== undefined)
   if (described.length === 0) return "No skills are currently available."
@@ -453,8 +463,7 @@ export function fmt(list: Info[], opts: { verbose: boolean }) {
         .flatMap((skill) => [
           "  <skill>",
           `    <name>${skill.name}</name>`,
-          `    <description>${skill.description}</description>`,
-          `    <location>${escapeHtml(skill.location)}</location>`,
+          `    <description>${listedDescription(skill.description!)}</description>`,
           "  </skill>",
         ]),
       "</available_skills>",
