@@ -10,6 +10,7 @@ import { Session } from "./session"
 import { Agent } from "../agent/agent"
 import * as Mode from "../agent/mode"
 import { SessionGoal } from "./goal"
+import { SessionRepeat } from "./repeat"
 import { SessionFallback } from "./fallback"
 import { Provider } from "@/provider/provider"
 
@@ -46,7 +47,7 @@ import { Truncate } from "@/tool/truncate"
 import { Image } from "@/image/image"
 import { decodeDataUrl } from "@/util/data-url"
 import { Process } from "@/util/process"
-import { Cause, Effect, Exit, Latch, Layer, Option, Scope, Context, Schema, Types } from "effect"
+import { Cause, Effect, Exit, Fiber, Latch, Layer, Option, Scope, Context, Schema, Types } from "effect"
 import { InstanceState } from "@/effect/instance-state"
 import { TaskTool, type TaskPromptOps } from "@/tool/task"
 import { SessionRunState } from "./run-state"
@@ -1656,7 +1657,7 @@ const layer = Layer.effect(
         messageID: user.id,
         sessionID: input.sessionID,
         type: "text",
-        text: `/goal ${input.arguments}`.trim(),
+        text: `/${input.command} ${input.arguments}`.trim(),
       })
       const reply: SessionV1.Assistant = {
         id: MessageID.ascending(),
@@ -1740,6 +1741,114 @@ const layer = Layer.effect(
       })
     })
 
+    // /loop (loop.enabled): one repeating prompt per session. A fiber in the layer's scope waits out the
+    // interval and for the session to be idle, then runs the prompt or slash command again.
+    const repeats = new Map<SessionID, { id: number; active: SessionRepeat.Active; fiber?: Fiber.Fiber<unknown, unknown> }>()
+    const repeatNotes = new Map<SessionID, string>()
+    let repeatIds = 0
+
+    const runRepeat = (input: CommandInput, text: string): Effect.Effect<SessionV1.WithParts, Image.Error> => {
+      if (!text.startsWith("/")) {
+        const model = input.model ? Provider.parseModel(input.model) : undefined
+        return prompt({
+          sessionID: input.sessionID,
+          agent: input.agent,
+          model,
+          variant: input.variant,
+          parts: [{ type: "text", text }],
+        })
+      }
+      const [name, ...rest] = text.slice(1).split(/\s+/)
+      return command({ ...input, command: name!, arguments: rest.join(" ") })
+    }
+
+    /** Why a run means the loop should stop, or undefined when it went fine. */
+    const repeatFailure = (result: SessionV1.WithParts) => {
+      if (result.info.role !== "assistant" || !result.info.error) return undefined
+      if (result.info.error.name === "MessageAbortedError") return "Stopped: you interrupted a run."
+      const message = (result.info.error.data as { message?: unknown } | undefined)?.message
+      return `Stopped: the last run failed${typeof message === "string" ? ` (${message})` : ""}.`
+    }
+
+    const repeatLoop = (input: CommandInput, id: number): Effect.Effect<void> =>
+      Effect.gen(function* () {
+        const sessionID = input.sessionID
+        while (true) {
+          const current = repeats.get(sessionID)
+          if (current?.id !== id) return
+          if (current.active.runs >= current.active.maxRuns) {
+            repeats.delete(sessionID)
+            repeatNotes.set(sessionID, `Stopped after ${current.active.runs} runs (loop.max_runs).`)
+            return
+          }
+          const nextAt = Date.now() + current.active.intervalMs
+          repeats.set(sessionID, { ...current, active: { ...current.active, nextAt } })
+          yield* Effect.sleep(current.active.intervalMs)
+          while ((yield* status.get(sessionID)).type !== "idle") yield* Effect.sleep("2 seconds")
+          const before = repeats.get(sessionID)
+          if (before?.id !== id) return
+          repeats.set(sessionID, { ...before, active: { ...before.active, runs: before.active.runs + 1, nextAt: undefined } })
+          const exit = yield* Effect.exit(runRepeat(input, before.active.prompt))
+          const failure = Exit.isSuccess(exit) ? repeatFailure(exit.value) : "Stopped: the last run could not start."
+          if (failure && repeats.get(sessionID)?.id === id) {
+            repeats.delete(sessionID)
+            repeatNotes.set(sessionID, failure)
+            return
+          }
+        }
+      })
+
+    const stopRepeat = Effect.fnUntraced(function* (sessionID: SessionID) {
+      const current = repeats.get(sessionID)
+      if (!current) return false
+      repeats.delete(sessionID)
+      if (current.fiber) yield* Fiber.interrupt(current.fiber)
+      return true
+    })
+
+    const loopCommand: (input: CommandInput) => Effect.Effect<SessionV1.WithParts, Image.Error> = Effect.fn(
+      "SessionPrompt.loopCommand",
+    )(function* (input: CommandInput) {
+      const cfg = yield* config.get()
+      const sessionID = input.sessionID
+      if (cfg.loop?.enabled !== true)
+        return yield* goalReply(input, '/loop is off. Turn it on with "loop": { "enabled": true } in yukioshi.json.')
+      const parsed = SessionRepeat.parse(input.arguments, cfg.loop.min_interval ?? SessionRepeat.DEFAULT_MIN_INTERVAL_S)
+      if (parsed.kind === "invalid") return yield* goalReply(input, parsed.message)
+      if (parsed.kind === "status")
+        return yield* goalReply(input, SessionRepeat.status(repeats.get(sessionID)?.active, repeatNotes.get(sessionID)))
+      if (parsed.kind === "stop") {
+        const stopped = yield* stopRepeat(sessionID)
+        repeatNotes.delete(sessionID)
+        return yield* goalReply(input, stopped ? "Loop stopped." : "No loop is running.")
+      }
+
+      // A new loop replaces the old one. The first run happens now; the timer starts after it.
+      yield* stopRepeat(sessionID)
+      repeatNotes.delete(sessionID)
+      const id = ++repeatIds
+      const active: SessionRepeat.Active = {
+        prompt: parsed.prompt,
+        intervalMs: parsed.intervalMs,
+        runs: 1,
+        maxRuns: cfg.loop.max_runs ?? SessionRepeat.DEFAULT_MAX_RUNS,
+      }
+      repeats.set(sessionID, { id, active })
+      const result = yield* runRepeat(input, parsed.prompt)
+      const failure = repeatFailure(result)
+      if (failure) {
+        if (repeats.get(sessionID)?.id === id) repeats.delete(sessionID)
+        repeatNotes.set(sessionID, failure)
+        return result
+      }
+      const current = repeats.get(sessionID)
+      if (current?.id === id) {
+        const fiber = yield* repeatLoop(input, id).pipe(Effect.ignore, Effect.forkIn(scope))
+        repeats.set(sessionID, { ...repeats.get(sessionID)!, fiber })
+      }
+      return result
+    })
+
     const loop: (input: LoopInput) => Effect.Effect<SessionV1.WithParts> = Effect.fn("SessionPrompt.loop")(function* (
       input: LoopInput,
     ) {
@@ -1760,6 +1869,7 @@ const layer = Layer.effect(
         agent: input.agent,
       })
       if (input.command === "goal") return yield* goalCommand(input)
+      if (input.command === "loop") return yield* loopCommand(input)
       const cmd = yield* commands.get(input.command)
       if (!cmd) {
         const available = (yield* commands.list()).map((c) => c.name)

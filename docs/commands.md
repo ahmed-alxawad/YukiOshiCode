@@ -71,7 +71,9 @@ Run with `< /dev/null` to skip the wait.
 | `yukioshi import <file or url>` | import a session                                        |
 | `yukioshi stats`                | token use and cost (`--days`, `--models`, `--tools`, `--project`) |
 
-In the TUI, `/changes` shows the files changed by the latest turn.
+In the TUI, `/changes` shows the files changed by the latest turn. With
+`"loop": { "enabled": true }`, `/loop 5m <prompt>` runs a prompt again on an
+interval; see [Features](features.md#loop).
 
 ## Agents, plugins, and MCP
 

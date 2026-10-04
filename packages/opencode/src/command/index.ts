@@ -47,6 +47,7 @@ export const Default = {
   INIT: "init",
   REVIEW: "review",
   GOAL: "goal",
+  LOOP: "loop",
 } as const
 
 export interface Interface {
@@ -93,6 +94,16 @@ const layer = Layer.effect(
         commands[Default.GOAL] = {
           name: Default.GOAL,
           description: "keep working on a goal until it is done [<goal> | status | pause | resume | clear]",
+          source: "command",
+          template: "$ARGUMENTS",
+          hints: ["$ARGUMENTS"],
+        }
+      }
+
+      if (cfg.loop?.enabled === true) {
+        commands[Default.LOOP] = {
+          name: Default.LOOP,
+          description: "run a prompt or /command again on an interval [<interval> <prompt> | status | stop]",
           source: "command",
           template: "$ARGUMENTS",
           hints: ["$ARGUMENTS"],

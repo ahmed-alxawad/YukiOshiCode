@@ -63,6 +63,30 @@ decision, or missing access), or after `goal.max_rounds` continuation rounds
 `yukioshi run --command goal "…"`. Turn it off with
 `"goal": { "enabled": false }`.
 
+## Loop
+
+Off by default. Turn it on with `"loop": { "enabled": true }`, and `/loop`
+runs a prompt or a slash command again on an interval in the current session,
+for example to watch a CI run or a deploy:
+
+```
+/loop 5m check whether the CI run for this branch has finished and summarise failures
+/loop 30m /review
+```
+
+| Command                    | Does                                              |
+| -------------------------- | ------------------------------------------------- |
+| `/loop <interval> <prompt>` | run it now, then again every interval (`90s`, `5m`, `1h30m`; 10 minutes if left out) |
+| `/loop`                    | show the loop, its runs, and when it runs next    |
+| `/loop stop`               | stop the loop                                     |
+
+Each run waits until the session is idle, so it never interrupts your own
+messages. A loop stops by itself when a run fails, when you interrupt a run, or
+after `loop.max_runs` runs (default 50). Intervals shorter than
+`loop.min_interval` (default 60 seconds) are raised to it. One loop runs per
+session, and it lasts as long as the terminal UI or `yukioshi serve` keeps
+running; `yukioshi run` exits after the first run.
+
 ## Usage
 
 `/usage` (or `/cost`) shows the current session's model, context use, tokens,

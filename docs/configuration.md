@@ -94,6 +94,7 @@ Keep API keys out of checked-in config files: use `{env:…}` or
 | `lsp`, `formatter`     | language servers and formatters                                     |                                             |
 | `compaction`           | how long conversations are summarised to stay within context        |                                             |
 | `goal`                 | `/goal`: `enabled` and `max_rounds` (default 20)                    | [Features](features.md)                     |
+| `loop`                 | `/loop` (off by default): `enabled`, `max_runs` (50), `min_interval` seconds (60) | [Features](features.md#loop) |
 | `fallback`             | backup `models` and API-key rotation when a provider fails (off by default) | [Providers](providers.md#fallback-models-and-key-rotation) |
 | `tool_limits`          | repeated-call note (`repeat_nudge`) and per-tool time limits (`timeout`) | [Tool limits](#tool-limits)                 |
 | `tool_search`          | load MCP tool schemas on demand (`auto`, `true`, `false`) and size threshold | [MCP tool search](#mcp-tool-search) |

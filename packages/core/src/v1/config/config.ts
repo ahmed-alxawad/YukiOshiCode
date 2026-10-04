@@ -16,6 +16,7 @@ import { ConfigIndexingV1 } from "./indexing"
 import { ConfigCodeGraphV1 } from "./code-graph"
 import { ConfigMemoryV1 } from "./memory"
 import { ConfigGoalV1 } from "./goal"
+import { ConfigLoopV1 } from "./loop"
 import { ConfigFallbackV1 } from "./fallback"
 import { ConfigToolLimitsV1 } from "./tool-limits"
 import { ConfigToolSearchV1 } from "./tool-search"
@@ -62,6 +63,9 @@ export const Info = Schema.Struct({
   }),
   tool_search: Schema.optional(ConfigToolSearchV1.Info).annotate({
     description: "MCP tool search so tool definitions load only when needed",
+  }),
+  loop: Schema.optional(ConfigLoopV1.Info).annotate({
+    description: "/loop: run a prompt or slash command again on an interval (off by default)",
   }),
   goal: Schema.optional(ConfigGoalV1.Info).annotate({
     description: "Standing goals (/goal) that YukiOshi keeps working on across turns until they are met",
