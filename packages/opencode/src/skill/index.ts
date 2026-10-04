@@ -296,7 +296,11 @@ const discoverSkills = Effect.fnUntraced(function* (
       .up({ targets: externalDirs, start: directory, stop: worktree })
       .pipe(Effect.catch(() => Effect.succeed([] as string[])))
 
+    // Outside a git repository the walk can reach the home folder; its .claude and .agents folders hold
+    // the user's global skills (scanned above), never project skills.
+    const homeDirs = new Set(externalDirs.map((dir) => path.resolve(global.home, dir)))
     for (const root of upDirs) {
+      if (homeDirs.has(path.resolve(root))) continue
       yield* scan(state, root, EXTERNAL_SKILL_PATTERN, { dot: true, scope: "project" })
     }
   }
