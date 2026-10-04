@@ -116,7 +116,19 @@ const cli = yargs(args)
   .strict()
 
 try {
-  if (args.includes("-h") || args.includes("--help")) {
+  // yargs' built-in completion command has no help of its own and would print the main help with an error.
+  if (args[0] === "completion" && (args.includes("-h") || args.includes("--help"))) {
+    process.stdout.write(
+      [
+        "yukioshi completion",
+        "",
+        "Print a shell completion script for bash or zsh. Add it to your shell's startup file, for example:",
+        "  yukioshi completion >> ~/.bashrc",
+        "  yukioshi completion >> ~/.zshrc",
+        "",
+      ].join(EOL),
+    )
+  } else if (args.includes("-h") || args.includes("--help")) {
     await cli.parse(args, (err: Error | undefined, _argv: unknown, out: string) => {
       if (err) throw err
       if (!out) return

@@ -103,7 +103,7 @@ export const TuiThreadCommand = cmd({
       })
       .option("agent", {
         type: "string",
-        describe: "agent to use",
+        describe: "mode or agent: build, plan, goal, reasoning, research, auto, or a custom agent",
       })
       .option("auto", {
         type: "boolean",
@@ -145,13 +145,11 @@ export const TuiThreadCommand = cmd({
         type: "boolean",
         describe: "run full project verification after changed-file tasks (off by default)",
         default: false,
-        hidden: true,
       })
       .option("skip-verify", {
         type: "boolean",
         describe: "skip verification checks on changed files after tasks",
         default: false,
-        hidden: true,
       }),
   handler: async (args) => {
     if (args.replay === true) {

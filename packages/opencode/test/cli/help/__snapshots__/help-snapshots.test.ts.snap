@@ -87,7 +87,8 @@ Options:
       --fork         fork the session before continuing (requires --continue or --session) [boolean]
       --share        share the session                                                     [boolean]
   -m, --model        model to use in the format of provider/model                           [string]
-      --agent        agent to use                                                           [string]
+      --agent        mode or agent: build, plan, goal, reasoning, research, auto, or a custom agent
+                                                                                            [string]
       --format       format: default (formatted) or json (raw JSON events)
                                           [string] [choices: "default", "json"] [default: "default"]
   -f, --file         file(s) to attach to message                                            [array]
@@ -103,6 +104,9 @@ Options:
                                                                                             [string]
       --thinking     show thinking blocks                                                  [boolean]
   -i, --interactive  run in direct interactive split-footer mode          [boolean] [default: false]
+      --verify       run full project verification on changed files (off by default)
+                                                                          [boolean] [default: false]
+      --skip-verify  skip verification checks after turn completion                        [boolean]
       --auto         auto-approve permissions that are not explicitly denied (dangerous!)
                                                                           [boolean] [default: false]
       --mode         permission mode for this session: manual asks for anything not explicitly

@@ -171,7 +171,7 @@ export const RunCommand = effectCmd({
       })
       .option("agent", {
         type: "string",
-        describe: "agent to use",
+        describe: "mode or agent: build, plan, goal, reasoning, research, auto, or a custom agent",
       })
       .option("format", {
         type: "string",
@@ -245,12 +245,10 @@ export const RunCommand = effectCmd({
         type: "boolean",
         describe: "run full project verification on changed files (off by default)",
         default: false,
-        hidden: true,
       })
       .option("skip-verify", {
         type: "boolean",
         describe: "skip verification checks after turn completion",
-        hidden: true,
       })
       .option("auto", {
         type: "boolean",
@@ -611,6 +609,12 @@ export const RunCommand = effectCmd({
         process.exit(1)
       }
 
+      function unknownAgent(name: string, agents: readonly { name: string; mode: string; hidden?: boolean }[]): never {
+        const names = agents.filter((a) => a.mode !== "subagent" && !a.hidden).map((a) => a.name)
+        UI.error(`Agent not found: "${name}".${names.length ? ` Available: ${names.join(", ")}` : ""}`)
+        process.exit(1)
+      }
+
       async function localAgent() {
         if (!args.agent) return undefined
         const name = args.agent
@@ -619,12 +623,11 @@ export const RunCommand = effectCmd({
           agentSvc.get(name).pipe(Effect.provideService(InstanceRef, localInstance)),
         )
         if (!entry) {
-          UI.println(
-            UI.Style.TEXT_WARNING_BOLD + "!",
-            UI.Style.TEXT_NORMAL,
-            `agent "${name}" not found. Falling back to default agent`,
+          // A typo in --agent must not silently run the task in another mode (for example Build).
+          const available = await Effect.runPromise(
+            agentSvc.list().pipe(Effect.provideService(InstanceRef, localInstance)),
           )
-          return undefined
+          unknownAgent(name, available)
         }
         if (entry.mode === "subagent") {
           UI.println(
@@ -656,14 +659,7 @@ export const RunCommand = effectCmd({
         }
 
         const agent = modes.find((a) => a.name === name)
-        if (!agent) {
-          UI.println(
-            UI.Style.TEXT_WARNING_BOLD + "!",
-            UI.Style.TEXT_NORMAL,
-            `agent "${name}" not found. Falling back to default agent`,
-          )
-          return undefined
-        }
+        if (!agent) unknownAgent(name, modes)
 
         if (agent.mode === "subagent") {
           UI.println(
