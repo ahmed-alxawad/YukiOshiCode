@@ -20,6 +20,7 @@ import { ConfigLoopV1 } from "./loop"
 import { ConfigFallbackV1 } from "./fallback"
 import { ConfigToolLimitsV1 } from "./tool-limits"
 import { ConfigToolSearchV1 } from "./tool-search"
+import { ConfigWebhookV1 } from "./webhook"
 import { ConfigPermissionV1 } from "./permission"
 import { ConfigPluginV1 } from "./plugin"
 import { ConfigProviderV1 } from "./provider"
@@ -63,6 +64,9 @@ export const Info = Schema.Struct({
   }),
   tool_search: Schema.optional(ConfigToolSearchV1.Info).annotate({
     description: "MCP tool search so tool definitions load only when needed",
+  }),
+  webhooks: Schema.optional(Schema.Array(ConfigWebhookV1.Info)).annotate({
+    description: "Outgoing notifications for turn, permission, and question events (off by default)",
   }),
   loop: Schema.optional(ConfigLoopV1.Info).annotate({
     description: "/loop: run a prompt or slash command again on an interval (off by default)",

@@ -74,6 +74,13 @@ Keep API keys out of checked-in config files: use `{env:…}` or
   "memory": { "enabled": true },
   "sandbox": { "enabled": true },
 
+  // Optional outgoing notifications; omitted means disabled
+  "webhooks": [{
+    "url": "https://example.test/yukioshi",
+    "events": ["turn.finished", "turn.failed"],
+    "secret": "{env:YUKIOSHI_WEBHOOK_SECRET}"
+  }],
+
   "autoupdate": "notify"
 }
 ```
@@ -98,6 +105,7 @@ Keep API keys out of checked-in config files: use `{env:…}` or
 | `fallback`             | backup `models` and API-key rotation when a provider fails (off by default) | [Providers](providers.md#fallback-models-and-key-rotation) |
 | `tool_limits`          | repeated-call note (`repeat_nudge`) and per-tool time limits (`timeout`) | [Tool limits](#tool-limits)                 |
 | `tool_search`          | load MCP tool schemas on demand (`auto`, `true`, `false`) and size threshold | [MCP tool search](#mcp-tool-search) |
+| `webhooks`             | optional outgoing notifications for turns, permission asks, and questions | [Webhooks](#webhooks) |
 | `share`, `enterprise.url` | session sharing (`manual`, `auto`, `disabled`) and the share server it needs | [Features](features.md) |
 | `autoupdate`           | update behaviour                                                    | [Installation](installation.md)             |
 
@@ -105,6 +113,25 @@ In a repository you have not trusted, `hooks`, `plugin`, local MCP servers, and
 `lsp` and `formatter` entries with their own command are ignored until you run
 `yukioshi trust .`. See
 [Permissions and safety](permissions-and-safety.md#repository-trust).
+
+## Webhooks
+
+Webhooks are off unless `webhooks` is configured. Each matching event sends a
+small JSON notification for `turn.finished`, `turn.failed`, `permission.asked`,
+or `question.asked`. Notifications never include prompts, message text, file
+contents, tool output, or environment values. A webhook can set `headers` and
+an `events` subset; omitted `events` means all four events.
+
+When `secret` is set, YukiOshi sends `X-YukiOshi-Signature: sha256=<hex>`.
+Verify the raw request body before parsing it:
+
+```ts
+const expected = "sha256=" + createHmac("sha256", secret).update(rawBody).digest("hex")
+if (timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) accept()
+```
+
+Delivery has a 10-second timeout and retries network errors and 5xx responses
+twice. 4xx responses are not retried, and delivery never delays the agent.
 
 ## Tool limits
 

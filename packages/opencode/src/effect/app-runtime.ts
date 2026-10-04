@@ -56,6 +56,7 @@ import { LayerNode } from "@yukioshi/core/effect/layer-node"
 import { AppNodeBuilderV1 } from "./app-node-builder-v1"
 import { SessionProjector } from "@yukioshi/core/session/projector"
 import { CodeGraph } from "@/code-graph"
+import { Webhook } from "@/webhook"
 
 export const AppLayer = AppNodeBuilderV1.build(
   LayerNode.group([
@@ -100,6 +101,7 @@ export const AppLayer = AppNodeBuilderV1.build(
     Truncate.node,
     ToolRegistry.node,
     CodeGraph.node,
+    Webhook.node,
     Format.node,
     InstanceStore.node,
     Project.node,
