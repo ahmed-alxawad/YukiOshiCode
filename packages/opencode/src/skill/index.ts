@@ -19,6 +19,7 @@ import { ConfigMarkdown } from "@/config/markdown"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Glob } from "@yukioshi/core/util/glob"
 import { Discovery } from "./discovery"
+import { LearnedSkills } from "./learned"
 import { isRecord } from "@/util/record"
 import { Filesystem } from "@/util/filesystem"
 
@@ -333,6 +334,13 @@ const discoverSkills = Effect.fnUntraced(function* (
     const scope =
       cfg.project_skill_paths?.includes(item) || FSUtil.contains(boundary, lexical) ? "project" : "configured"
     yield* scan(state, dir, SKILL_PATTERN, { scope })
+  }
+
+  // Skills the agent saved for itself (skills.learn), one folder each; the archive is a dot folder and
+  // is never scanned.
+  if (LearnedSkills.settings(cfg.skills?.learn).enabled) {
+    const learned = LearnedSkills.root(global.data)
+    if (yield* fsys.isDir(learned)) yield* scan(state, learned, "*/SKILL.md", { scope: "global", label: "learned" })
   }
 
   for (const url of cfg.skills?.urls ?? []) {

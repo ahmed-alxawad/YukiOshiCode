@@ -20,7 +20,10 @@ import { MemoryRecallTool } from "./memory-recall"
 import { MemorySaveTool } from "./memory-save"
 import { TaskParallelTool } from "./task-parallel"
 import { SessionSearchTool } from "./session-search"
+import { SkillSaveTool } from "./skill-save"
+import { LearnedSkills } from "../skill/learned"
 import * as Tool from "./tool"
+import { Global } from "@yukioshi/core/global"
 import { Config } from "@/config/config"
 import { type ToolContext as PluginToolContext, type ToolDefinition } from "@yukioshi/plugin"
 import type { JSONSchema7, JSONSchema7Definition } from "@ai-sdk/provider"
@@ -130,6 +133,7 @@ const layer = Layer.effect(
     const memorySaveTool = yield* MemorySaveTool
     const taskParallelTool = yield* TaskParallelTool
     const sessionSearchTool = yield* SessionSearchTool
+    const skillSaveTool = yield* SkillSaveTool
     const codeSearchTool = yield* CodeSearchTool
     const codeGraphTool = yield* CodeGraphTool
     const agent = yield* Agent.Service
@@ -228,6 +232,7 @@ const layer = Layer.effect(
         const indexingParsed = IndexingConfig.safeParse(cfg.indexing ?? {})
         const indexingEnabled = (indexingParsed.success && indexingParsed.data.enabled) ?? false
         const codeGraphEnabled = cfg.code_graph?.enabled ?? false
+        const learnEnabled = LearnedSkills.settings(cfg.skills?.learn).enabled
 
         const tool = yield* Effect.all({
           invalid: Tool.init(invalid),
@@ -250,6 +255,7 @@ const layer = Layer.effect(
           ...(parallelTasksEnabled ? { taskParallel: Tool.init(taskParallelTool) } : {}),
           ...(indexingEnabled ? { codeSearch: Tool.init(codeSearchTool) } : {}),
           ...(codeGraphEnabled ? { codeGraph: Tool.init(codeGraphTool) } : {}),
+          ...(learnEnabled ? { skillSave: Tool.init(skillSaveTool) } : {}),
           question: Tool.init(question),
           lsp: Tool.init(lsptool),
           plan: Tool.init(plan),
@@ -279,6 +285,7 @@ const layer = Layer.effect(
             ...(tool.taskParallel ? [tool.taskParallel] : []),
             ...(tool.codeSearch ? [tool.codeSearch] : []),
             ...(tool.codeGraph ? [tool.codeGraph] : []),
+            ...(tool.skillSave ? [tool.skillSave] : []),
             ...(tool.execute ? [tool.execute] : []),
             ...(flags.experimentalLspTool ? [tool.lsp] : []),
             ...(flags.experimentalPlanMode && flags.client === "cli" ? [tool.plan] : []),
@@ -490,6 +497,7 @@ export const node = LayerNode.make({
     MCP.node,
     Database.node,
     Ripgrep.node,
+    Global.node,
   ],
 })
 

@@ -54,3 +54,29 @@ prefix (for example `project:deploy`), so a repository can never replace a
 built-in or personal skill. Set `YUKIOSHI_DISABLE_CLAUDE_CODE_SKILLS=1` to skip
 the `.claude` folders. Loading a skill goes through the `skill` permission, so
 you can set it to `ask` or `deny` like any other tool.
+
+## Skills YukiOshi writes itself
+
+Off by default. Turn it on and YukiOshi can save a procedure it worked out
+(a release process, the fix for a recurring build problem, a project-specific
+workflow) as a skill of its own, and load it in later sessions:
+
+```json
+{ "skills": { "learn": true } }
+```
+
+Learned skills are kept in YukiOshi's data folder
+(`~/.local/share/yukioshi/skills/learned/`), never in your project, and are
+listed like any other skill from the next session. Saving goes through the
+`skill_save` permission, so set it to `ask` to approve each one.
+
+A curator keeps the set small and useful:
+
+- A new skill that repeats an existing one under another name is refused, and
+  YukiOshi is told to update the existing skill instead.
+- A skill nobody has loaded for `stale_days` (default 90) is retired.
+- Beyond `max` skills (default 30), the least used are retired.
+
+Retired and replaced skills move to `learned/.archive/`, so nothing is deleted;
+move a folder back to restore it. Set the limits with
+`{ "skills": { "learn": { "enabled": true, "max": 30, "stale_days": 90 } } }`.

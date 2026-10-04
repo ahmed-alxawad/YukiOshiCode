@@ -2,6 +2,8 @@ import path from "path"
 import { Effect, Schema } from "effect"
 import { Ripgrep } from "@yukioshi/core/ripgrep"
 import { Skill } from "../skill"
+import { LearnedSkills } from "../skill/learned"
+import { Global } from "@yukioshi/core/global"
 import * as Tool from "./tool"
 import DESCRIPTION from "./skill.txt"
 
@@ -14,6 +16,7 @@ export const SkillTool = Tool.define(
   Effect.gen(function* () {
     const skill = yield* Skill.Service
     const ripgrep = yield* Ripgrep.Service
+    const global = yield* Global.Service
 
     return {
       description: DESCRIPTION,
@@ -33,6 +36,10 @@ export const SkillTool = Tool.define(
 
           const dir = path.dirname(info.location)
           const base = dir
+          // A learned skill that gets loaded is one the curator keeps.
+          const learned = LearnedSkills.root(global.data)
+          if (path.dirname(dir) === learned)
+            yield* Effect.promise(() => LearnedSkills.recordUse(learned, info.name).catch(() => undefined))
           const files = yield* ripgrep.find({
             cwd: dir,
             pattern: "!**/SKILL.md",
