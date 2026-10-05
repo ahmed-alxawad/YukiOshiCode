@@ -81,7 +81,8 @@ for example to watch a CI run or a deploy:
 | `/loop stop`               | stop the loop                                     |
 
 Each run waits until the session is idle, so it never interrupts your own
-messages. A loop stops by itself when a run fails, when you interrupt a run, or
+messages, and shows a short notice in the terminal UI so a forgotten loop does
+not keep spending tokens unnoticed. A loop stops by itself when a run fails, when you interrupt a run, or
 after `loop.max_runs` runs (default 50). Intervals shorter than
 `loop.min_interval` (default 60 seconds) are raised to it. One loop runs per
 session, and it lasts as long as the terminal UI or `yukioshi serve` keeps

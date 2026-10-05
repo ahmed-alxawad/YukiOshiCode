@@ -11,6 +11,7 @@ import { Agent } from "../agent/agent"
 import * as Mode from "../agent/mode"
 import { SessionGoal } from "./goal"
 import { SessionRepeat } from "./repeat"
+import { TuiEvent } from "@/server/tui-event"
 import { SessionFallback } from "./fallback"
 import { Provider } from "@/provider/provider"
 
@@ -1800,6 +1801,11 @@ const layer = Layer.effect(
       return `Stopped: the last run failed${typeof message === "string" ? ` (${message})` : ""}.`
     }
 
+    // A loop keeps spending tokens while nobody watches, so every run and every automatic stop shows a
+    // toast in the terminal UI.
+    const repeatToast = (message: string, variant: "info" | "warning") =>
+      events.publish(TuiEvent.ToastShow, { title: "Loop", message, variant, duration: 6000 }).pipe(Effect.ignore)
+
     const repeatLoop = (input: CommandInput, id: number): Effect.Effect<void> =>
       Effect.gen(function* () {
         const sessionID = input.sessionID
@@ -1808,7 +1814,9 @@ const layer = Layer.effect(
           if (current?.id !== id) return
           if (current.active.runs >= current.active.maxRuns) {
             repeats.delete(sessionID)
-            repeatNotes.set(sessionID, `Stopped after ${current.active.runs} runs (loop.max_runs).`)
+            const note = `Stopped after ${current.active.runs} runs (loop.max_runs).`
+            repeatNotes.set(sessionID, note)
+            yield* repeatToast(note, "warning")
             return
           }
           const nextAt = Date.now() + current.active.intervalMs
@@ -1817,12 +1825,15 @@ const layer = Layer.effect(
           while ((yield* status.get(sessionID)).type !== "idle") yield* Effect.sleep("2 seconds")
           const before = repeats.get(sessionID)
           if (before?.id !== id) return
-          repeats.set(sessionID, { ...before, active: { ...before.active, runs: before.active.runs + 1, nextAt: undefined } })
+          const run = before.active.runs + 1
+          repeats.set(sessionID, { ...before, active: { ...before.active, runs: run, nextAt: undefined } })
+          yield* repeatToast(`Run ${run} of ${before.active.maxRuns}: ${before.active.prompt.slice(0, 80)} · /loop stop to end`, "info")
           const exit = yield* Effect.exit(runRepeat(input, before.active.prompt))
           const failure = Exit.isSuccess(exit) ? repeatFailure(exit.value) : "Stopped: the last run could not start."
           if (failure && repeats.get(sessionID)?.id === id) {
             repeats.delete(sessionID)
             repeatNotes.set(sessionID, failure)
+            yield* repeatToast(failure, "warning")
             return
           }
         }
