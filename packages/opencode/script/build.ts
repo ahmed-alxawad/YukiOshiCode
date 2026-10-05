@@ -186,9 +186,8 @@ for (const item of targets) {
     minify: true,
     sourcemap: sourcemapsFlag ? "linked" : "none",
     splitting: true,
-    // Precompiled bytecode: the binary starts about 0.85 s faster (no parsing of the bundle at launch),
-    // for a larger download (about 50 MB → 83 MB compressed on linux-x64).
-    bytecode: true,
+    // No precompiled bytecode: with the pinned Bun (1.3.14) a bytecode build crashed on Windows at
+    // launch and lost the embedded built-in skills on linux-x64, which the v0.3.3 release checks caught.
     compile: {
       autoloadBunfig: false,
       autoloadDotenv: false,

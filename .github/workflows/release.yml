@@ -97,6 +97,9 @@ jobs:
             archive: yukioshi-linux-arm64.tar.gz
             binary: yukioshi
           - os: ubuntu-latest
+            archive: yukioshi-linux-x64.tar.gz
+            binary: yukioshi
+          - os: ubuntu-latest
             archive: yukioshi-linux-x64-musl.tar.gz
             binary: yukioshi
             use_alpine: true
