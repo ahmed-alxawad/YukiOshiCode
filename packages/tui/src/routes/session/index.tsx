@@ -2279,8 +2279,8 @@ function FileChangesSummary(props: { diffs: SnapshotFileDiff[]; directory?: stri
     <box marginTop={1}>
       <text fg={theme.textMuted}>
         Changed {summary().files} file{summary().files === 1 ? "" : "s"}
-        <span style={{ fg: theme.diffAdded }}>+{summary().additions}</span>
-        <span style={{ fg: theme.diffRemoved }}>−{summary().deletions}</span>
+        <span style={{ fg: theme.diffAdded }}>{`  +${summary().additions}`}</span>
+        <span style={{ fg: theme.diffRemoved }}>{` −${summary().deletions}`}</span>
       </text>
       <For each={summary().entries}>
         {(entry) => (
