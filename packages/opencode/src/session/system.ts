@@ -74,9 +74,19 @@ const layer = Layer.effect(
     return Service.of({
       environment: Effect.fn("SystemPrompt.environment")(function* (model: Provider.Model) {
         const ctx = yield* InstanceState.context
-        const references = yield* Effect.gen(function* () {
-          return (yield* (yield* Reference.Service).list()).filter((reference) => reference.description !== undefined)
-        }).pipe(Effect.provide(locations.get(Location.Ref.make({ directory: AbsolutePath.make(ctx.directory) }))))
+        // References come from the references config (or a plugin). Booting the location services just to
+        // find none cost about a third of a second on every first request, so skip it when nothing could
+        // have added one.
+        const cfg = yield* config.get()
+        const mayHaveReferences =
+          Object.keys(cfg.references ?? {}).length > 0 ||
+          Object.keys(cfg.reference ?? {}).length > 0 ||
+          (cfg.plugin_origins?.length ?? 0) > 0
+        const references = mayHaveReferences
+          ? yield* Effect.gen(function* () {
+              return (yield* (yield* Reference.Service).list()).filter((reference) => reference.description !== undefined)
+            }).pipe(Effect.provide(locations.get(Location.Ref.make({ directory: AbsolutePath.make(ctx.directory) }))))
+          : []
         return [
           [
             `You are powered by the model named ${model.api.id}. The exact model ID is ${model.providerID}/${model.api.id}`,

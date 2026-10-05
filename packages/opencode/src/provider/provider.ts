@@ -1181,6 +1181,31 @@ export const ConfigProvidersResult = Schema.Struct({
 })
 export type ConfigProvidersResult = Types.DeepMutable<Schema.Schema.Type<typeof ConfigProvidersResult>>
 
+/**
+ * `mapValues`, but each value is built the first time it is read. The models.dev catalog has about a
+ * hundred providers and thousands of models, and converting all of them at startup cost about half a
+ * second, while a session uses one or two providers. Keys are listed without building values;
+ * assigning a key replaces its value as usual.
+ */
+export function lazyValues<K extends string, A, B>(source: Record<K, A>, build: (value: A) => B): Record<K, B> {
+  const out = {} as Record<K, B>
+  const settle = (key: K, value: B) =>
+    Object.defineProperty(out, key, { value, writable: true, configurable: true, enumerable: true })
+  for (const key of Object.keys(source) as K[]) {
+    Object.defineProperty(out, key, {
+      configurable: true,
+      enumerable: true,
+      get: () => {
+        const value = build(source[key])
+        settle(key, value)
+        return value
+      },
+      set: (value: B) => settle(key, value),
+    })
+  }
+  return out
+}
+
 export function toPublicInfo(provider: Info): Info {
   return JSON.parse(
     JSON.stringify(
@@ -1482,12 +1507,12 @@ const layer = Layer.effect(
         const bridge = yield* EffectBridge.make()
         const cfg = yield* config.get()
         const modelsDev = yield* modelsDevSvc.get()
-        const catalog = mapValues(modelsDev, fromModelsDevProvider)
+        const catalog = lazyValues(modelsDev, fromModelsDevProvider)
         addCompatiblePreset(catalog, "google-ai-studio", "google")
         // OpenCode limits its providers, including the free models, to the official OpenCode client,
         // so neither OpenCode Zen nor OpenCode Go is offered.
         for (const id of REMOVED_PROVIDERS) delete catalog[ProviderV2.ID.make(id)]
-        const database = mapValues(catalog, toPublicInfo)
+        const database = lazyValues(catalog, toPublicInfo)
 
         const providers: Record<ProviderV2.ID, Info> = {} as Record<ProviderV2.ID, Info>
         const languages = new Map<string, LanguageModelV3>()
@@ -1665,14 +1690,17 @@ const layer = Layer.effect(
 
         // load env
         const envs = yield* env.all()
-        for (const [id, provider] of Object.entries(database)) {
+        // Only each provider's env names are needed here, so read them from models.dev directly instead
+        // of building every provider (see lazyValues).
+        for (const id of Object.keys(database)) {
           const providerID = ProviderV2.ID.make(id)
           if (disabled.has(providerID)) continue
-          const apiKey = provider.env.map((item) => envs[item]).find(Boolean)
+          const names: readonly string[] = modelsDev[id]?.env ?? database[id]!.env
+          const apiKey = names.map((item) => envs[item]).find(Boolean)
           if (!apiKey) continue
           mergeProvider(providerID, {
             source: "env",
-            key: provider.env.length === 1 ? apiKey : undefined,
+            key: names.length === 1 ? apiKey : undefined,
           })
         }
 

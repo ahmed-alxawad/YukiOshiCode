@@ -186,6 +186,9 @@ for (const item of targets) {
     minify: true,
     sourcemap: sourcemapsFlag ? "linked" : "none",
     splitting: true,
+    // Precompiled bytecode: the binary starts about 0.85 s faster (no parsing of the bundle at launch),
+    // for a larger download (about 50 MB → 83 MB compressed on linux-x64).
+    bytecode: true,
     compile: {
       autoloadBunfig: false,
       autoloadDotenv: false,
