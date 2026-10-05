@@ -94,8 +94,18 @@ yukioshi run -c "now add a test for it"   # continue the last session
 - **Evidence, not claims.** Optional post-turn verification runs your project's
   typecheck, lint, and test commands and reports what passed.
   [Features](docs/features.md)
-- **Context that persists.** Project memory across sessions, semantic code
-  search, and a code-graph tool, each off until you enable it.
+- **Keeps going.** `/goal` works on an objective until a check says it is
+  done, `/loop` runs a prompt again on an interval, and fallback models with
+  API-key rotation carry a turn through rate limits and outages.
+  [Features](docs/features.md#goals), [Providers](docs/providers.md#fallback-models-and-key-rotation)
+- **Context that persists.** Search across past conversations, size-limited
+  project memory, skills YukiOshi writes for itself (kept tidy by a curator),
+  semantic code search, and a code-graph tool. Memory, self-written skills,
+  code search, and the code graph are off until you enable them.
+- **Works with your other tools.** MCP tool definitions load only when needed,
+  tasks can be handed to Claude Code or Codex over ACP, and webhooks tell you
+  when a turn finishes or needs you.
+  [Configuration](docs/configuration.md)
 - **Extensible.** Claude Code-compatible [hooks](docs/hooks.md),
   [skills](docs/skills.md), MCP servers, custom agents, and slash commands.
 - **Looks like YukiOshi.** A light and dark theme built from the YukiOshi brand
@@ -109,7 +119,7 @@ yukioshi run -c "now add a test for it"   # continue the last session
 | [Providers](docs/providers.md)                            | Connecting models, credentials, OAuth, custom endpoints       |
 | [Configuration](docs/configuration.md)                    | Config files and precedence, variables, common settings       |
 | [Permissions and safety](docs/permissions-and-safety.md)  | Modes, rules, hard blocks, sandbox, trust, keychain           |
-| [Features](docs/features.md)                              | Modes, usage, verification, memory, code search, subagents    |
+| [Features](docs/features.md)                              | Modes, goals, loops, usage, verification, memory, code search, subagents, delegation |
 | [Hooks](docs/hooks.md)                                    | Running your own commands at points in the agent's work       |
 | [Skills](docs/skills.md)                                  | Built-in skills and adding your own                           |
 | [Appearance](docs/appearance.md)                          | Theme, light and dark mode, the logo                          |
