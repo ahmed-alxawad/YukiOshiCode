@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test"
+import fs from "fs/promises"
+import os from "os"
+import path from "path"
 import { SessionFallback } from "../../src/session/fallback"
 
 const api = (data: Record<string, unknown>) => ({ name: "APIError", data })
@@ -26,5 +29,28 @@ describe("SessionFallback", () => {
       "google/gemini-3.1-pro",
     ])
     expect(SessionFallback.candidates(undefined, new Set())).toEqual([])
+  })
+
+  test("a model that failed over rests, and runs start on the model that took over", async () => {
+    const state = await fs.mkdtemp(path.join(os.tmpdir(), "fallback-rest-"))
+    const now = 1_000_000
+    expect(await SessionFallback.restingTarget("a/1", now, state)).toBeUndefined()
+
+    await SessionFallback.rest("a/1", "b/2", 300, now, state)
+    expect(await SessionFallback.restingTarget("a/1", now + 1000, state)).toBe("b/2")
+    // b/2 then failed over too: follow the chain.
+    await SessionFallback.rest("b/2", "c/3", 300, now, state)
+    expect(await SessionFallback.restingTarget("a/1", now + 1000, state)).toBe("c/3")
+    // After the cooldown the chosen model is tried again.
+    expect(await SessionFallback.restingTarget("a/1", now + 301_000, state)).toBeUndefined()
+  })
+
+  test("a cooldown of 0 never rests a model, and a loop of rests ends", async () => {
+    const state = await fs.mkdtemp(path.join(os.tmpdir(), "fallback-rest-"))
+    await SessionFallback.rest("a/1", "b/2", 0, 0, state)
+    expect(await SessionFallback.restingTarget("a/1", 1, state)).toBeUndefined()
+    await SessionFallback.rest("a/1", "b/2", 300, 0, state)
+    await SessionFallback.rest("b/2", "a/1", 300, 0, state)
+    expect(await SessionFallback.restingTarget("a/1", 1, state)).toBe("b/2")
   })
 })

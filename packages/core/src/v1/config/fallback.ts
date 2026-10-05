@@ -1,6 +1,7 @@
 export * as ConfigFallbackV1 from "./fallback"
 
 import { Schema } from "effect"
+import { NonNegativeInt } from "../../schema"
 
 export const Info = Schema.Struct({
   enabled: Schema.optional(Schema.Boolean).annotate({
@@ -9,6 +10,10 @@ export const Info = Schema.Struct({
   }),
   models: Schema.optional(Schema.Array(Schema.String)).annotate({
     description: 'Models to switch to, in order, as "provider/model".',
+  }),
+  cooldown: Schema.optional(NonNegativeInt).annotate({
+    description:
+      "Seconds a model that failed over rests: turns in that time start on the fallback that worked instead of failing again first (default 300; 0 tries the model again every turn).",
   }),
   rotate_keys: Schema.optional(Schema.Boolean).annotate({
     description:

@@ -150,6 +150,10 @@ several keys moves to its next key:
 
 - Each fallback model is tried once per turn, in order. The error from the
   failed model still shows, followed by the reply from the one that took over.
+- A model that failed over then rests for `fallback.cooldown` seconds (default
+  300): turns in that time start straight on the model that took over, instead
+  of failing and waiting out retries again first. `"cooldown": 0` tries the
+  chosen model again every turn.
 - A key that hits a rate limit, quota, or sign-in error rests for the
   provider's `retry-after` time (a minute if it gives none), and the request is
   sent again with the next key.

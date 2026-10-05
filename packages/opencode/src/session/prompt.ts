@@ -1234,9 +1234,35 @@ const layer = Layer.effect(
               from: `${current.providerID}/${current.id}`,
               to: candidate,
             })
+            const cooldown = cfg.fallback.cooldown ?? SessionFallback.DEFAULT_COOLDOWN_S
+            yield* Effect.promise(() =>
+              SessionFallback.rest(`${current.providerID}/${current.id}`, candidate, cooldown).catch(() => undefined),
+            )
             return next
           }
           return undefined
+        })
+        // A model that failed over recently is still resting: start this run on the model that took over.
+        let restChecked = false
+        const restingStart = Effect.fnUntraced(function* (model: { providerID: string; modelID: string }) {
+          const cfg = yield* config.get()
+          if (cfg.fallback?.enabled !== true) return undefined
+          const name = `${model.providerID}/${model.modelID}`
+          const target = yield* Effect.promise(() => SessionFallback.restingTarget(name).catch(() => undefined))
+          if (!target) return undefined
+          const parsed = Provider.parseModel(target)
+          const next = yield* provider
+            .getModel(parsed.providerID, parsed.modelID)
+            .pipe(Effect.catch(() => Effect.succeed(undefined)))
+          if (!next) return undefined
+          fallbackTried.add(name)
+          fallbackTried.add(target)
+          yield* Effect.logInfo("starting on fallback model while the chosen model rests", {
+            "session.id": sessionID,
+            from: name,
+            to: target,
+          })
+          return next
         })
         const session = yield* sessions.get(sessionID).pipe(Effect.orDie)
 
@@ -1293,6 +1319,10 @@ const layer = Layer.effect(
               history: msgs,
             }).pipe(Effect.ignore, Effect.forkIn(scope))
 
+          if (!fallbackModel && !restChecked) {
+            restChecked = true
+            fallbackModel = yield* restingStart(lastUser.model)
+          }
           const model = fallbackModel ?? (yield* getModel(lastUser.model.providerID, lastUser.model.modelID, sessionID))
           const task = tasks.pop()
 
