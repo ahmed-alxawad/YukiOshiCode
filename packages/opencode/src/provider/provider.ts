@@ -1738,10 +1738,30 @@ const layer = Layer.effect(
           mergeProvider(providerID, patch)
         }
 
+        // The custom loaders read a provider's id, options, source, and env to decide whether it is usable.
+        // Building the full entry of a big catalog provider (hundreds of models) cost up to 30 ms each, so a
+        // provider that is not built yet gets a light view whose models are only built if read.
+        const loaderInput = (providerID: ProviderV2.ID): Info | undefined => {
+          const descriptor = Object.getOwnPropertyDescriptor(database, providerID)
+          if (!descriptor) return undefined
+          const raw = modelsDev[providerID]
+          if (!descriptor.get || !raw) return database[providerID]
+          return {
+            id: providerID,
+            source: "custom",
+            name: raw.name,
+            env: [...(raw.env ?? [])],
+            options: {},
+            get models() {
+              return database[providerID]!.models
+            },
+          }
+        }
+
         for (const [id, fn] of Object.entries(custom(dep))) {
           const providerID = ProviderV2.ID.make(id)
           if (disabled.has(providerID)) continue
-          const data = database[providerID]
+          const data = loaderInput(providerID)
           if (!data) {
             continue
           }
