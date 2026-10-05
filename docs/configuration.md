@@ -127,7 +127,10 @@ Verify the raw request body before parsing it:
 
 ```ts
 const expected = "sha256=" + createHmac("sha256", secret).update(rawBody).digest("hex")
-if (timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) accept()
+const a = Buffer.from(signature ?? "")
+const b = Buffer.from(expected)
+// timingSafeEqual throws on different lengths, so compare lengths first.
+if (a.length === b.length && timingSafeEqual(a, b)) accept()
 ```
 
 Delivery has a 10-second timeout and retries network errors and 5xx responses
