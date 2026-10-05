@@ -205,6 +205,7 @@ describe("RiskClassifier", () => {
     expect(RiskClassifier.classify("write")).toBe("high")
     expect(RiskClassifier.classify("memory_save")).toBe("high")
     expect(RiskClassifier.classify("skill_save")).toBe("high")
+    expect(RiskClassifier.classify("delegate")).toBe("high")
   })
 
   test("defaults unknown actions to high", () => {

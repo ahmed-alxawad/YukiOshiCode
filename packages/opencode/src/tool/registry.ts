@@ -21,6 +21,7 @@ import { MemorySaveTool } from "./memory-save"
 import { TaskParallelTool } from "./task-parallel"
 import { SessionSearchTool } from "./session-search"
 import { SkillSaveTool } from "./skill-save"
+import { DelegateTool } from "./delegate"
 import { LearnedSkills } from "../skill/learned"
 import * as Tool from "./tool"
 import { Global } from "@yukioshi/core/global"
@@ -136,6 +137,7 @@ const layer = Layer.effect(
     const skillSaveTool = yield* SkillSaveTool
     const codeSearchTool = yield* CodeSearchTool
     const codeGraphTool = yield* CodeGraphTool
+    const delegateTool = yield* DelegateTool
     const agent = yield* Agent.Service
     const codeMode = flags.experimentalCodeMode ? yield* Effect.promise(() => import("./code-mode")) : undefined
     const codeModeTool = codeMode ? yield* codeMode.CodeModeTool : undefined
@@ -233,6 +235,12 @@ const layer = Layer.effect(
         const indexingEnabled = (indexingParsed.success && indexingParsed.data.enabled) ?? false
         const codeGraphEnabled = cfg.code_graph?.enabled ?? false
         const learnEnabled = LearnedSkills.settings(cfg.skills?.learn).enabled
+        const delegateConfig = cfg.delegate
+        const delegateEnabled = Boolean(
+          delegateConfig?.enabled &&
+          delegateConfig.agents &&
+          Object.keys(delegateConfig.agents).length > 0,
+        )
 
         const tool = yield* Effect.all({
           invalid: Tool.init(invalid),
@@ -256,6 +264,7 @@ const layer = Layer.effect(
           ...(indexingEnabled ? { codeSearch: Tool.init(codeSearchTool) } : {}),
           ...(codeGraphEnabled ? { codeGraph: Tool.init(codeGraphTool) } : {}),
           ...(learnEnabled ? { skillSave: Tool.init(skillSaveTool) } : {}),
+          ...(delegateEnabled ? { delegate: Tool.init(delegateTool) } : {}),
           question: Tool.init(question),
           lsp: Tool.init(lsptool),
           plan: Tool.init(plan),
@@ -286,6 +295,7 @@ const layer = Layer.effect(
             ...(tool.codeSearch ? [tool.codeSearch] : []),
             ...(tool.codeGraph ? [tool.codeGraph] : []),
             ...(tool.skillSave ? [tool.skillSave] : []),
+            ...(tool.delegate ? [tool.delegate] : []),
             ...(tool.execute ? [tool.execute] : []),
             ...(flags.experimentalLspTool ? [tool.lsp] : []),
             ...(flags.experimentalPlanMode && flags.client === "cli" ? [tool.plan] : []),

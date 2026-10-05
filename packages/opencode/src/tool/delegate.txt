@@ -1,0 +1,1 @@
+Delegate a task to an external coding agent (e.g. Claude Code, Codex, Gemini) over the Agent Client Protocol (ACP). The external agent runs in its own session, and its tool actions require user permission.

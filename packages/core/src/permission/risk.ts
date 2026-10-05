@@ -23,7 +23,7 @@ const LOW: ReadonlySet<string> = new Set([
   "session_search",
 ])
 const MEDIUM: ReadonlySet<string> = new Set(["webfetch", "websearch", "external_directory"])
-const HIGH: ReadonlySet<string> = new Set(["bash", "edit", "write", "apply_patch", "memory_save", "skill_save"])
+const HIGH: ReadonlySet<string> = new Set(["bash", "edit", "write", "apply_patch", "memory_save", "skill_save", "delegate"])
 
 export function classify(action: string): Level {
   if (LOW.has(action)) return "low"

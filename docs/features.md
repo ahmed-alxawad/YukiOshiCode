@@ -194,6 +194,39 @@ tool runs up to eight subagents, four at a time, each optionally in its own git
 worktree so their edits do not collide. Worktrees are removed when the tasks
 finish.
 
+## Delegating to other agents
+
+The `delegate` tool lets YukiOshi delegate a task or instruction to another coding agent you already have installed (such as Claude Code, OpenAI Codex, or Gemini CLI) using the Agent Client Protocol (ACP).
+
+Delegation is **off by default**. It is enabled in your configuration when `delegate.enabled` is `true` and at least one agent is configured under `delegate.agents`:
+
+```json
+{
+  "delegate": {
+    "enabled": true,
+    "agents": {
+      "claude": {
+        "command": ["npx", "-y", "@agentclientprotocol/claude-agent-acp"]
+      },
+      "codex": {
+        "command": ["npx", "-y", "@agentclientprotocol/codex-acp"]
+      },
+      "gemini": {
+        "command": ["gemini", "--experimental-acp"]
+      }
+    }
+  }
+}
+```
+
+### Authentication and Billing
+Delegated agents use their own existing authentication and logins (such as `~/.claude/` for Claude Code, `~/.codex/` for Codex, or `gemini login` for Gemini). Your own subscription or API plan with that external tool pays for any model requests it makes.
+
+### Permission behaviour
+When the delegated agent requests permission to execute a tool (e.g. running a terminal command or editing a file), the request is forwarded to YukiOshi as an interactive permission ask. YukiOshi never auto-approves actions on the external agent's behalf. If you deny the request in YukiOshi, a rejection is returned to the external agent.
+
+The `delegate` tool itself is classified as high-risk in YukiOshi's permission system.
+
 ## Also included
 
 - **MCP servers**: connect tools over the Model Context Protocol (`mcp` in
