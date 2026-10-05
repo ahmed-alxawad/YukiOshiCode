@@ -46,8 +46,10 @@ describe("AppProcess", () => {
         const svc = yield* AppProcess.Service
         const script = [
           'process.stdout.write("out 1\\n")',
-          'setTimeout(() => process.stderr.write("err 1\\n"), 10)',
-          'setTimeout(() => process.stdout.write("out 2\\n"), 20)',
+          // stdout and stderr are separate pipes, so writes only a few ms apart can be read out of order
+          // on a busy machine; leave clear gaps between them.
+          'setTimeout(() => process.stderr.write("err 1\\n"), 60)',
+          'setTimeout(() => process.stdout.write("out 2\\n"), 160)',
         ].join(";")
         const result = yield* svc.run(cmd("-e", script), { combineOutput: true })
         expect(result.output?.toString("utf8")).toBe("out 1\nerr 1\nout 2\n")
