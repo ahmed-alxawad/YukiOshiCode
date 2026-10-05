@@ -18,6 +18,17 @@ export const Parameters = Schema.Struct({
   }),
 })
 
+/**
+ * The other agent's option that matches the user's answer, for this one request only: picking an "always"
+ * option would make that agent remember a standing permission in its own settings, beyond what the user
+ * approved here. With no matching option the request is cancelled, never allowed.
+ */
+export function permissionAnswer(options: readonly PermissionOption[], allowed: boolean): RequestPermissionOutcome {
+  const kinds = allowed ? ["allow_once", "allow_always"] : ["reject_once", "reject_always"]
+  const option = kinds.map((kind) => options.find((o) => o.kind === kind)).find(Boolean)
+  return option ? { outcome: "selected", optionId: option.optionId } : { outcome: "cancelled" }
+}
+
 export const DelegateTool = Tool.define(
   "delegate",
   Effect.gen(function* () {
@@ -83,13 +94,7 @@ export const DelegateTool = Tool.define(
           ),
         )
 
-        if (Exit.isSuccess(exit)) {
-          const allow = options.find((o) => o.kind === "allow_once" || o.kind === "allow_always") ?? options[0]
-          return allow ? { outcome: "selected", optionId: allow.optionId } : { outcome: "cancelled" }
-        } else {
-          const reject = options.find((o) => o.kind === "reject_once" || o.kind === "reject_always")
-          return reject ? { outcome: "selected", optionId: reject.optionId } : { outcome: "cancelled" }
-        }
+        return permissionAnswer(options, Exit.isSuccess(exit))
       }
 
       const result = yield* Effect.tryPromise({

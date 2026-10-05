@@ -12,7 +12,7 @@ import { TestConfig } from "../fixture/config"
 import { noopBootstrapReplacement } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 import { runDelegate } from "@/delegate/client"
-import { DelegateTool } from "@/tool/delegate"
+import { DelegateTool, permissionAnswer } from "@/tool/delegate"
 import { Tool } from "@/tool/tool"
 import { MessageID, SessionID } from "@/session/schema"
 
@@ -374,5 +374,18 @@ describe("delegate: ACP client execution with mock agent", () => {
       // Exit code 1 means no matching processes found, which is desired!
       expect(e.status).toBe(1)
     }
+  })
+
+  test("answers for one request only: allow_once over allow_always, cancel when nothing matches", () => {
+    const options = [
+      { optionId: "always", kind: "allow_always", name: "Always" },
+      { optionId: "once", kind: "allow_once", name: "Once" },
+      { optionId: "no-always", kind: "reject_always", name: "Never" },
+      { optionId: "no", kind: "reject_once", name: "No" },
+    ] as const
+    expect(permissionAnswer([...options], true)).toEqual({ outcome: "selected", optionId: "once" })
+    expect(permissionAnswer([...options], false)).toEqual({ outcome: "selected", optionId: "no" })
+    expect(permissionAnswer([options[0]], true)).toEqual({ outcome: "selected", optionId: "always" })
+    expect(permissionAnswer([options[2]], true)).toEqual({ outcome: "cancelled" })
   })
 })
