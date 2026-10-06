@@ -5,8 +5,6 @@ import { Effect, Layer, Context, Scope } from "effect"
 import { Config } from "@/config/config"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { InstanceState } from "@/effect/instance-state"
-import { Session } from "@/session/session"
-import { SessionID } from "@/session/schema"
 
 export type WebhookEvent = ConfigWebhookV1.Event
 
@@ -157,11 +155,21 @@ export interface Interface {
 
 export class Service extends Context.Service<Service, Interface>()("@yukioshi/Webhook") {}
 
-function sessionInfo(session: Session.Interface, sessionID: string) {
-  return session.get(SessionID.make(sessionID)).pipe(
-    Effect.map((info) => ({ id: info.id, title: info.title })),
-    Effect.catch(() => Effect.succeed({ id: sessionID, title: "YukiOshi session" })),
-  )
+function sessionInfo(sessionID: string) {
+  // Session titles are generated from user messages, so forwarding one could disclose prompt text.
+  return { id: sessionID, title: "YukiOshi session" }
+}
+
+function sessionErrorMessage(error: unknown) {
+  if (!error || typeof error !== "object") return "session error"
+  const value = error as { name?: unknown; message?: unknown; data?: unknown }
+  if (value.data && typeof value.data === "object") {
+    const message = (value.data as { message?: unknown }).message
+    if (typeof message === "string") return message
+  }
+  if (typeof value.message === "string") return value.message
+  if (typeof value.name === "string") return value.name
+  return "session error"
 }
 
 const layer = Layer.effect(
@@ -169,7 +177,6 @@ const layer = Layer.effect(
   Effect.gen(function* () {
     const config = yield* Config.Service
     const events = yield* EventV2Bridge.Service
-    const sessions = yield* Session.Service
 
     const state = yield* InstanceState.make<State>(
       Effect.fn("Webhook.state")(function* (ctx) {
@@ -178,11 +185,10 @@ const layer = Layer.effect(
         const emit = (event: WebhookEvent, sessionID: string, detail?: Record<string, unknown>) =>
           Effect.gen(function* () {
             const cfg = yield* config.get()
-            const info = yield* sessionInfo(sessions, sessionID)
             const payload: WebhookPayload = {
               event,
               time: new Date().toISOString(),
-              session: info,
+              session: sessionInfo(sessionID),
               project: { directory: ctx.directory },
               ...(detail ? { detail } : {}),
             }
@@ -205,9 +211,9 @@ const layer = Layer.effect(
             return Effect.void
           }
           if (event.type === "session.error") {
-            const data = event.data as { sessionID?: string; error?: { name?: string; message?: string } }
+            const data = event.data as { sessionID?: string; error?: unknown }
             return data.sessionID
-              ? emit("turn.failed", data.sessionID, { error: data.error?.message ?? data.error?.name ?? "session error" })
+              ? emit("turn.failed", data.sessionID, { error: sessionErrorMessage(data.error) })
               : Effect.void
           }
           if (event.type === "permission.asked") {
@@ -238,7 +244,7 @@ const layer = Layer.effect(
 export const node = LayerNode.make({
   service: Service,
   layer,
-  deps: [Config.node, EventV2Bridge.node, Session.node],
+  deps: [Config.node, EventV2Bridge.node],
 })
 
 export * as Webhook from "./index"
