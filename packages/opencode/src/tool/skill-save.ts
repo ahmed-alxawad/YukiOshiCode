@@ -74,7 +74,7 @@ export const SkillSaveTool = Tool.define(
             permission: "skill_save",
             patterns: [name],
             always: [],
-            metadata: { action: "save", name, description },
+            metadata: { action: "save", name, description, content },
           })
           const result = yield* Effect.promise(() =>
             LearnedSkills.save(dir, { name, description, content, max: learn.max, staleDays: learn.staleDays }),

@@ -69,6 +69,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   const flags = yield* RuntimeFlags.Service
   const hooks = yield* Hooks.Service
   const config = yield* Config.Service
+  const ruleset = Permission.merge(input.agent.permission, input.session.permission ?? [])
 
   const context = (args: Record<string, unknown>, options: ToolExecutionOptions): Tool.Context => ({
     sessionID: input.session.id,
@@ -98,7 +99,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
           ...req,
           sessionID: input.session.id,
           tool: { messageID: input.processor.message.id, callID: options.toolCallId },
-          ruleset: Permission.merge(input.agent.permission, input.session.permission ?? []),
+          ruleset,
         })
         .pipe(Effect.orDie),
   })
@@ -473,6 +474,11 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   const deferredTools: DeferredTool[] = []
 
   for (const [key, entry] of Object.entries(mcpTools)) {
+    const permRule = Permission.evaluate(key, "*", ruleset)
+    if (permRule.action === "deny") {
+      continue
+    }
+
     if (searchMode && !loadedNames.has(key)) {
       deferredTools.push({
         name: key,

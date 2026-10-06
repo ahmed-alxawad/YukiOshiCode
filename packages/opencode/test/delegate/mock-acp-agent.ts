@@ -13,6 +13,10 @@ import {
 
 const mode = process.argv[2] ?? "normal"
 
+if (process.env.MOCK_ACP_PID_FILE) {
+  await Bun.write(process.env.MOCK_ACP_PID_FILE, String(process.pid))
+}
+
 if (mode === "auth-error") {
   console.error("Error: Not logged in. Please run 'agent login' first to authenticate.")
   process.exit(1)

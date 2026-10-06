@@ -480,6 +480,65 @@ describe("SessionTools.resolve integration with tool_search", () => {
     }),
   )
 
+  it.instance("omits denied MCP tools from tool_search and blocks selecting them", () =>
+    Effect.gen(function* () {
+      const processor = {
+        message: {
+          id: messageID,
+          sessionID,
+          role: "assistant",
+          parentID: MessageID.ascending(),
+          agent: "build",
+          mode: "build",
+          path: { cwd: "/tmp", root: "/tmp" },
+          cost: 0,
+          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+          modelID: ModelV2.ID.make("test-model"),
+          providerID: ProviderV2.ID.make("test"),
+          time: { created: 1 },
+        } satisfies SessionV1.Assistant,
+        updateToolCall: () => Effect.succeed(undefined),
+        completeToolCall: () => Effect.succeed(undefined),
+      } as unknown as SessionProcessor.Handle
+
+      const agent: Agent.Info = {
+        name: "build",
+        mode: "primary",
+        permission: [
+          { permission: "mcp_tool_mailer", action: "deny", pattern: "*" },
+        ],
+        options: {},
+      }
+
+      const tools = yield* SessionTools.resolve({
+        agent,
+        model,
+        session: { id: sessionID, permission: [] } as unknown as Session.Info,
+        processor,
+        bypassAgentCheck: false,
+        messages: [],
+        promptOps: {} as never,
+      }).pipe(Effect.provide(layer))
+
+      expect(tools["tool_search"]).toBeDefined()
+      // Allowed tool is in description
+      expect(tools["tool_search"].description).toContain("mcp_tool_database")
+      // Denied tool is NOT in description
+      expect(tools["tool_search"].description).not.toContain("mcp_tool_mailer")
+
+      // Attempting to select the denied tool returns no matching tools
+      const searchExecute = tools["tool_search"].execute
+      const searchRes: any = yield* Effect.promise(() =>
+        searchExecute!(
+          { query: "select:mcp_tool_mailer" },
+          { toolCallId: "call_search_denied", abortSignal: new AbortController().signal, messages: [] },
+        ),
+      )
+      expect(searchRes.metadata.loaded).toEqual([])
+      expect(searchRes.output).toContain('No matching tools found for query: "select:mcp_tool_mailer"')
+    }),
+  )
+
   it.instance("measures built tool set size reduction with 40 MCP tools (search mode off vs on)", () =>
     Effect.gen(function* () {
       const processor = {
