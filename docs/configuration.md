@@ -74,6 +74,9 @@ Keep API keys out of checked-in config files: use `{env:…}` or
   "memory": { "enabled": true },
   "sandbox": { "enabled": true },
 
+  // Optional dollar and token limits; omitted means unlimited
+  "budget": { "daily": 10, "monthly": 100, "tokens": { "session": 500000 } },
+
   // Optional outgoing notifications; omitted means disabled
   "webhooks": [{
     "url": "https://example.test/yukioshi",
@@ -106,6 +109,7 @@ Keep API keys out of checked-in config files: use `{env:…}` or
 | `tool_limits`          | repeated-call note (`repeat_nudge`) and per-tool time limits (`timeout`) | [Tool limits](#tool-limits)                 |
 | `tool_search`          | load MCP tool schemas on demand (`auto`, `true`, `false`) and size threshold | [MCP tool search](#mcp-tool-search) |
 | `webhooks`             | optional outgoing notifications for turns, permission asks, and questions | [Webhooks](#webhooks) |
+| `budget`               | optional dollar/token limits for a session, day, or month | [Spending limits](#spending-limits) |
 | `delegate`             | hand tasks to other coding agents over ACP: `enabled`, `agents` (off by default) | [Features](features.md#delegating-to-other-agents) |
 | `share`, `enterprise.url` | session sharing (`manual`, `auto`, `disabled`) and the share server it needs | [Features](features.md) |
 | `autoupdate`           | update behaviour                                                    | [Installation](installation.md)             |
@@ -114,6 +118,26 @@ In a repository you have not trusted, `hooks`, `plugin`, `delegate`, `webhooks`,
 local MCP servers, and `lsp` and `formatter` entries with their own command are
 ignored until you run `yukioshi trust .`. See
 [Permissions and safety](permissions-and-safety.md#repository-trust).
+
+## Spending limits
+
+Spending limits are off unless `budget` is configured. Set `session`, `daily`,
+or `monthly` in US dollars, or use the matching `tokens` limits for providers
+without reliable prices. Limits include subagent usage and all projects stored
+in the same YukiOshi data store. At 80% YukiOshi warns once per session; at the
+limit it stops before the next model request and explains how to raise the
+limit. `yukioshi run` exits with status 1 when a limit stops the turn.
+
+```jsonc
+{
+  "budget": {
+    "session": 2,
+    "daily": 10,
+    "monthly": 100,
+    "tokens": { "session": 200000 }
+  }
+}
+```
 
 ## Webhooks
 

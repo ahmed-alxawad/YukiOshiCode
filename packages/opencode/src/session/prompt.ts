@@ -62,6 +62,7 @@ import { SessionTable } from "@yukioshi/core/session/sql"
 import { SessionReminders } from "./reminders"
 import { SessionTools } from "./tools"
 import { LLMEvent } from "@yukioshi/llm"
+import { Budget } from "@/budget"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -147,6 +148,7 @@ const layer = Layer.effect(
     const events = yield* EventV2Bridge.Service
     const flags = yield* RuntimeFlags.Service
     const database = yield* Database.Service
+    const budget = yield* Budget.Service
     const { db } = database
     const ops = Effect.fn("SessionPrompt.ops")(function* () {
       return {
@@ -1325,6 +1327,37 @@ const layer = Layer.effect(
             fallbackModel = yield* restingStart(lastUser.model)
           }
           const model = fallbackModel ?? (yield* getModel(lastUser.model.providerID, lastUser.model.modelID, sessionID))
+          const budgetDecision = yield* budget.check(sessionID)
+          if (!budgetDecision.allowed) {
+            const error = new SessionV1.APIError({ message: budgetDecision.exceeded!, isRetryable: false }).toObject()
+            const blocked: SessionV1.Assistant = {
+              id: MessageID.ascending(),
+              parentID: lastUser.id,
+              role: "assistant",
+              mode: lastUser.agent,
+              agent: lastUser.agent,
+              variant: lastUser.model.variant,
+              path: { cwd: ctx.directory, root: ctx.worktree },
+              cost: 0,
+              tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+              modelID: model.id,
+              providerID: model.providerID,
+              time: { created: Date.now(), completed: Date.now() },
+              sessionID,
+              error,
+            }
+            yield* sessions.updateMessage(blocked)
+            yield* events.publish(Session.Event.Error, { sessionID, error })
+            return { info: blocked, parts: [] }
+          }
+          if (budgetDecision.warning) {
+            yield* events.publish(TuiEvent.ToastShow, {
+              title: "Spending limit",
+              message: budgetDecision.warning,
+              variant: "warning",
+              duration: 8000,
+            })
+          }
           const task = tasks.pop()
 
           if (task?.type === "subtask") {
@@ -2152,6 +2185,7 @@ export const node = LayerNode.make({
   layer: layer,
   deps: [
     SessionStatus.node,
+    Budget.node,
     Session.node,
     Agent.node,
     Provider.node,

@@ -22,6 +22,7 @@ import { ConfigToolLimitsV1 } from "./tool-limits"
 import { ConfigToolSearchV1 } from "./tool-search"
 import { ConfigDelegateV1 } from "./delegate"
 import { ConfigWebhookV1 } from "./webhook"
+import { ConfigBudgetV1 } from "./budget"
 import { ConfigPermissionV1 } from "./permission"
 import { ConfigPluginV1 } from "./plugin"
 import { ConfigProviderV1 } from "./provider"
@@ -71,6 +72,9 @@ export const Info = Schema.Struct({
   }),
   webhooks: Schema.optional(Schema.Array(ConfigWebhookV1.Info)).annotate({
     description: "Outgoing notifications for turn, permission, and question events (off by default)",
+  }),
+  budget: Schema.optional(ConfigBudgetV1.Info).annotate({
+    description: "Dollar and token spending limits for sessions, days, and months (off by default)",
   }),
   loop: Schema.optional(ConfigLoopV1.Info).annotate({
     description: "/loop: run a prompt or slash command again on an interval (off by default)",

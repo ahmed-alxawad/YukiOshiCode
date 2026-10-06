@@ -1,5 +1,6 @@
 import { TextAttributes } from "@opentui/core"
 import type { AssistantMessage, GlobalSession } from "@yukioshi/sdk/v2"
+import { usageTotals } from "@yukioshi/core/usage"
 import { For, Show, createMemo, createResource } from "solid-js"
 import { useTheme } from "../context/theme"
 import { useDialog } from "../ui/dialog"
@@ -8,7 +9,6 @@ import { useSDK } from "../context/sdk"
 import { useRoute } from "../context/route"
 import { Locale } from "../util/locale"
 
-const DAY_MS = 24 * 60 * 60 * 1000
 const PAGE_SIZE = 200
 
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" })
@@ -22,34 +22,28 @@ export function usagePeriods(now: number): UsagePeriod[] {
   midnight.setHours(0, 0, 0, 0)
   return [
     { label: "Today", since: midnight.getTime() },
-    { label: "Last 7 days", since: now - 7 * DAY_MS },
-    { label: "Last 30 days", since: now - 30 * DAY_MS },
+    { label: "Last 7 days", since: now - 7 * 24 * 60 * 60 * 1000 },
+    { label: "Last 30 days", since: now - 30 * 24 * 60 * 60 * 1000 },
   ]
 }
 
-/**
- * Adds up tokens and cost of the sessions active in each period (a session counts in full in every
- * period it was used in). Subagent sessions add their tokens and cost but are not counted as sessions.
- */
-export function usageTotals(
-  sessions: Pick<GlobalSession, "cost" | "tokens" | "time" | "parentID">[],
-  periods: UsagePeriod[],
-): Totals[] {
-  return periods.map((period) =>
-    sessions
-      .filter((session) => session.time.updated >= period.since)
-      .reduce<Totals>(
-        (sum, session) => {
-          const tokens = session.tokens
-          return {
-            sessions: sum.sessions + (session.parentID ? 0 : 1),
-            tokens: sum.tokens + (tokens ? tokens.input + tokens.output + tokens.reasoning : 0),
-            cost: sum.cost + (session.cost ?? 0),
-          }
-        },
-        { sessions: 0, tokens: 0, cost: 0 },
-      ),
-  )
+function usageHistoryTotals(sessions: Pick<GlobalSession, "cost" | "tokens" | "time" | "parentID">[], periods: UsagePeriod[]) {
+  return periods.map((period) => {
+    const total = usageTotals(
+      sessions.map((session, index) => ({
+        id: String(index),
+        parentID: session.parentID,
+        cost: session.cost,
+        tokens: session.tokens,
+        time: session.time,
+      })),
+      period.since,
+    )
+    return {
+      sessions: sessions.filter((session) => session.time.updated >= period.since && !session.parentID).length,
+      ...total,
+    }
+  })
 }
 
 type ListPage = (query: { start: number; cursor?: number; limit: number }) => Promise<GlobalSession[]>
@@ -90,7 +84,7 @@ export function DialogUsage() {
       // An empty directory overrides the client's own folder, so every project is included.
       sdk.client.experimental.session.list({ directory: "", archived: true, ...query }).then((r) => r.data ?? []),
     )
-    return usageTotals(sessions, periods)
+    return usageHistoryTotals(sessions, periods)
   })
 
   // What the current session's subagents spent, at any depth.

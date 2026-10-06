@@ -835,6 +835,12 @@ export const RunCommand = effectCmd({
               UI.error(err)
             }
 
+            if (event.type === "tui.toast.show" && event.properties.variant === "warning") {
+              const message = event.properties.message
+              if (args.format === "json") emit("warning", { message })
+              else process.stderr.write(message + EOL)
+            }
+
             if (
               event.type === "session.status" &&
               event.properties.sessionID === sessionID &&

@@ -179,6 +179,13 @@ fine-tune it.
 Code search and code-graph results are hints for finding code, not proof: the
 agent still reads the files and runs checks before it treats a change as done.
 
+## Spending limits
+
+Set `budget.session`, `budget.daily`, or `budget.monthly` in dollars, and use
+the matching `budget.tokens` limits for providers without usable prices. The
+limits include subagents and stop the next model request before it is sent.
+YukiOshi warns once at 80%; omit `budget` to keep the feature off.
+
 ## Files changed summary
 
 After a completed turn, YukiOshi can show the files changed, additions, and
