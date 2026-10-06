@@ -1,6 +1,6 @@
 import { TextAttributes } from "@opentui/core"
 import type { AssistantMessage, GlobalSession } from "@yukioshi/sdk/v2"
-import { usageTotals } from "@yukioshi/core/usage"
+import { usageTotals as sharedUsageTotals } from "@yukioshi/core/usage"
 import { For, Show, createMemo, createResource } from "solid-js"
 import { useTheme } from "../context/theme"
 import { useDialog } from "../ui/dialog"
@@ -28,8 +28,16 @@ export function usagePeriods(now: number): UsagePeriod[] {
 }
 
 function usageHistoryTotals(sessions: Pick<GlobalSession, "cost" | "tokens" | "time" | "parentID">[], periods: UsagePeriod[]) {
+  return usageTotals(sessions, periods)
+}
+
+/** Shared usage aggregation kept under the historical TUI test/API shape. */
+export function usageTotals(
+  sessions: Pick<GlobalSession, "cost" | "tokens" | "time" | "parentID">[],
+  periods: UsagePeriod[],
+) {
   return periods.map((period) => {
-    const total = usageTotals(
+    const total = sharedUsageTotals(
       sessions.map((session, index) => ({
         id: String(index),
         parentID: session.parentID,
