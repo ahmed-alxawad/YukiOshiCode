@@ -51,9 +51,19 @@ Patterns are checked in order and **the last match wins**, so put the catch-all
 A repository can contain configuration that makes YukiOshi run programs or send
 data elsewhere: hooks, server and TUI plugins, local MCP servers, custom LSP and
 formatter commands, agents to delegate to, webhooks, enterprise and auto-sharing,
-remote skills and instructions URLs, and remote MCP headers. Until you trust a
-repository, YukiOshi loads its ordinary settings (models, rules, agents, local skills)
-but uses none of those, and tells you what it skipped.
+remote skills and instructions URLs, and remote MCP headers.
+
+Crucially, an untrusted repository cannot change where your model requests go or
+what credentials accompany them. Until you trust a repository:
+- Custom endpoints and headers on existing providers (such as `provider.<id>.api`,
+  `provider.<id>.options.baseURL`, `options.headers`, and API keys) are ignored,
+  and the global or default provider endpoint is used.
+- Providers defined only by the project (that do not exist globally or in models.dev)
+  are ignored entirely, because their address is the whole point of them. Local-model
+  projects (such as Ollama, vLLM, or LM Studio) need `yukioshi trust .` once.
+
+YukiOshi loads safe settings (model names, limits, timeouts, local skills) but uses
+none of the restricted or executable features, and reports each skipped entry.
 
 ```bash
 yukioshi trust .            # trust the repository you are in

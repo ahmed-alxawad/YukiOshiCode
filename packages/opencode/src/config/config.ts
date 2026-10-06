@@ -35,6 +35,73 @@ import { ConfigV2Compat } from "./v2-compat"
 import { Npm } from "@yukioshi/core/npm"
 import { withTransientReadRetry } from "@/util/effect-http-client"
 import { ProjectTrust } from "@/project/trust"
+import { ModelsDev } from "@yukioshi/core/models-dev"
+
+declare const YUKIOSHI_MODELS_DEV: Record<string, unknown> | undefined
+
+const BUILTIN_PROVIDERS = new Set([
+  "openai",
+  "anthropic",
+  "google",
+  "groq",
+  "mistral",
+  "openrouter",
+  "deepseek",
+  "cohere",
+  "bedrock",
+  "azure",
+  "github-copilot",
+  "vertex",
+  "amazon-bedrock",
+  "cloudflare-ai-gateway",
+  "xai",
+  "together",
+  "fireworks",
+  "cerebras",
+  "perplexity",
+])
+
+function isDangerousOption(key: string): boolean {
+  if (key === "headerTimeout" || key === "timeout" || key === "chunkTimeout" || key === "setCacheKey") {
+    return false
+  }
+  const lower = key.toLowerCase()
+  if (
+    lower === "baseurl" ||
+    lower === "base_url" ||
+    lower === "url" ||
+    lower === "endpoint" ||
+    lower === "headers" ||
+    lower === "header" ||
+    lower === "apikey" ||
+    lower === "apikeys" ||
+    lower === "api_key" ||
+    lower === "api_keys" ||
+    lower === "fetch" ||
+    lower === "customfetch" ||
+    lower === "custom_fetch" ||
+    lower === "enterpriseurl" ||
+    lower === "enterprise_url" ||
+    lower === "client" ||
+    lower === "httpclient"
+  ) {
+    return true
+  }
+  if (lower.includes("url") || lower.includes("endpoint") || lower.includes("header") || lower.includes("fetch")) {
+    return true
+  }
+  if (
+    lower.includes("apikey") ||
+    lower.includes("token") ||
+    lower.includes("secret") ||
+    lower.includes("credential") ||
+    lower.includes("auth") ||
+    lower.includes("password")
+  ) {
+    return true
+  }
+  return false
+}
 
 // Custom merge function that concatenates array fields instead of replacing them
 // Keep remeda's deep conditional merge type out of hot config-loading paths; TS profiling showed it dominates here.
@@ -352,6 +419,25 @@ const layer = Layer.effect(
         )
         const blockedExecutables = new Set<string>()
 
+        const modelsDevSvc = yield* Effect.serviceOption(ModelsDev.Service)
+        let modelsDevCatalog: Record<string, unknown> | undefined
+        if (Option.isSome(modelsDevSvc)) {
+          modelsDevCatalog = yield* modelsDevSvc.value.get().pipe(Effect.catch(() => Effect.succeed(undefined)))
+        }
+        if (!modelsDevCatalog) {
+          if (typeof YUKIOSHI_MODELS_DEV !== "undefined") {
+            modelsDevCatalog = YUKIOSHI_MODELS_DEV
+          } else {
+            const modelsPath = Flag.YUKIOSHI_MODELS_PATH ?? path.join(Global.Path.cache, "models.json")
+            modelsDevCatalog = yield* fs
+              .readJson(modelsPath)
+              .pipe(
+                Effect.map((data) => (isRecord(data) ? (data as Record<string, unknown>) : undefined)),
+                Effect.catch(() => Effect.succeed(undefined)),
+              )
+          }
+        }
+
         const projectConfig = (source: string, next: Info) => {
           for (const item of next.skills?.paths ?? []) projectSkillPaths.add(item)
           if (projectTrusted) {
@@ -414,6 +500,110 @@ const layer = Layer.effect(
           if (safe.mcp) safe.mcp = withoutCommands("MCP server", safe.mcp)
           if (isRecord(safe.lsp)) safe.lsp = withoutCommands("LSP server", safe.lsp) as typeof safe.lsp
           if (isRecord(safe.formatter)) safe.formatter = withoutCommands("formatter", safe.formatter) as typeof safe.formatter
+
+          if (source !== "YUKIOSHI_CONFIG_CONTENT") {
+            const sanitizeProviders = (providersRecord: Record<string, any> | undefined) => {
+              if (!providersRecord || !isRecord(providersRecord)) return providersRecord
+              const sanitized: Record<string, any> = {}
+              for (const [id, providerEntry] of Object.entries(providersRecord)) {
+                if (!isRecord(providerEntry)) {
+                  sanitized[id] = providerEntry
+                  continue
+                }
+                const isKnown =
+                  BUILTIN_PROVIDERS.has(id) ||
+                  (modelsDevCatalog !== undefined && id in modelsDevCatalog) ||
+                  (result.provider !== undefined && id in result.provider) ||
+                  ((result as any).providers !== undefined && id in (result as any).providers) ||
+                  id in auth ||
+                  consoleManagedProviders.has(id)
+
+                if (!isKnown) {
+                  blockedExecutables.add(`${source} (provider ${id})`)
+                  continue
+                }
+
+                const entryCopy = { ...providerEntry }
+                if (entryCopy.api !== undefined) {
+                  blockedExecutables.add(`${source} (provider ${id} api)`)
+                  delete entryCopy.api
+                }
+                if ((entryCopy as any).baseURL !== undefined) {
+                  blockedExecutables.add(`${source} (provider ${id} baseURL)`)
+                  delete (entryCopy as any).baseURL
+                }
+                if ((entryCopy as any).apiKey !== undefined) {
+                  blockedExecutables.add(`${source} (provider ${id} apiKey)`)
+                  delete (entryCopy as any).apiKey
+                }
+                if ((entryCopy as any).apiKeys !== undefined) {
+                  blockedExecutables.add(`${source} (provider ${id} apiKeys)`)
+                  delete (entryCopy as any).apiKeys
+                }
+                if (isRecord((entryCopy as any).headers)) {
+                  blockedExecutables.add(`${source} (provider ${id} headers)`)
+                  delete (entryCopy as any).headers
+                }
+
+                if (isRecord(entryCopy.options)) {
+                  const optionsCopy = { ...entryCopy.options }
+                  for (const optKey of Object.keys(optionsCopy)) {
+                    if (isDangerousOption(optKey)) {
+                      blockedExecutables.add(`${source} (provider ${id} options.${optKey})`)
+                      delete optionsCopy[optKey]
+                    }
+                  }
+                  entryCopy.options = optionsCopy
+                }
+
+                if (isRecord(entryCopy.models)) {
+                  const modelsCopy: Record<string, any> = {}
+                  for (const [modelId, modelEntry] of Object.entries(entryCopy.models)) {
+                    if (!isRecord(modelEntry)) {
+                      modelsCopy[modelId] = modelEntry
+                      continue
+                    }
+                    const mCopy = { ...modelEntry }
+                    if (isRecord(mCopy.provider)) {
+                      const p = { ...(mCopy.provider as Record<string, any>) }
+                      if (p.api !== undefined) {
+                        blockedExecutables.add(`${source} (provider ${id} model ${modelId} api)`)
+                        delete p.api
+                      }
+                      if (p.baseURL !== undefined) {
+                        blockedExecutables.add(`${source} (provider ${id} model ${modelId} baseURL)`)
+                        delete p.baseURL
+                      }
+                      mCopy.provider = p
+                    }
+                    if (isRecord(mCopy.headers)) {
+                      blockedExecutables.add(`${source} (provider ${id} model ${modelId} headers)`)
+                      delete mCopy.headers
+                    }
+                    if (isRecord(mCopy.options)) {
+                      const mOptionsCopy = { ...mCopy.options }
+                      for (const optKey of Object.keys(mOptionsCopy)) {
+                        if (isDangerousOption(optKey)) {
+                          blockedExecutables.add(`${source} (provider ${id} model ${modelId} options.${optKey})`)
+                          delete mOptionsCopy[optKey]
+                        }
+                      }
+                      mCopy.options = mOptionsCopy
+                    }
+                    modelsCopy[modelId] = mCopy
+                  }
+                  entryCopy.models = modelsCopy
+                }
+
+                sanitized[id] = entryCopy
+              }
+              return sanitized
+            }
+
+            if (safe.provider) safe.provider = sanitizeProviders(safe.provider) as typeof safe.provider
+            if ((safe as any).providers) (safe as any).providers = sanitizeProviders((safe as any).providers)
+          }
+
           return safe as Info
         }
 

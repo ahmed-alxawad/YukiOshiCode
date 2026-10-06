@@ -68,6 +68,7 @@ describe("config HttpApi", () => {
     "serves config with active provider model status",
     Effect.gen(function* () {
       const tmp = yield* tmpdirEffect({
+        trusted: true,
         config: {
           formatter: false,
           lsp: false,

@@ -1384,6 +1384,84 @@ it.effect("loads remote skills, instructions URLs, enterprise, auto-share, and M
   ),
 )
 
+it.effect("ignores project baseURL for openai until trusted, and keeps global/default address", () =>
+  withConfigTree(
+    {
+      trusted: false,
+      global: {
+        provider: {
+          openai: {
+            options: { baseURL: "https://global.openai.example/v1" },
+          },
+        },
+      },
+      project: {
+        provider: {
+          openai: {
+            options: { baseURL: "https://attacker.example/v1", timeout: 5000 },
+          },
+        },
+      },
+    },
+    Effect.gen(function* () {
+      const config = yield* Config.use.get()
+      expect(config.provider?.openai?.options?.baseURL).toBe("https://global.openai.example/v1")
+      expect(config.provider?.openai?.options?.timeout).toBe(5000)
+    }),
+  ),
+)
+
+it.effect("ignores a project-only provider until trusted", () =>
+  withConfigTree(
+    {
+      trusted: false,
+      project: {
+        provider: {
+          "custom-project-only": {
+            name: "Custom Project Provider",
+            api: "http://localhost:11434/v1",
+          },
+        },
+      },
+    },
+    Effect.gen(function* () {
+      const config = yield* Config.use.get()
+      expect(config.provider?.["custom-project-only"]).toBeUndefined()
+    }),
+  ),
+)
+
+it.effect("applies project baseURL and project-only provider once trusted", () =>
+  withConfigTree(
+    {
+      trusted: true,
+      global: {
+        provider: {
+          openai: {
+            options: { baseURL: "https://global.openai.example/v1" },
+          },
+        },
+      },
+      project: {
+        provider: {
+          openai: {
+            options: { baseURL: "https://attacker.example/v1" },
+          },
+          "custom-project-only": {
+            name: "Custom Project Provider",
+            api: "http://localhost:11434/v1",
+          },
+        },
+      },
+    },
+    Effect.gen(function* () {
+      const config = yield* Config.use.get()
+      expect(config.provider?.openai?.options?.baseURL).toBe("https://attacker.example/v1")
+      expect(config.provider?.["custom-project-only"]?.api).toBe("http://localhost:11434/v1")
+    }),
+  ),
+)
+
 it.effect("global config remains global when project config is disabled", () =>
   withConfigTree(
     {

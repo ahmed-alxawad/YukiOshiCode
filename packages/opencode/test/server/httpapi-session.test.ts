@@ -394,8 +394,8 @@ describe("session HttpApi", () => {
       yield* llm.text("ok", { usage: { input: 1, output: 1 } })
 
       const config = testProviderConfig(llm.url)
-      const sessionDirectory = yield* tmpdirScoped({ git: true, config })
-      const requestDirectory = yield* tmpdirScoped({ git: true, config })
+      const sessionDirectory = yield* tmpdirScoped({ git: true, trusted: true, config })
+      const requestDirectory = yield* tmpdirScoped({ git: true, trusted: true, config })
       const session = yield* createSession({ title: "directory regression" }).pipe(
         provideInstanceEffect(sessionDirectory),
       )

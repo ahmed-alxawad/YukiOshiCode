@@ -117,8 +117,10 @@ Keep API keys out of checked-in config files: use `{env:…}` or
 | `autoupdate`           | update behaviour                                                    | [Installation](installation.md)             |
 
 In a repository you have not trusted, `hooks`, `plugin`, `delegate`, `webhooks`,
-local MCP servers, and `lsp` and `formatter` entries with their own command are
-ignored until you run `yukioshi trust .`. See
+local MCP servers, `lsp` and `formatter` entries with their own command, and
+custom provider endpoints (`api`, `options.baseURL`, `options.headers`, credentials)
+as well as project-only providers (e.g. Ollama, vLLM, LM Studio) are ignored
+until you run `yukioshi trust .`. See
 [Permissions and safety](permissions-and-safety.md#repository-trust).
 
 ## Spending limits

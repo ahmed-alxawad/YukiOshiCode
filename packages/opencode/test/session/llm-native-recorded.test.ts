@@ -18,7 +18,7 @@ import { RuntimeFlags } from "@/effect/runtime-flags"
 import type { Agent } from "../../src/agent/agent"
 import { LLM } from "../../src/session/llm"
 import { MessageID, SessionID } from "../../src/session/schema"
-import { TestInstance } from "../fixture/fixture"
+import { TestInstance, trustProject } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 import { ProviderV2 } from "@yukioshi/core/provider"
 import { ModelV2 } from "@yukioshi/core/model"
@@ -288,12 +288,15 @@ function recordedNativeLLMLayer(scenario: RecordedScenario) {
 }
 
 const writeConfig = (directory: string, scenario: RecordedScenario, model: ModelsDev.Provider["models"][string]) =>
-  Effect.promise(() =>
-    Bun.write(
-      path.join(directory, "opencode.json"),
-      JSON.stringify({ $schema: "https://opencode.ai/config.json", ...scenario.config(model) }),
-    ),
-  )
+  Effect.gen(function* () {
+    yield* Effect.promise(() =>
+      Bun.write(
+        path.join(directory, "opencode.json"),
+        JSON.stringify({ $schema: "https://opencode.ai/config.json", ...scenario.config(model) }),
+      ),
+    )
+    yield* trustProject(directory)
+  })
 
 const collect = (input: LLM.StreamInput) =>
   Effect.gen(function* () {
