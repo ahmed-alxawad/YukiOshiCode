@@ -134,6 +134,43 @@ arguments. Where no keychain is available (for example on a server without a
 desktop session), YukiOshi falls back to a file only your user can read. Set
 `YUKIOSHI_DISABLE_KEYCHAIN=1` to always use that file.
 
+## Secret redaction
+
+YukiOshi masks unmistakable secrets before anything is sent to the model provider. Redaction is on by default (`redact: { enabled: true }`).
+
+### What is masked
+- **AWS access keys and secret keys**: `AKIA...`, `ASIA...`, and `aws_secret_access_key` / `AWS_SECRET_ACCESS_KEY` assignments (`[REDACTED:aws-key]`, `[REDACTED:aws-secret-key]`).
+- **GitHub tokens**: `ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, and `github_pat_` (`[REDACTED:github-token]`).
+- **API keys**: OpenAI (`sk-`), Anthropic (`sk-ant-`), and Google (`AIza`) (`[REDACTED:openai-key]`, `[REDACTED:anthropic-key]`, `[REDACTED:google-key]`).
+- **Slack tokens**: `xoxb-`, `xoxp-`, `xoxa-`, `xoxr-`, `xoxs-` (`[REDACTED:slack-token]`).
+- **Stripe live keys**: `sk_live_`, `rk_live_` (`[REDACTED:stripe-key]`).
+- **Private keys**: `-----BEGIN ... PRIVATE KEY-----` blocks (`[REDACTED:private-key]`).
+- **JWTs**: JSON Web Tokens with standard headers (`[REDACTED:jwt]`).
+- **Environment variables**: `password=`, `secret=`, `token=` assignments (`[REDACTED:password]`, `[REDACTED:secret]`, `[REDACTED:token]`).
+
+Normal code identifiers (such as `sk-` inside an unrelated word or Stripe test keys) are never matched.
+
+### Where redaction applies
+- **Tool results**: file contents read, grep results, bash output, webfetch, MCP tool responses, and delegate agent outputs before they are saved to session history or sent to the model.
+- **User prompts**: secrets pasted or typed into prompts are masked before leaving the machine for the model; your local message history remains intact, and a notification warns that secrets were masked.
+- **Persistent memory and skills**: secrets are masked before `memory_save` or `skill_save` writes them to disk.
+- **File editing**: when the agent edits a file containing a secret, `edit` resolves the placeholders back to real secrets, ensuring `[REDACTED:...]` is never written back to your files.
+
+### Configuration
+
+```jsonc
+{
+  "redact": {
+    "enabled": true,
+    // Values that should never be masked
+    "allow": ["my-harmless-token"],
+    // Additional custom regular expressions to mask
+    "patterns": ["MY_CUSTOM_SECRET_[A-Za-z0-9]+"]
+  }
+}
+```
+
 ## Reporting a security problem
 
 Please report vulnerabilities privately; see [SECURITY.md](../SECURITY.md).
+

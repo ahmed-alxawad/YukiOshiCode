@@ -662,5 +662,26 @@ describe("tool.edit", () => {
         }),
       },
     )
+
+    it.instance(
+      "preserves real secrets when editing files with redacted placeholders and never writes placeholder to disk",
+      () =>
+        Effect.gen(function* () {
+          const test = yield* TestInstance
+          const envPath = path.join(test.directory, ".env")
+          const secret = "ghp_111111111111111111111111111111111111"
+          yield* Effect.promise(() => fs.writeFile(envPath, `GITHUB_TOKEN=${secret}\nPORT=3000\n`, "utf-8"))
+
+          yield* run({
+            filePath: envPath,
+            oldString: "GITHUB_TOKEN=[REDACTED:github-token]\nPORT=3000",
+            newString: "GITHUB_TOKEN=[REDACTED:github-token]\nPORT=8080",
+          })
+
+          const content = yield* Effect.promise(() => fs.readFile(envPath, "utf-8"))
+          expect(content).toBe(`GITHUB_TOKEN=${secret}\nPORT=8080\n`)
+          expect(content).not.toContain("[REDACTED:")
+        }),
+    )
   })
 })

@@ -19,6 +19,7 @@ import { assertExternalDirectoryEffect } from "./external-directory"
 import { FSUtil } from "@yukioshi/core/fs-util"
 import * as Bom from "@/util/bom"
 import { Config } from "@/config/config"
+import { Redact } from "@yukioshi/core/redact"
 import { assertSandboxWrite } from "./sandbox-profile"
 
 function normalizeLineEndings(text: string): string {
@@ -136,7 +137,8 @@ export const EditTool = Tool.define(
               const old = convertToLineEnding(normalizeLineEndings(params.oldString), ending)
               const replacement = convertToLineEnding(normalizeLineEndings(params.newString), ending)
 
-              const next = Bom.split(replace(contentOld, old, replacement, params.replaceAll))
+              const resolved = Redact.resolveEdit(contentOld, old, replacement, cfg?.redact)
+              const next = Bom.split(replace(contentOld, resolved.oldString, resolved.newString, params.replaceAll))
               const desiredBom = source.bom || next.bom
               contentNew = next.text
 

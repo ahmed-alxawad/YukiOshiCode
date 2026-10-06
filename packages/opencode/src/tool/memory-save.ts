@@ -3,6 +3,7 @@ import { InstanceState } from "@/effect/instance-state"
 import { Memory } from "../memory"
 import { MemoryStore } from "../memory/store"
 import { Config } from "@/config/config"
+import { Redact } from "@yukioshi/core/redact"
 import * as Tool from "./tool"
 
 const DESCRIPTION =
@@ -60,7 +61,9 @@ export const MemorySaveTool = Tool.define(
             }
           }
 
-          const text = (params.text ?? "").trim()
+          const cfg = yield* config.get()
+          const rawText = (params.text ?? "").trim()
+          const text = Redact.mask(rawText, cfg.redact)
           if (!text) {
             return {
               title: `Memory ${params.action}: no text`,

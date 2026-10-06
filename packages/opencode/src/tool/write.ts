@@ -14,6 +14,7 @@ import { trimDiff } from "./edit"
 import { assertExternalDirectoryEffect } from "./external-directory"
 import * as Bom from "@/util/bom"
 import { Config } from "@/config/config"
+import { Redact } from "@yukioshi/core/redact"
 import { assertSandboxWrite } from "./sandbox-profile"
 
 const MAX_PROJECT_DIAGNOSTICS_FILES = 5
@@ -50,9 +51,10 @@ export const WriteTool = Tool.define(
 
           const exists = yield* fs.existsSafe(filepath)
           const source = exists ? yield* Bom.readFile(fs, filepath) : { bom: false, text: "" }
-          const next = Bom.split(params.content)
-          const desiredBom = source.bom || next.bom
           const contentOld = source.text
+          const resolvedNew = exists ? Redact.resolveEdit(contentOld, "", params.content, cfg?.redact).newString : params.content
+          const next = Bom.split(resolvedNew)
+          const desiredBom = source.bom || next.bom
           const contentNew = next.text
 
           const diff = trimDiff(createTwoFilesPatch(filepath, filepath, contentOld, contentNew))

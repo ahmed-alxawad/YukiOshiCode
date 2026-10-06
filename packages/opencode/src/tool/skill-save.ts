@@ -2,6 +2,7 @@ import path from "path"
 import { Effect, Schema } from "effect"
 import { Global } from "@yukioshi/core/global"
 import { Config } from "@/config/config"
+import { Redact } from "@yukioshi/core/redact"
 import { Skill } from "../skill"
 import { LearnedSkills } from "../skill/learned"
 import * as Tool from "./tool"
@@ -37,7 +38,8 @@ export const SkillSaveTool = Tool.define(
       parameters: Parameters,
       execute: (params: Schema.Schema.Type<typeof Parameters>, ctx: Tool.Context) =>
         Effect.gen(function* () {
-          const learn = LearnedSkills.settings((yield* config.get()).skills?.learn)
+          const cfg = yield* config.get()
+          const learn = LearnedSkills.settings(cfg.skills?.learn)
           const dir = LearnedSkills.root(global.data)
           const name = params.name.trim()
           const fail = (output: string) => ({ title: `Skill not saved: ${name}`, output, metadata: { name } })
@@ -57,8 +59,10 @@ export const SkillSaveTool = Tool.define(
             }
           }
 
-          const description = (params.description ?? "").replace(/\s+/g, " ").trim()
-          const content = (params.content ?? "").trim()
+          const rawDescription = (params.description ?? "").replace(/\s+/g, " ").trim()
+          const rawContent = (params.content ?? "").trim()
+          const description = Redact.mask(rawDescription, cfg.redact)
+          const content = Redact.mask(rawContent, cfg.redact)
           if (!description || !content) return fail("Both description and content are needed to save a skill.")
           if (description.length > LearnedSkills.DESCRIPTION_MAX)
             return fail(`The description is ${description.length} characters; keep it to ${LearnedSkills.DESCRIPTION_MAX}.`)

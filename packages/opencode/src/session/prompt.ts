@@ -14,6 +14,7 @@ import { SessionRepeat } from "./repeat"
 import { TuiEvent } from "@/server/tui-event"
 import { SessionFallback } from "./fallback"
 import { Provider } from "@/provider/provider"
+import { Redact } from "@yukioshi/core/redact"
 
 import { type Tool as AITool, tool, jsonSchema } from "ai"
 import type { JSONSchema7 } from "@ai-sdk/provider"
@@ -1479,7 +1480,7 @@ const layer = Layer.effect(
 
             yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
 
-            const [skills, env, instructions, mcpInstructions, memory, modelMsgs] = yield* Effect.all([
+            const [skills, env, instructions, mcpInstructions, memory, rawModelMsgs] = yield* Effect.all([
               sys.skills(agent),
               sys.environment(model),
               instruction.system().pipe(Effect.orDie),
@@ -1487,6 +1488,43 @@ const layer = Layer.effect(
               sys.memory(),
               MessageV2.toModelMessagesEffect(msgs, model),
             ])
+            const redactCfg = (yield* config.get()).redact
+            let promptRedacted = false
+            const modelMsgs = rawModelMsgs.map((msg) => {
+              if (msg.role !== "user") return msg
+              if (typeof msg.content === "string") {
+                const report = Redact.maskWithReport(msg.content, redactCfg)
+                if (report.masked) {
+                  promptRedacted = true
+                  return { ...msg, content: report.text }
+                }
+                return msg
+              }
+              if (Array.isArray(msg.content)) {
+                let changed = false
+                const newContent = msg.content.map((part) => {
+                  if (part.type === "text" && typeof part.text === "string") {
+                    const report = Redact.maskWithReport(part.text, redactCfg)
+                    if (report.masked) {
+                      changed = true
+                      promptRedacted = true
+                      return { ...part, text: report.text }
+                    }
+                  }
+                  return part
+                })
+                return changed ? { ...msg, content: newContent } : msg
+              }
+              return msg
+            })
+            if (promptRedacted) {
+              yield* events.publish(TuiEvent.ToastShow, {
+                title: "Redacted",
+                message: "Secrets in prompt were masked before sending to the model",
+                variant: "warning",
+                duration: 6000,
+              })
+            }
             const system = [
               ...env,
               ...instructions,

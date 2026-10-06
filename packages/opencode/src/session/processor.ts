@@ -25,6 +25,7 @@ import { errorMessage } from "@/util/error"
 import { isRecord } from "@/util/record"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { Database } from "@yukioshi/core/database/database"
+import { Redact } from "@yukioshi/core/redact"
 import { Usage, type LLMEvent } from "@yukioshi/llm"
 
 const DOOM_LOOP_THRESHOLD = 3
@@ -169,12 +170,14 @@ const layer = Layer.effect(
       ) {
         const match = yield* readToolCall(toolCallID)
         if (!match || match.part.state.status !== "running") return
+        const cfg = yield* config.get()
+        const maskedOutput = Redact.mask(output.output, cfg.redact)
         yield* session.updatePart({
           ...match.part,
           state: {
             status: "completed",
             input: match.part.state.input,
-            output: output.output,
+            output: maskedOutput,
             metadata: output.metadata,
             title: output.title,
             time: { start: match.part.state.time.start, end: Date.now() },

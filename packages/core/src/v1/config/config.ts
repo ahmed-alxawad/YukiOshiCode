@@ -23,6 +23,7 @@ import { ConfigToolSearchV1 } from "./tool-search"
 import { ConfigDelegateV1 } from "./delegate"
 import { ConfigWebhookV1 } from "./webhook"
 import { ConfigBudgetV1 } from "./budget"
+import { ConfigRedactV1 } from "./redact"
 import { ConfigCheckpointsV1 } from "./checkpoints"
 import { ConfigPermissionV1 } from "./permission"
 import { ConfigPluginV1 } from "./plugin"
@@ -79,6 +80,9 @@ export const Info = Schema.Struct({
   }),
   checkpoints: Schema.optional(ConfigCheckpointsV1.Info).annotate({
     description: "Durable git checkpoints on a separate YukiOshi ref (off by default)",
+  }),
+  redact: Schema.optional(ConfigRedactV1.Info).annotate({
+    description: "Mask secrets before they are sent to the model (on by default)",
   }),
   loop: Schema.optional(ConfigLoopV1.Info).annotate({
     description: "/loop: run a prompt or slash command again on an interval (off by default)",

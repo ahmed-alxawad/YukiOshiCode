@@ -95,6 +95,7 @@ Keep API keys out of checked-in config files: use `{env:…}` or
 | `enabled_providers`, `disabled_providers` | limit which providers load                       | [Providers](providers.md)                   |
 | `permission`           | per-tool rules: `allow`, `ask`, or `deny`                           | [Permissions and safety](permissions-and-safety.md) |
 | `sandbox`              | OS sandbox for shell commands and file edits                        | [Permissions and safety](permissions-and-safety.md) |
+| `redact`               | mask secrets before sending to model: `enabled` (default true), `patterns`, `allow` | [Permissions and safety](permissions-and-safety.md#secret-redaction) |
 | `hooks`                | your commands at fixed points in the agent's work                   | [Hooks](hooks.md)                           |
 | `skills`               | extra skill folders (`paths`), skill indexes (`urls`), and skills YukiOshi writes itself (`learn`, off by default) | [Skills](skills.md)                         |
 | `memory`, `indexing`, `code_graph` | optional features (`memory.max_chars` caps memory, default 4000) | [Features](features.md)                     |

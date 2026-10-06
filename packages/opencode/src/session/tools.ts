@@ -21,6 +21,7 @@ import { MessageV2 } from "./message-v2"
 import { Session } from "./session"
 import { SessionProcessor } from "./processor"
 import { PartID } from "./schema"
+import { Redact } from "@yukioshi/core/redact"
 import { ToolLimits } from "./tool-limits"
 import { EffectBridge } from "@/effect/bridge"
 import { ProviderV2 } from "@yukioshi/core/provider"
@@ -189,13 +190,18 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
               toolName: item.id,
               signal: ctx.abort,
             })
-            const finalOutput = withRepeatNote(
+            const rawOutput = withRepeatNote(
               item.id,
               args,
               post.blocked
                 ? { ...output, output: `${output.output}\n\n[PostToolUse hook feedback]: ${post.blocked}` }
                 : output,
             )
+            const redactCfg = (yield* config.get()).redact
+            const finalOutput = {
+              ...rawOutput,
+              output: Redact.mask(rawOutput.output, redactCfg),
+            }
             yield* plugin.trigger(
               "tool.execute.after",
               { tool: item.id, sessionID: ctx.sessionID, callID: ctx.callID, args },
@@ -571,10 +577,12 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
             ...(truncated.truncated && { outputPath: truncated.outputPath }),
           }
 
+          const redactCfg = (yield* config.get()).redact
+          const rawMcpOutput = withRepeatNote(key, args, { output: truncated.content }).output
           const output = {
             title: "",
             metadata,
-            output: withRepeatNote(key, args, { output: truncated.content }).output,
+            output: Redact.mask(rawMcpOutput, redactCfg),
             attachments: attachments.map((attachment) => ({
               ...attachment,
               id: PartID.ascending(),
