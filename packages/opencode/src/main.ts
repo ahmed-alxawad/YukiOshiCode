@@ -150,5 +150,8 @@ try {
   // Most notably, some docker-container-based MCP servers don't handle such signals unless
   // run using `docker run --init`.
   // Explicitly exit to avoid any hanging subprocesses.
+  // Output to a pipe is written asynchronously, and exiting at once cut it off at the pipe buffer
+  // (64 KB). When stdout or stderr is not a terminal, give the writes a moment to drain first.
+  if (!process.stdout.isTTY || !process.stderr.isTTY) await new Promise((resolve) => setTimeout(resolve, 200))
   process.exit()
 }

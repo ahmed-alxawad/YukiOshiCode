@@ -719,12 +719,16 @@ export const RunCommand = effectCmd({
         // rebind the SDK to the session's directory after the subscription is
         // created, and replies issued from inside the loop must use that client.
         let summaryDiffs: FileChange[] = []
+        // Set once the run has reported its own failure: the same failure also arrives as a session.error
+        // event, which must not be printed a second time.
+        let reported = false
         async function loop(client: OpencodeClient, events: Awaited<ReturnType<typeof sdk.event.subscribe>>) {
           const toggles = new Map<string, boolean>()
           const sessions = new Set([sessionID])
           let error: string | undefined
 
           for await (const event of events.stream) {
+            if (reported) break
             if (event.type === "session.created" && event.properties.info.parentID) {
               if (sessions.has(event.properties.info.parentID)) sessions.add(event.properties.info.id)
             }
@@ -907,6 +911,7 @@ export const RunCommand = effectCmd({
               variant: args.variant,
             })
             if (result.error) {
+              reported = true
               if (!emit("error", { error: result.error })) UI.error(formatRunError(result.error))
               process.exitCode = 1
               return
@@ -934,6 +939,7 @@ export const RunCommand = effectCmd({
             parts: [...files, { type: "text", text: message }],
           })
           if (result.error) {
+            reported = true
             if (!emit("error", { error: result.error })) UI.error(formatRunError(result.error))
             process.exitCode = 1
             return
