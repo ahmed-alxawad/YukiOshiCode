@@ -345,6 +345,8 @@ describe("V2 configuration loading", () => {
         }),
       )
 
+      // Remote skill URLs from project config apply only once the project is trusted.
+      yield* trustProject(instance.directory)
       const config = yield* Config.use.get()
 
       expect(config.model).toBe("anthropic/claude-sonnet")

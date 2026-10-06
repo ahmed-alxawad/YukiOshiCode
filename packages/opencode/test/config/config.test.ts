@@ -1828,6 +1828,8 @@ it.instance("MCP config deep merges preserving base config properties", () =>
       },
       "opencode.jsonc",
     )
+    // Remote MCP headers from project config apply only once the project is trusted.
+    yield* trustProject(test.directory)
 
     const config = yield* Config.use.get()
     expect(config.mcp?.myserver).toEqual({
