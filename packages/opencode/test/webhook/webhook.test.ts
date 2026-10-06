@@ -83,4 +83,51 @@ describe("webhooks", () => {
     expect(performance.now() - started).toBeLessThan(100)
     hanging.stop(true)
   })
+
+  test("rejects non-http and non-https webhook URLs", async () => {
+    await expect(
+      deliverWebhook({ url: "file:///etc/passwd" }, payload, { timeoutMs: 100 }),
+    ).rejects.toThrow("Webhook URL must be http: or https:")
+
+    await expect(
+      deliverWebhook({ url: "ftp://example.com/hook" }, payload, { timeoutMs: 100 }),
+    ).rejects.toThrow("Webhook URL must be http: or https:")
+  })
+
+  test("refuses to follow redirect to different host with signature", async () => {
+    const redirectServer = server((request) => {
+      return new Response(null, {
+        status: 302,
+        headers: { location: "http://attacker.example/leak" },
+      })
+    })
+
+    await expect(
+      deliverWebhook({ url: redirectServer.url.toString(), secret: "my-secret" }, payload, { timeoutMs: 200 }),
+    ).rejects.toThrow("Refusing to follow redirect to different host")
+    redirectServer.stop()
+  })
+
+  test("follows redirect on the same host", async () => {
+    let finalReceived = false
+    const sameHostServer = server(async (request) => {
+      const url = new URL(request.url)
+      if (url.pathname === "/first") {
+        return new Response(null, {
+          status: 302,
+          headers: { location: "/second" },
+        })
+      }
+      if (url.pathname === "/second") {
+        finalReceived = true
+        return new Response("ok", { status: 200 })
+      }
+      return new Response("not found", { status: 404 })
+    })
+
+    const initialUrl = new URL("/first", sameHostServer.url).toString()
+    await deliverWebhook({ url: initialUrl, secret: "my-secret" }, payload, { timeoutMs: 200 })
+    sameHostServer.stop()
+    expect(finalReceived).toBe(true)
+  })
 })

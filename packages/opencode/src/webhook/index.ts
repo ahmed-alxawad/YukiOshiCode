@@ -46,25 +46,72 @@ export function webhookSignature(body: string, secret: string) {
 }
 
 async function fetchOnce(config: ConfigWebhookV1.Info, body: string, attempt: number, options: DeliveryOptions) {
+  let parsedUrl: URL
+  try {
+    parsedUrl = new URL(config.url)
+  } catch {
+    throw new WebhookDeliveryError(`Invalid webhook URL: ${config.url}`, false)
+  }
+  if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+    throw new WebhookDeliveryError(`Webhook URL must be http: or https:, got: ${parsedUrl.protocol}`, false)
+  }
+
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? TIMEOUT_MS)
   try {
-    const headers = {
-      "content-type": "application/json",
-      ...(config.headers ?? {}),
-      ...(config.secret ? { "X-YukiOshi-Signature": webhookSignature(body, config.secret) } : {}),
+    let currentUrl = parsedUrl
+    let redirectCount = 0
+    const maxRedirects = 5
+
+    while (true) {
+      const isOriginalHost = currentUrl.host === parsedUrl.host
+      const headers = {
+        "content-type": "application/json",
+        ...(isOriginalHost ? (config.headers ?? {}) : {}),
+        ...(isOriginalHost && config.secret
+          ? { "X-YukiOshi-Signature": webhookSignature(body, config.secret) }
+          : {}),
+      }
+      const response = await (options.fetch ?? globalThis.fetch)(currentUrl.toString(), {
+        method: "POST",
+        headers,
+        body,
+        redirect: "manual",
+        signal: controller.signal,
+      })
+
+      if (response.status >= 301 && response.status <= 308) {
+        const location = response.headers.get("location")
+        await response.body?.cancel().catch(() => {})
+        if (!location) {
+          throw new WebhookDeliveryError(`HTTP ${response.status} redirect without location header`, false)
+        }
+        redirectCount++
+        if (redirectCount > maxRedirects) {
+          throw new WebhookDeliveryError(`Too many redirects (max ${maxRedirects})`, false)
+        }
+        const nextUrl = new URL(location, currentUrl)
+        if (nextUrl.protocol !== "http:" && nextUrl.protocol !== "https:") {
+          throw new WebhookDeliveryError(`Redirect URL must be http: or https:, got: ${nextUrl.protocol}`, false)
+        }
+        if (nextUrl.host !== parsedUrl.host) {
+          throw new WebhookDeliveryError(
+            `Refusing to follow redirect to different host "${nextUrl.host}" with webhook signature`,
+            false,
+          )
+        }
+        currentUrl = nextUrl
+        continue
+      }
+
+      await response.body?.cancel().catch(() => {})
+
+      if (response.ok) return
+      if (response.status >= 400 && response.status < 500) {
+        throw new WebhookDeliveryError(`HTTP ${response.status}`, false)
+      }
+      throw new WebhookDeliveryError(`HTTP ${response.status}`, attempt < RETRIES)
     }
-    const response = await (options.fetch ?? globalThis.fetch)(config.url, {
-      method: "POST",
-      headers,
-      body,
-      signal: controller.signal,
-    })
-    if (response.ok) return
-    if (response.status >= 400 && response.status < 500) {
-      throw new WebhookDeliveryError(`HTTP ${response.status}`, false)
-    }
-    throw new WebhookDeliveryError(`HTTP ${response.status}`, attempt < RETRIES)
   } finally {
     clearTimeout(timer)
   }
