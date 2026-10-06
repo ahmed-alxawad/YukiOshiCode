@@ -354,11 +354,14 @@ const layer = Layer.effect(
 
         const projectConfig = (source: string, next: Info) => {
           for (const item of next.skills?.paths ?? []) projectSkillPaths.add(item)
-          for (const item of next.skills?.urls ?? []) projectSkillUrls.add(item)
-          if (projectTrusted) return next
-          // Delegate agents run a command and webhooks send session events to a URL, so like hooks
-          // they come only from global config until the project is trusted.
-          const { hooks, plugin, delegate, webhooks, ...safe } = next
+          if (projectTrusted) {
+            for (const item of next.skills?.urls ?? []) projectSkillUrls.add(item)
+            return next
+          }
+          // Delegate agents run a command, webhooks send session events to a URL, enterprise/share
+          // exfiltrates sessions, and remote skills/instructions/MCP headers fetch third-party code
+          // or leak credentials, so like hooks they are ignored until the project is trusted.
+          const { hooks, plugin, delegate, webhooks, enterprise, ...safe } = next
           if (plugin?.length) blockedExecutables.add(`${source} (plugins)`)
           if (delegate?.agents && Object.keys(delegate.agents).length > 0)
             blockedExecutables.add(`${source} (delegate agents)`)
@@ -366,15 +369,46 @@ const layer = Layer.effect(
           if (hooks && Object.values(hooks).some((entries) => entries.length > 0)) {
             blockedExecutables.add(`${source} (hooks)`)
           }
+          if (enterprise?.url) blockedExecutables.add(`${source} (enterprise)`)
+          if (safe.share === "auto") {
+            blockedExecutables.add(`${source} (auto-share)`)
+            safe.share = undefined
+          }
+          if (safe.skills?.urls?.length) {
+            blockedExecutables.add(`${source} (remote skills)`)
+            safe.skills = { ...safe.skills, urls: undefined }
+          }
+          if (safe.instructions?.length) {
+            const remoteInstructions = safe.instructions.filter(
+              (item) => item.startsWith("http://") || item.startsWith("https://"),
+            )
+            if (remoteInstructions.length > 0) {
+              blockedExecutables.add(`${source} (remote instructions)`)
+              safe.instructions = safe.instructions.filter(
+                (item) => !item.startsWith("http://") && !item.startsWith("https://"),
+              )
+            }
+          }
           // Local MCP servers and custom LSP/formatter commands run programs too, so an
-          // untrusted project may only reference remote servers and disable built-ins.
+          // untrusted project may only reference remote servers without credentials and disable built-ins.
           const runsCommand = (entry: unknown) => isRecord(entry) && Array.isArray(entry["command"])
           const withoutCommands = <T,>(label: string, entries: Record<string, T>) =>
             Object.fromEntries(
-              Object.entries(entries).filter(([name, entry]) => {
-                if (!runsCommand(entry)) return true
-                blockedExecutables.add(`${source} (${label} ${name})`)
-                return false
+              Object.entries(entries).flatMap(([name, entry]) => {
+                if (runsCommand(entry)) {
+                  blockedExecutables.add(`${source} (${label} ${name})`)
+                  return []
+                }
+                if (
+                  label === "MCP server" &&
+                  isRecord(entry) &&
+                  isRecord(entry["headers"]) &&
+                  Object.keys(entry["headers"]).length > 0
+                ) {
+                  blockedExecutables.add(`${source} (${label} ${name} headers)`)
+                  return [[name, { ...(entry as any), headers: undefined } as T]]
+                }
+                return [[name, entry]]
               }),
             )
           if (safe.mcp) safe.mcp = withoutCommands("MCP server", safe.mcp)

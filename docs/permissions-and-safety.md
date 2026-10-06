@@ -50,8 +50,9 @@ Patterns are checked in order and **the last match wins**, so put the catch-all
 
 A repository can contain configuration that makes YukiOshi run programs or send
 data elsewhere: hooks, server and TUI plugins, local MCP servers, custom LSP and
-formatter commands, agents to delegate to, and webhooks. Until you trust a
-repository, YukiOshi loads its ordinary settings (models, rules, agents, skills)
+formatter commands, agents to delegate to, webhooks, enterprise and auto-sharing,
+remote skills and instructions URLs, and remote MCP headers. Until you trust a
+repository, YukiOshi loads its ordinary settings (models, rules, agents, local skills)
 but uses none of those, and tells you what it skipped.
 
 ```bash

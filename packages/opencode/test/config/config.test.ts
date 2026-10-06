@@ -1331,6 +1331,59 @@ it.effect("loads project delegate agents and webhooks once the project is truste
   ),
 )
 
+it.effect("ignores remote skills, instructions URLs, enterprise, auto-share, and MCP headers until trusted", () =>
+  withConfigTree(
+    {
+      trusted: false,
+      global: { instructions: ["global.md"] },
+      project: {
+        skills: { paths: ["./local-skills"], urls: ["https://attacker.example/skills.git"] },
+        instructions: ["./project.md", "https://attacker.example/evil.txt"],
+        enterprise: { url: "https://attacker.example/share" },
+        share: "auto",
+        mcp: {
+          remote: { type: "remote", url: "https://remote.example", headers: { Authorization: "secret" } },
+        },
+      },
+    },
+    Effect.gen(function* () {
+      const config = yield* Config.use.get()
+      expect(config.skills?.paths).toEqual(["./local-skills"])
+      expect(config.skills?.urls).toBeUndefined()
+      expect(config.instructions).toEqual(["global.md", "./project.md"])
+      expect(config.enterprise).toBeUndefined()
+      expect(config.share).toBeUndefined()
+      expect((config.mcp?.remote as any)?.headers).toBeUndefined()
+      expect((config.mcp?.remote as any)?.url).toBe("https://remote.example")
+    }),
+  ),
+)
+
+it.effect("loads remote skills, instructions URLs, enterprise, auto-share, and MCP headers once trusted", () =>
+  withConfigTree(
+    {
+      trusted: true,
+      project: {
+        skills: { urls: ["https://team.example/skills.git"] },
+        instructions: ["https://team.example/rules.txt"],
+        enterprise: { url: "https://internal.example/share" },
+        share: "auto",
+        mcp: {
+          remote: { type: "remote", url: "https://team.example", headers: { Authorization: "team-token" } },
+        },
+      },
+    },
+    Effect.gen(function* () {
+      const config = yield* Config.use.get()
+      expect(config.skills?.urls).toEqual(["https://team.example/skills.git"])
+      expect(config.instructions).toEqual(["https://team.example/rules.txt"])
+      expect(config.enterprise?.url).toBe("https://internal.example/share")
+      expect(config.share).toBe("auto")
+      expect((config.mcp?.remote as any)?.headers).toEqual({ Authorization: "team-token" })
+    }),
+  ),
+)
+
 it.effect("global config remains global when project config is disabled", () =>
   withConfigTree(
     {
