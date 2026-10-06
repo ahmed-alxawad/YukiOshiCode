@@ -23,6 +23,7 @@ import { ConfigToolSearchV1 } from "./tool-search"
 import { ConfigDelegateV1 } from "./delegate"
 import { ConfigWebhookV1 } from "./webhook"
 import { ConfigBudgetV1 } from "./budget"
+import { ConfigCheckpointsV1 } from "./checkpoints"
 import { ConfigPermissionV1 } from "./permission"
 import { ConfigPluginV1 } from "./plugin"
 import { ConfigProviderV1 } from "./provider"
@@ -75,6 +76,9 @@ export const Info = Schema.Struct({
   }),
   budget: Schema.optional(ConfigBudgetV1.Info).annotate({
     description: "Dollar and token spending limits for sessions, days, and months (off by default)",
+  }),
+  checkpoints: Schema.optional(ConfigCheckpointsV1.Info).annotate({
+    description: "Durable git checkpoints on a separate YukiOshi ref (off by default)",
   }),
   loop: Schema.optional(ConfigLoopV1.Info).annotate({
     description: "/loop: run a prompt or slash command again on an interval (off by default)",

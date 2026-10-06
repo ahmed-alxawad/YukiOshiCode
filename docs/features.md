@@ -186,6 +186,14 @@ the matching `budget.tokens` limits for providers without usable prices. The
 limits include subagents and stop the next model request before it is sent.
 YukiOshi warns once at 80%; omit `budget` to keep the feature off.
 
+## Git checkpoints
+
+Set `{ "checkpoints": { "enabled": true } }` to save each changed turn as a
+real commit on `refs/yukioshi/checkpoints/<session>`. The user's branch, HEAD,
+index, and working tree are not changed while a checkpoint is created. Use
+`yukioshi checkpoint list`, `show`, `restore`, or `prune`; `/checkpoints` opens
+the same list in the TUI. Checkpoints work only inside a Git repository.
+
 ## Files changed summary
 
 After a completed turn, YukiOshi can show the files changed, additions, and

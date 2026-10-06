@@ -63,6 +63,7 @@ import { SessionReminders } from "./reminders"
 import { SessionTools } from "./tools"
 import { LLMEvent } from "@yukioshi/llm"
 import { Budget } from "@/budget"
+import { Checkpoint } from "@/checkpoint"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -149,6 +150,7 @@ const layer = Layer.effect(
     const flags = yield* RuntimeFlags.Service
     const database = yield* Database.Service
     const budget = yield* Budget.Service
+    const checkpoints = yield* Checkpoint.Service
     const { db } = database
     const ops = Effect.fn("SessionPrompt.ops")(function* () {
       return {
@@ -1580,6 +1582,15 @@ const layer = Layer.effect(
         })
         for (const warning of stopResult.warnings) yield* Effect.logWarning("stop hook warning", { warning })
 
+        const finalMessages = yield* MessageV2.filterCompactedEffect(sessionID).pipe(
+          Effect.provideService(Database.Service, database),
+        )
+        const finalUser = finalMessages.findLast((message) => message.info.role === "user")
+        const promptText = finalUser?.parts
+          .flatMap((part) => (part.type === "text" && !part.synthetic ? [part.text] : []))
+          .join(" ") ?? "YukiOshi checkpoint"
+        yield* checkpoints.create({ sessionID, prompt: promptText }).pipe(Effect.ignore)
+
         return yield* lastAssistant(sessionID)
       },
     )
@@ -2186,6 +2197,7 @@ export const node = LayerNode.make({
   deps: [
     SessionStatus.node,
     Budget.node,
+    Checkpoint.node,
     Session.node,
     Agent.node,
     Provider.node,

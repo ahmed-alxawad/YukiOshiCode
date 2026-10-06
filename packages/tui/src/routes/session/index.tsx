@@ -70,6 +70,7 @@ import { normalizePath } from "../../util/path"
 import { PermissionPrompt } from "./permission"
 import { QuestionPrompt } from "./question"
 import { DialogExportOptions } from "../../ui/dialog-export-options"
+import { DialogCheckpoints } from "./dialog-checkpoints"
 import * as Model from "../../util/model"
 import { formatTranscript } from "../../util/transcript"
 import { sessionEpilogue } from "../../util/presentation"
@@ -686,6 +687,13 @@ export function Session() {
         )
         dialog.clear()
       },
+    },
+    {
+      title: "Git checkpoints",
+      value: "session.checkpoints",
+      category: "Session",
+      slash: { name: "checkpoints" },
+      run: () => dialog.replace(() => <DialogCheckpoints sessionID={route.sessionID} />),
     },
     {
       title: "Redo",

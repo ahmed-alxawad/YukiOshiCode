@@ -15,6 +15,7 @@ accept `--print-logs`, `--log-level DEBUG|INFO|WARN|ERROR`, and `--pure`
 | `yukioshi providers logout`     | remove a credential                                     |
 | `yukioshi models [provider]`    | list the models you can use                             |
 | `yukioshi trust [folder]`       | trust a repository's hooks, plugins, and commands (`--status`, `--revoke`) |
+| `yukioshi checkpoint <action>`  | list, show, restore, or prune durable Git checkpoints |
 | `yukioshi upgrade [version]`    | upgrade to the latest or a specific version             |
 | `yukioshi uninstall`            | remove YukiOshi Code                                    |
 

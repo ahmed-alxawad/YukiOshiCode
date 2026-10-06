@@ -29,6 +29,7 @@ import { errorMessage } from "./util/error"
 import { PluginCommand } from "./cli/cmd/plug"
 import { Heap } from "./cli/heap"
 import { TrustCommand } from "./cli/cmd/trust"
+import { CheckpointCommand } from "./cli/cmd/checkpoint"
 
 const args = hideBin(process.argv)
 
@@ -100,6 +101,7 @@ const cli = yargs(args)
   .command(SessionCommand)
   .command(PluginCommand)
   .command(TrustCommand)
+  .command(CheckpointCommand)
   .command(DbCommand)
   .fail((msg, err) => {
     if (
