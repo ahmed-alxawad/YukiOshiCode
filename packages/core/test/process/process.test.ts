@@ -14,15 +14,18 @@ const it = testEffect(LayerNode.compile(AppProcess.node))
 const NODE = process.execPath
 const cmd = (...args: string[]) => ChildProcess.make(NODE, args)
 
+// Waits until the file exists and has content: the child creates the file before writing to it, so an
+// empty read means "not written yet", not "written empty".
 const waitForFile = (file: string) =>
   Effect.promise(async () => {
     while (true) {
       try {
-        return await fs.readFile(file, "utf8")
+        const text = await fs.readFile(file, "utf8")
+        if (text !== "") return text
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error
-        await new Promise<void>((resolve) => setTimeout(resolve, 10))
       }
+      await new Promise<void>((resolve) => setTimeout(resolve, 10))
     }
   })
 
