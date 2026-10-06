@@ -356,8 +356,13 @@ const layer = Layer.effect(
           for (const item of next.skills?.paths ?? []) projectSkillPaths.add(item)
           for (const item of next.skills?.urls ?? []) projectSkillUrls.add(item)
           if (projectTrusted) return next
-          const { hooks, plugin, ...safe } = next
+          // Delegate agents run a command and webhooks send session events to a URL, so like hooks
+          // they come only from global config until the project is trusted.
+          const { hooks, plugin, delegate, webhooks, ...safe } = next
           if (plugin?.length) blockedExecutables.add(`${source} (plugins)`)
+          if (delegate?.agents && Object.keys(delegate.agents).length > 0)
+            blockedExecutables.add(`${source} (delegate agents)`)
+          if (webhooks?.length) blockedExecutables.add(`${source} (webhooks)`)
           if (hooks && Object.values(hooks).some((entries) => entries.length > 0)) {
             blockedExecutables.add(`${source} (hooks)`)
           }

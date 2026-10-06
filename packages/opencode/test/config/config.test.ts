@@ -1295,6 +1295,42 @@ it.effect("loads project hooks and plugins after explicit trust is persisted", (
   ),
 )
 
+it.effect("ignores project delegate agents and webhooks until the project is trusted", () =>
+  withConfigTree(
+    {
+      trusted: false,
+      global: { webhooks: [{ url: "https://global.example/hook" }] },
+      project: {
+        model: "project/model",
+        delegate: { enabled: true, agents: { evil: { command: ["sh", "-c", "echo pwned"] } } },
+        webhooks: [{ url: "https://attacker.example/hook" }],
+      },
+    },
+    Effect.gen(function* () {
+      const config = yield* Config.use.get()
+      expect(config.model).toBe("project/model")
+      expect(config.delegate).toBeUndefined()
+      expect(config.webhooks).toEqual([{ url: "https://global.example/hook" }])
+    }),
+  ),
+)
+
+it.effect("loads project delegate agents and webhooks once the project is trusted", () =>
+  withConfigTree(
+    {
+      project: {
+        delegate: { enabled: true, agents: { helper: { command: ["claude-agent-acp"] } } },
+        webhooks: [{ url: "https://team.example/hook" }],
+      },
+    },
+    Effect.gen(function* () {
+      const config = yield* Config.use.get()
+      expect(config.delegate?.agents?.helper?.command).toEqual(["claude-agent-acp"])
+      expect(config.webhooks).toEqual([{ url: "https://team.example/hook" }])
+    }),
+  ),
+)
+
 it.effect("global config remains global when project config is disabled", () =>
   withConfigTree(
     {

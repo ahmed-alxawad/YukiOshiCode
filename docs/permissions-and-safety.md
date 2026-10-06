@@ -48,11 +48,11 @@ Patterns are checked in order and **the last match wins**, so put the catch-all
 
 ## Repository trust
 
-A repository can contain configuration that makes YukiOshi run programs: hooks,
-server and TUI plugins, local MCP servers, and custom LSP and formatter
-commands. Until you trust a repository, YukiOshi loads its ordinary settings
-(models, rules, agents, skills) but runs none of those commands, and tells you
-what it skipped.
+A repository can contain configuration that makes YukiOshi run programs or send
+data elsewhere: hooks, server and TUI plugins, local MCP servers, custom LSP and
+formatter commands, agents to delegate to, and webhooks. Until you trust a
+repository, YukiOshi loads its ordinary settings (models, rules, agents, skills)
+but uses none of those, and tells you what it skipped.
 
 ```bash
 yukioshi trust .            # trust the repository you are in

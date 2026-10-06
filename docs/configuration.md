@@ -110,9 +110,9 @@ Keep API keys out of checked-in config files: use `{env:…}` or
 | `share`, `enterprise.url` | session sharing (`manual`, `auto`, `disabled`) and the share server it needs | [Features](features.md) |
 | `autoupdate`           | update behaviour                                                    | [Installation](installation.md)             |
 
-In a repository you have not trusted, `hooks`, `plugin`, local MCP servers, and
-`lsp` and `formatter` entries with their own command are ignored until you run
-`yukioshi trust .`. See
+In a repository you have not trusted, `hooks`, `plugin`, `delegate`, `webhooks`,
+local MCP servers, and `lsp` and `formatter` entries with their own command are
+ignored until you run `yukioshi trust .`. See
 [Permissions and safety](permissions-and-safety.md#repository-trust).
 
 ## Webhooks
