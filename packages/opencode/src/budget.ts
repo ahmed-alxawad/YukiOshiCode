@@ -34,6 +34,10 @@ function capitalize(value: string) {
   return value[0]!.toUpperCase() + value.slice(1)
 }
 
+function setting(check: { kind: LimitKind; unit: Unit }) {
+  return `budget.${check.unit === "tokens" ? "tokens." : ""}${check.kind}`
+}
+
 export function evaluateBudget(input: {
   config?: BudgetConfig
   session: BudgetUsage
@@ -56,7 +60,7 @@ export function evaluateBudget(input: {
     const limit = exceeded.unit === "cost" ? money(exceeded.limit) : `${exceeded.limit.toLocaleString()} tokens`
     return {
       allowed: false,
-      exceeded: `${capitalize(exceeded.kind)} budget of ${limit} reached (${amount} used). Raise budget.${exceeded.kind} in yukioshi.json to continue.`,
+      exceeded: `${capitalize(exceeded.kind)} budget of ${limit} reached (${amount} used). Raise ${setting(exceeded)} in yukioshi.json to continue.`,
       usage: input.session,
     }
   }
@@ -69,7 +73,9 @@ export function evaluateBudget(input: {
     input.warned.add(key)
     const amount = check.unit === "cost" ? money(check.used) : `${check.used.toLocaleString()} tokens`
     const limit = check.unit === "cost" ? money(check.limit) : `${check.limit.toLocaleString()} tokens`
-    warnings.push(`${capitalize(check.kind)} budget is at 80% (${amount} of ${limit} used).`)
+    warnings.push(
+      `${capitalize(check.kind)} budget is at 80% (${amount} of ${limit} used). Raise ${setting(check)} in yukioshi.json if needed.`,
+    )
   }
   return { allowed: true, warning: warnings.join(" ") || undefined, usage: input.session }
 }
