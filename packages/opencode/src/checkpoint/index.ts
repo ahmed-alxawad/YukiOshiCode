@@ -49,7 +49,8 @@ export function createCheckpoint(input: { directory: string; sessionID: string; 
   const root = repositoryRoot(input.directory)
   if (!input.force && !hasWorkingTreeChanges(root)) return undefined
   const ref = checkpointRef(input.sessionID)
-  const previous = tryGit(root, ["rev-parse", ref]).status === 0 ? git(root, ["rev-parse", ref]).stdout.trim() : undefined
+  const previous =
+    tryGit(root, ["rev-parse", ref]).status === 0 ? git(root, ["rev-parse", ref]).stdout.trim() : undefined
   const parent = previous ?? currentHead(root)
   const temp = mkdtempSync(path.join(tmpdir(), "yukioshi-checkpoint-"))
   const index = path.join(temp, "index")
@@ -62,7 +63,13 @@ export function createCheckpoint(input: { directory: string; sessionID: string; 
     const args = ["commit-tree", tree]
     if (parent) args.push("-p", parent)
     args.push("-m", checkpointMessage(input.prompt, input.sessionID, turn))
-    const commit = git(root, args, { ...env, GIT_AUTHOR_NAME: "YukiOshi", GIT_AUTHOR_EMAIL: "checkpoint@yukioshi.invalid", GIT_COMMITTER_NAME: "YukiOshi", GIT_COMMITTER_EMAIL: "checkpoint@yukioshi.invalid" })
+    const commit = git(root, args, {
+      ...env,
+      GIT_AUTHOR_NAME: "YukiOshi",
+      GIT_AUTHOR_EMAIL: "checkpoint@yukioshi.invalid",
+      GIT_COMMITTER_NAME: "YukiOshi",
+      GIT_COMMITTER_EMAIL: "checkpoint@yukioshi.invalid",
+    })
     const hash = commit.stdout.trim()
     const update = ["update-ref", ref, hash]
     if (previous) update.push(previous)
@@ -73,7 +80,14 @@ export function createCheckpoint(input: { directory: string; sessionID: string; 
   }
 }
 
-export type CheckpointInfo = { id: string; ref: string; sessionID: string; time: number; message: string; files: string[] }
+export type CheckpointInfo = {
+  id: string
+  ref: string
+  sessionID: string
+  time: number
+  message: string
+  files: string[]
+}
 export type CheckpointCreated = { id: string; ref: string; turn: number; root: string }
 
 function refs(directory: string) {
@@ -91,32 +105,58 @@ export function listCheckpoints(directory: string, sessionID?: string): Checkpoi
       const message = git(root, ["show", "-s", "--format=%B", id]).stdout.trim()
       if (!message.includes("Session:") || !message.includes("Turn:")) continue
       const time = Number(git(root, ["show", "-s", "--format=%ct", id]).stdout.trim())
-      const files = git(root, ["diff-tree", "--no-commit-id", "--name-only", "-r", id]).stdout.trim().split("\n").filter(Boolean)
+      const files = git(root, ["diff-tree", "--no-commit-id", "--name-only", "-r", id])
+        .stdout.trim()
+        .split("\n")
+        .filter(Boolean)
       result.push({ id, ref, sessionID: ref.slice(PREFIX.length), time, message, files })
     }
   }
   return result.sort((a, b) => b.time - a.time)
 }
 
-export function showCheckpoint(directory: string, id: string) {
-  const root = repositoryRoot(directory)
-  return git(root, ["show", "--format=fuller", "--stat", "--patch", id]).stdout
+export function resolveCheckpointID(items: readonly Pick<CheckpointInfo, "id">[], prefix: string) {
+  const value = prefix.trim().toLowerCase()
+  if (value.length < 7) throw new Error("Checkpoint ids must be at least 7 characters.")
+  if (!/^[0-9a-f]+$/.test(value)) throw new Error(`Checkpoint not found: ${prefix}`)
+  const matches = [...new Set(items.map((item) => item.id).filter((id) => id.toLowerCase().startsWith(value)))]
+  if (matches.length === 0) throw new Error(`Checkpoint not found: ${prefix}`)
+  if (matches.length > 1)
+    throw new Error(
+      `Checkpoint id is ambiguous: ${prefix} (matches ${matches.map((id) => id.slice(0, 12)).join(", ")})`,
+    )
+  return matches[0]!
 }
 
-function checkpointExists(directory: string, id: string) {
-  return listCheckpoints(directory).some((item) => item.id === id)
+export function resolveCheckpoint(directory: string, prefix: string) {
+  return resolveCheckpointID(listCheckpoints(directory), prefix)
+}
+
+export function showCheckpoint(directory: string, prefix: string) {
+  const root = repositoryRoot(directory)
+  const id = resolveCheckpointID(listCheckpoints(root), prefix)
+  return git(root, ["show", "--format=fuller", "--stat", "--patch", id]).stdout
 }
 
 export function restoreCheckpoint(input: { directory: string; id: string; yes?: boolean; sessionID: string }) {
   const root = repositoryRoot(input.directory)
-  if (!checkpointExists(root, input.id)) throw new Error(`Checkpoint not found: ${input.id}`)
-  if (hasWorkingTreeChanges(root) && !input.yes) throw new Error("Unsaved changes exist. Re-run with --yes to restore after making a safety checkpoint.")
-  createCheckpoint({ directory: root, sessionID: input.sessionID, prompt: `Safety checkpoint before restoring ${input.id}`, force: true })
-  const target = new Set(git(root, ["ls-tree", "-r", "--name-only", input.id]).stdout.trim().split("\n").filter(Boolean))
+  const targetID = resolveCheckpointID(listCheckpoints(root), input.id)
+  if (hasWorkingTreeChanges(root) && !input.yes)
+    throw new Error("Unsaved changes exist. Re-run with --yes to restore after making a safety checkpoint.")
+  const safety = createCheckpoint({
+    directory: root,
+    sessionID: input.sessionID,
+    prompt: `Before restoring ${input.id}`,
+    force: true,
+  })
+  if (!safety) throw new Error("Could not create the safety checkpoint.")
+  const target = new Set(
+    git(root, ["ls-tree", "-r", "--name-only", targetID]).stdout.trim().split("\n").filter(Boolean),
+  )
   const current = git(root, ["ls-files"]).stdout.trim().split("\n").filter(Boolean)
   for (const file of current) if (!target.has(file)) rmSync(path.join(root, file), { force: true })
   for (const file of target) {
-    const content = spawnSync("git", ["show", `${input.id}:${file}`], { cwd: root }).stdout
+    const content = spawnSync("git", ["show", `${targetID}:${file}`], { cwd: root }).stdout
     const output = path.join(root, file)
     const parent = path.dirname(output)
     mkdirSync(parent, { recursive: true })
@@ -140,11 +180,11 @@ export function pruneCheckpoints(directory: string, olderThanMs: number) {
 }
 
 export interface Interface {
-  readonly create: (input: { sessionID: string; prompt: string }) => Effect.Effect<CheckpointCreated | undefined>
-  readonly list: (sessionID?: string) => Effect.Effect<CheckpointInfo[]>
-  readonly show: (id: string) => Effect.Effect<string>
-  readonly restore: (input: { id: string; yes?: boolean; sessionID: string }) => Effect.Effect<string>
-  readonly prune: (olderThanMs: number) => Effect.Effect<number>
+  readonly create: (input: { sessionID: string; prompt: string }) => Effect.Effect<CheckpointCreated | undefined, Error>
+  readonly list: (sessionID?: string) => Effect.Effect<CheckpointInfo[], Error>
+  readonly show: (id: string) => Effect.Effect<string, Error>
+  readonly restore: (input: { id: string; yes?: boolean; sessionID: string }) => Effect.Effect<string, Error>
+  readonly prune: (olderThanMs: number) => Effect.Effect<number, Error>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@yukioshi/Checkpoint") {}
@@ -153,11 +193,19 @@ const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const config = yield* Config.Service
-    const run = <A>(fn: () => A) => Effect.sync(fn)
+    const run = <A>(fn: () => A) =>
+      Effect.try({
+        try: fn,
+        catch: (error) => (error instanceof Error ? error : new Error(String(error))),
+      })
     const enabled = Effect.map(config.get(), (value) => value.checkpoints?.enabled === true)
-    const withRoot = <A>(fn: (root: string) => A) => Effect.flatMap(InstanceState.context, (ctx) => run(() => fn(ctx.worktree)))
+    const withRoot = <A>(fn: (root: string) => A) =>
+      Effect.flatMap(InstanceState.context, (ctx) => run(() => fn(ctx.worktree)))
     return {
-      create: (input) => Effect.flatMap(enabled, (on) => on ? withRoot((root) => createCheckpoint({ directory: root, ...input })) : Effect.succeed(undefined)),
+      create: (input) =>
+        Effect.flatMap(enabled, (on) =>
+          on ? withRoot((root) => createCheckpoint({ directory: root, ...input })) : Effect.succeed(undefined),
+        ),
       list: (sessionID) => withRoot((root) => listCheckpoints(root, sessionID)),
       show: (id) => withRoot((root) => showCheckpoint(root, id)),
       restore: (input) => withRoot((root) => restoreCheckpoint({ directory: root, ...input })),

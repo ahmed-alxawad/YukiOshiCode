@@ -5,26 +5,45 @@ import { reply } from "../lib/llm-server"
 import { globalConfig, runtimeEnv } from "./helpers"
 
 describe("git checkpoints", () => {
-  cliIt.live("creates a separate-ref checkpoint after a real changed turn", ({ home, llm, opencode }) =>
-    Effect.gen(function* () {
-      Bun.spawnSync(["git", "init", "-q"], { cwd: home })
-      Bun.spawnSync(["git", "config", "user.email", "e2e@example.invalid"], { cwd: home })
-      Bun.spawnSync(["git", "config", "user.name", "E2E"], { cwd: home })
-      Bun.write(`${home}/tracked.txt`, "before")
-      Bun.spawnSync(["git", "add", "."], { cwd: home })
-      Bun.spawnSync(["git", "commit", "-qm", "initial"], { cwd: home })
-      globalConfig(home, { checkpoints: { enabled: true } })
-      const env = { ...runtimeEnv(home), YUKIOSHI_DB: `${home}-data/checkpoints.db` }
-      yield* llm.push(reply().tool("bash", { command: `printf after > ${JSON.stringify(`${home}/tracked.txt`)}`, description: "edit" }))
-      yield* llm.text("done")
-      const run = yield* opencode.run("update the file", { env, extraArgs: ["--dangerously-skip-permissions"] })
-      expect(run.exitCode).toBe(0)
-      const listed = yield* opencode.spawn(["checkpoint", "list"], { env })
-      expect(listed.exitCode).toBe(0)
-      expect(listed.stderr).toContain("update the file")
-      const refs = Bun.spawnSync(["git", "for-each-ref", "--format=%(refname)", "refs/yukioshi/checkpoints"], { cwd: home, stdout: "pipe" }).stdout.toString()
-      expect(refs).toContain("refs/yukioshi/checkpoints/")
-    }),
+  cliIt.live(
+    "creates a separate-ref checkpoint after a real changed turn",
+    ({ home, llm, opencode }) =>
+      Effect.gen(function* () {
+        Bun.spawnSync(["git", "init", "-q"], { cwd: home })
+        Bun.spawnSync(["git", "config", "user.email", "e2e@example.invalid"], { cwd: home })
+        Bun.spawnSync(["git", "config", "user.name", "E2E"], { cwd: home })
+        Bun.write(`${home}/tracked.txt`, "before")
+        Bun.spawnSync(["git", "add", "."], { cwd: home })
+        Bun.spawnSync(["git", "commit", "-qm", "initial"], { cwd: home })
+        globalConfig(home, { checkpoints: { enabled: true } })
+        const env = { ...runtimeEnv(home), YUKIOSHI_DB: `${home}-data/checkpoints.db` }
+        yield* llm.push(
+          reply().tool("bash", {
+            command: `printf after > ${JSON.stringify(`${home}/tracked.txt`)}`,
+            description: "edit",
+          }),
+        )
+        yield* llm.text("done")
+        const run = yield* opencode.run("update the file", {
+          env,
+          extraArgs: ["--dangerously-skip-permissions"],
+          timeoutMs: 50_000,
+        })
+        expect(run.exitCode).toBe(0)
+        const listed = yield* opencode.spawn(["checkpoint", "list"], { env })
+        expect(listed.exitCode).toBe(0)
+        expect(listed.stderr).toContain("update the file")
+        const refs = Bun.spawnSync(["git", "for-each-ref", "--format=%(refname)", "refs/yukioshi/checkpoints"], {
+          cwd: home,
+          stdout: "pipe",
+        }).stdout.toString()
+        expect(refs).toContain("refs/yukioshi/checkpoints/")
+
+        const missing = yield* opencode.spawn(["checkpoint", "show", "deadbee"], { env, timeoutMs: 50_000 })
+        expect(missing.exitCode).toBe(1)
+        expect(missing.stderr).toContain("Checkpoint not found: deadbee")
+        expect(missing.stderr).not.toContain("Unexpected error")
+      }),
     60_000,
   )
 })
