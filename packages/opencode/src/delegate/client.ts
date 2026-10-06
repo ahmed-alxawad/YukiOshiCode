@@ -80,6 +80,51 @@ export async function killProcessTree(child: ChildProcess): Promise<void> {
   }
 }
 
+export function sanitizeDelegateEnv(baseEnv: NodeJS.ProcessEnv): Record<string, string> {
+  const result: Record<string, string> = {}
+  for (const [key, value] of Object.entries(baseEnv)) {
+    if (value === undefined) continue
+    const upper = key.toUpperCase()
+    if (
+      upper.endsWith("_API_KEY") ||
+      upper.endsWith("_API_TOKEN") ||
+      upper.endsWith("_SECRET_KEY") ||
+      upper.endsWith("_ACCESS_TOKEN")
+    ) {
+      continue
+    }
+    if (upper === "GITHUB_TOKEN" || upper === "GH_TOKEN" || upper === "GIT_TOKEN") continue
+    if (upper.startsWith("YUKIOSHI_")) continue
+    if (
+      upper.startsWith("ANTHROPIC_") ||
+      upper.startsWith("OPENAI_") ||
+      upper.startsWith("GEMINI_") ||
+      upper.startsWith("GOOGLE_API") ||
+      upper.startsWith("DEEPSEEK_") ||
+      upper.startsWith("MISTRAL_") ||
+      upper.startsWith("GROQ_") ||
+      upper.startsWith("COHERE_") ||
+      upper.startsWith("TOGETHER_") ||
+      upper.startsWith("OPENROUTER_") ||
+      upper.startsWith("AWS_SECRET")
+    ) {
+      continue
+    }
+    result[key] = value
+  }
+  return result
+}
+
+export function assertInCwd(targetPath: string, cwd: string): string {
+  if (!targetPath) throw new Error("Path cannot be empty.")
+  const resolved = path.isAbsolute(targetPath) ? path.resolve(targetPath) : path.resolve(cwd, targetPath)
+  const rel = path.relative(cwd, resolved)
+  if (rel.startsWith("..") || path.isAbsolute(rel)) {
+    throw new Error(`Path "${targetPath}" resolves outside project directory "${cwd}".`)
+  }
+  return resolved
+}
+
 /**
  * Run a delegated task to an external coding agent over ACP.
  */
@@ -101,7 +146,7 @@ export async function runDelegate(options: DelegateRunOptions): Promise<Delegate
   const [cmd, ...args] = agentConfig.command
 
   const env = {
-    ...process.env,
+    ...sanitizeDelegateEnv(process.env),
     ...(agentConfig.env ?? {}),
   }
 
@@ -251,8 +296,8 @@ export async function runDelegate(options: DelegateRunOptions): Promise<Delegate
 
     async writeTextFile(params: WriteTextFileRequest): Promise<WriteTextFileResponse> {
       if (params.path) {
+        const fullPath = assertInCwd(params.path, cwd)
         filesChanged.add(params.path)
-        const fullPath = path.isAbsolute(params.path) ? params.path : path.join(cwd, params.path)
         await fs.promises.mkdir(path.dirname(fullPath), { recursive: true })
         await fs.promises.writeFile(fullPath, params.content, "utf-8")
       }
@@ -260,7 +305,7 @@ export async function runDelegate(options: DelegateRunOptions): Promise<Delegate
     },
 
     async readTextFile(params: ReadTextFileRequest): Promise<ReadTextFileResponse> {
-      const fullPath = path.isAbsolute(params.path) ? params.path : path.join(cwd, params.path)
+      const fullPath = assertInCwd(params.path, cwd)
       const content = await fs.promises.readFile(fullPath, "utf-8")
       return { content }
     },

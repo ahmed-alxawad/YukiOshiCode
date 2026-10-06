@@ -80,8 +80,8 @@ export const DelegateTool = Tool.define(
           Effect.exit(
             ctx.ask({
               permission: "delegate",
-              patterns: [params.agent],
-              always: [params.agent],
+              patterns: [`${params.agent}:${toolCall.toolCallId}`],
+              always: [],
               metadata: {
                 agent: params.agent,
                 toolCallId: toolCall.toolCallId,

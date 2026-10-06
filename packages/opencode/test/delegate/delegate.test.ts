@@ -11,7 +11,7 @@ import { RuntimeFlags } from "@/effect/runtime-flags"
 import { TestConfig } from "../fixture/config"
 import { noopBootstrapReplacement } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
-import { runDelegate } from "@/delegate/client"
+import { runDelegate, sanitizeDelegateEnv, assertInCwd } from "@/delegate/client"
 import { DelegateTool, permissionAnswer } from "@/tool/delegate"
 import { Tool } from "@/tool/tool"
 import { MessageID, SessionID } from "@/session/schema"
@@ -387,5 +387,46 @@ describe("delegate: ACP client execution with mock agent", () => {
     expect(permissionAnswer([...options], false)).toEqual({ outcome: "selected", optionId: "no" })
     expect(permissionAnswer([options[0]], true)).toEqual({ outcome: "selected", optionId: "always" })
     expect(permissionAnswer([options[2]], true)).toEqual({ outcome: "cancelled" })
+  })
+
+  test("sanitizeDelegateEnv strips LLM provider API keys and tokens", () => {
+    const rawEnv: NodeJS.ProcessEnv = {
+      PATH: "/usr/bin:/bin",
+      ANTHROPIC_API_KEY: "sk-ant-secret",
+      OPENAI_API_KEY: "sk-proj-secret",
+      GEMINI_API_KEY: "AIza-secret",
+      GOOGLE_API_KEY: "AIza-secret2",
+      GITHUB_TOKEN: "ghp_secret",
+      GH_TOKEN: "ghp_secret2",
+      DEEPSEEK_API_KEY: "sk-ds-secret",
+      MISTRAL_API_KEY: "mistral-secret",
+      GROQ_API_KEY: "gsk_secret",
+      COHERE_API_KEY: "co-secret",
+      YUKIOSHI_CONFIG: "/path/to/config",
+      MY_CUSTOM_VAR: "allowed-value",
+    }
+    const sanitized = sanitizeDelegateEnv(rawEnv)
+    expect(sanitized.PATH).toBe("/usr/bin:/bin")
+    expect(sanitized.MY_CUSTOM_VAR).toBe("allowed-value")
+    expect(sanitized.ANTHROPIC_API_KEY).toBeUndefined()
+    expect(sanitized.OPENAI_API_KEY).toBeUndefined()
+    expect(sanitized.GEMINI_API_KEY).toBeUndefined()
+    expect(sanitized.GOOGLE_API_KEY).toBeUndefined()
+    expect(sanitized.GITHUB_TOKEN).toBeUndefined()
+    expect(sanitized.GH_TOKEN).toBeUndefined()
+    expect(sanitized.DEEPSEEK_API_KEY).toBeUndefined()
+    expect(sanitized.MISTRAL_API_KEY).toBeUndefined()
+    expect(sanitized.GROQ_API_KEY).toBeUndefined()
+    expect(sanitized.COHERE_API_KEY).toBeUndefined()
+    expect(sanitized.YUKIOSHI_CONFIG).toBeUndefined()
+  })
+
+  test("assertInCwd confines file paths to cwd", () => {
+    const cwd = "/workspace/project"
+    expect(assertInCwd("src/index.ts", cwd)).toBe("/workspace/project/src/index.ts")
+    expect(assertInCwd("/workspace/project/README.md", cwd)).toBe("/workspace/project/README.md")
+    expect(() => assertInCwd("../evil.txt", cwd)).toThrow("resolves outside project directory")
+    expect(() => assertInCwd("/etc/passwd", cwd)).toThrow("resolves outside project directory")
+    expect(() => assertInCwd("../../.bashrc", cwd)).toThrow("resolves outside project directory")
   })
 })
