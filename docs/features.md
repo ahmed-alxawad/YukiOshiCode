@@ -88,6 +88,29 @@ after `loop.max_runs` runs (default 50). Intervals shorter than
 session, and it lasts as long as the terminal UI or `yukioshi serve` keeps
 running; `yukioshi run` exits after the first run.
 
+## Scheduled tasks
+
+`yukioshi schedule` runs prompts on a recurring cron schedule, for example to summarize commits every morning or review dependencies weekly.
+
+Unlike `/loop` (which runs in an active terminal session or server), scheduled tasks integrate directly into your operating system's background scheduler without running a continuous background daemon of our own:
+- **Linux and macOS:** manages a clearly marked block (`# BEGIN yukioshi schedule` ... `# END yukioshi schedule`) in your user `crontab`, leaving all other cron entries untouched.
+- **Windows:** registers tasks in Windows Task Scheduler via `schtasks` (under `YukiOshi\<id>`).
+
+Each execution runs like `yukioshi run` in the job's directory, creates a normal session titled `Scheduled: <name>`, writes a persistent log to `<state>/schedule/<id>/<timestamp>.log` (retaining the last 50 logs per job), and enforces concurrency locks so multiple copies of the same job never run simultaneously. Spending limits (`budget`) are strictly respected: if a budget limit is reached, the run is logged as `skipped: budget`.
+
+```bash
+# Add a scheduled task (standard 5-field cron)
+yukioshi schedule add "0 9 * * 1-5" "summarize yesterday's commits" --name "daily-summary" --auto
+
+# Inspect, run, or view logs
+yukioshi schedule list
+yukioshi schedule run <id>
+yukioshi schedule logs <id> [--last]
+yukioshi schedule disable <id>
+yukioshi schedule enable <id>
+yukioshi schedule remove <id>
+```
+
 ## Usage
 
 `/usage` (or `/cost`) shows the current session's model, context use, tokens,

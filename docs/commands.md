@@ -62,6 +62,20 @@ When you give a message and nothing arrives on stdin within 3 seconds,
 programs that start YukiOshi with an open, unused pipe from waiting forever.
 Run with `< /dev/null` to skip the wait.
 
+### `yukioshi schedule`
+
+Manage recurring prompts run by your operating system's background scheduler (crontab on Linux/macOS or Task Scheduler on Windows).
+
+| Subcommand | Effect |
+| ---------- | ------ |
+| `yukioshi schedule add "<cron>" "<prompt>"` | schedule a prompt (options: `--name`, `--dir`, `--model`, `--agent`, `--auto`) |
+| `yukioshi schedule list` | list configured scheduled jobs, schedules, next run times, and statuses |
+| `yukioshi schedule run <id>` | execute the scheduled job immediately |
+| `yukioshi schedule logs <id> [--last]` | view output logs of previous runs |
+| `yukioshi schedule enable <id>` | enable a scheduled job |
+| `yukioshi schedule disable <id>` | disable a scheduled job |
+| `yukioshi schedule remove <id>` | remove a scheduled job and clean up its entry from the system scheduler |
+
 ## Sessions and data
 
 | Command                         | Does                                                   |
