@@ -55,6 +55,29 @@ built-in or personal skill. Set `YUKIOSHI_DISABLE_CLAUDE_CODE_SKILLS=1` to skip
 the `.claude` folders. Loading a skill goes through the `skill` permission, so
 you can set it to `ask` or `deny` like any other tool.
 
+## Installing skills from git
+
+```bash
+yukioshi skill add https://github.com/example/skills.git           # name defaults to the repository name
+yukioshi skill add git@github.com:example/skills.git --name team   # choose the folder name
+yukioshi skill list                                                 # installed sources and their URLs
+yukioshi skill remove team
+```
+
+`skill add` clones the repository (`git clone --depth 1`) into
+`~/.config/yukioshi/skills/<name>/`, so its skills are available in every
+project. The repository needs a `SKILL.md`, at its root or in sub-folders (one
+skill per folder that has one), and the command prints the skill names it
+found. It refuses a repository without one.
+
+A skill is only Markdown, so nothing from the repository is ever run: git
+hooks are disabled, the `.git` folder is deleted after cloning, and symbolic
+links are removed so a skill cannot point at files elsewhere on your machine.
+Only folders installed this way can be removed with `skill remove`; folders you
+wrote yourself are never touched. To update a skill, remove it and add it
+again. Skills can still tell the model what to do, so install only from
+sources you trust.
+
 ## Skills YukiOshi writes itself
 
 Off by default. Turn it on and YukiOshi can save a procedure it worked out
