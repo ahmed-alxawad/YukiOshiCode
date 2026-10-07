@@ -1,5 +1,6 @@
 import { afterEach, describe, expect } from "bun:test"
-import { existsSync } from "fs"
+import { existsSync, readFileSync, writeFileSync } from "fs"
+import path from "path"
 import { SessionV1 } from "@yukioshi/core/v1/session"
 import { Database } from "@yukioshi/core/database/database"
 import { LayerNode } from "@yukioshi/core/effect/layer-node"
@@ -17,12 +18,14 @@ import { MessageID, PartID, SessionID } from "../../src/session/schema"
 import { SessionRunState } from "@/session/run-state"
 import { SessionStatus } from "@/session/status"
 import { Worktree } from "../../src/worktree"
+import { Git } from "../../src/git"
 
 import { TaskTool, type TaskPromptOps } from "../../src/tool/task"
 import { TaskParallelTool } from "../../src/tool/task-parallel"
 import { Truncate } from "@/tool/truncate"
 import { ToolRegistry } from "@/tool/registry"
 import { RuntimeFlags } from "@/effect/runtime-flags"
+import { InstanceState } from "@/effect/instance-state"
 import { disposeAllInstances, noopBootstrapReplacement } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 import { ProviderV2 } from "@yukioshi/core/provider"
@@ -54,6 +57,7 @@ const layer = LayerNode.compile(
     RuntimeFlags.node,
     Ripgrep.node,
     Worktree.node,
+    Git.node,
   ]),
   [noopBootstrapReplacement],
 )
@@ -125,6 +129,40 @@ function stubOps(seen: SessionID[]): TaskPromptOps {
       }),
   }
 }
+
+function git(directory: string, ...args: string[]) {
+  const result = Bun.spawnSync(["git", ...args], { cwd: directory, stdout: "pipe", stderr: "pipe" })
+  if (result.exitCode !== 0) throw new Error(result.stderr.toString())
+  return result.stdout.toString().trim()
+}
+
+// A subagent stub that works in the folder its session runs in: it records whether the project's files were
+// there when it started, then makes (and optionally commits) a change.
+function editingOps(seen: string[], options: { commit?: boolean } = {}): TaskPromptOps {
+  return {
+    cancel: () => Effect.void,
+    resolvePromptParts: (template) => Effect.succeed([{ type: "text" as const, text: template }]),
+    prompt: (input) =>
+      Effect.gen(function* () {
+        const directory = yield* InstanceState.directory
+        seen.push(existsSync(path.join(directory, "base.txt")) ? "checked out" : "empty")
+        writeFileSync(path.join(directory, "made.txt"), "work")
+        if (options.commit) {
+          git(directory, "add", "made.txt")
+          git(directory, "commit", "-qm", "subagent work")
+        }
+        return reply(input, "made a file")
+      }),
+  }
+}
+
+const commitBase = Effect.fn("TaskParallelToolTest.commitBase")(function* () {
+  const directory = yield* InstanceState.directory
+  writeFileSync(path.join(directory, "base.txt"), "base")
+  git(directory, "add", "base.txt")
+  git(directory, "commit", "-qm", "base")
+  return directory
+})
 
 describe("tool.task_parallel", () => {
   it.instance(
@@ -268,6 +306,80 @@ describe("tool.task_parallel", () => {
         expect(result.metadata.failed).toBe(1)
         expect(result.output).toContain("done:")
         expect(result.output).toContain("<task_error>")
+      }),
+    { git: true },
+  )
+  it.instance(
+    "starts a worktree task with the files checked out and keeps its uncommitted changes",
+    () =>
+      Effect.gen(function* () {
+        const directory = yield* commitBase()
+        const { chat, assistant } = yield* seed()
+        const seen: string[] = []
+        const def = yield* (yield* TaskParallelTool).init()
+
+        const result = yield* def.execute(
+          { tasks: [{ description: "keep me", prompt: "edit a file", subagent_type: "general", worktree: true }] },
+          {
+            sessionID: chat.id,
+            messageID: assistant.id,
+            agent: "build",
+            abort: new AbortController().signal,
+            extra: { promptOps: editingOps(seen) },
+            messages: [],
+            metadata: () => Effect.void,
+            ask: () => Effect.void,
+          },
+        )
+
+        expect(seen).toEqual(["checked out"])
+        const worktreeDir = result.output.match(/worktree="([^"]+)"/)![1]!
+        expect(readFileSync(path.join(worktreeDir, "made.txt"), "utf8")).toBe("work")
+        expect(result.output).toContain('branch="yukioshi/keep-me" kept="true"')
+        expect(result.output).toContain("1 changed file")
+        expect(result.output).toContain("yukioshi worktree remove keep-me")
+        expect(result.metadata.kept).toBe(1)
+        expect(existsSync(path.join(directory, "made.txt"))).toBe(false)
+      }),
+    { git: true },
+  )
+
+  it.instance(
+    "keeps a worktree whose task committed its work, and removes a worktree left unchanged",
+    () =>
+      Effect.gen(function* () {
+        yield* commitBase()
+        const { chat, assistant } = yield* seed()
+        const seen: string[] = []
+        const def = yield* (yield* TaskParallelTool).init()
+        const ctx = (ops: TaskPromptOps) => ({
+          sessionID: chat.id,
+          messageID: assistant.id,
+          agent: "build",
+          abort: new AbortController().signal,
+          extra: { promptOps: ops },
+          messages: [],
+          metadata: () => Effect.void,
+          ask: () => Effect.void,
+        })
+
+        const committed = yield* def.execute(
+          { tasks: [{ description: "commit it", prompt: "edit and commit", subagent_type: "general", worktree: true }] },
+          ctx(editingOps(seen, { commit: true })),
+        )
+        const committedDir = committed.output.match(/worktree="([^"]+)"/)![1]!
+        expect(committed.output).toContain("1 new commit")
+        expect(git(committedDir, "log", "-1", "--format=%s")).toBe("subagent work")
+
+        const untouched = yield* def.execute(
+          { tasks: [{ description: "just look", prompt: "look only", subagent_type: "general", worktree: true }] },
+          ctx(stubOps([])),
+        )
+        const untouchedDir = untouched.output.match(/worktree="([^"]+)"/)![1]!
+        expect(untouched.output).not.toContain("kept=")
+        expect(untouched.metadata.kept).toBe(0)
+        expect(existsSync(untouchedDir)).toBe(false)
+        expect(existsSync(committedDir)).toBe(true)
       }),
     { git: true },
   )

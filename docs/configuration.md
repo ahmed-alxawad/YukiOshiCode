@@ -113,6 +113,7 @@ Keep API keys out of checked-in config files: use `{env:…}` or
 | `budget`               | optional dollar/token limits for a session, day, or month | [Spending limits](#spending-limits) |
 | `delegate`             | hand tasks to other coding agents over ACP: `enabled`, `agents` (off by default) | [Features](features.md#delegating-to-other-agents) |
 | `checkpoints`          | durable git commits on `refs/yukioshi/checkpoints/*` (off by default) | [Features](features.md#git-checkpoints) |
+| `subagents`            | background subagents (`background`) and the `task_parallel` tool (`parallel`), both off by default | [Features](features.md#subagents) |
 | `share`, `enterprise.url` | session sharing (`manual`, `auto`, `disabled`) and the share server it needs | [Features](features.md) |
 | `autoupdate`           | update behaviour                                                    | [Installation](installation.md)             |
 
@@ -219,5 +220,6 @@ When search mode is active, the model receives a `tool_search` tool listing avai
 | `YUKIOSHI_DISABLE_KEYCHAIN`           | store credentials in a file instead of the OS keychain    |
 | `YUKIOSHI_DISABLE_CLAUDE_CODE_SKILLS` | do not read skills from `.claude/` folders                |
 | `YUKIOSHI_SKIP_VERIFY`                | turn post-turn verification off                           |
-| `YUKIOSHI_EXPERIMENTAL_PARALLEL_TASKS` | enable the `task_parallel` tool                          |
+| `YUKIOSHI_EXPERIMENTAL_PARALLEL_TASKS` | enable the `task_parallel` tool (same as `subagents.parallel`) |
+| `YUKIOSHI_EXPERIMENTAL_BACKGROUND_SUBAGENTS` | enable background subagents (same as `subagents.background`) |
 | `YUKIOSHI_SERVER_PASSWORD`, `YUKIOSHI_SERVER_USERNAME` | protect `yukioshi serve` with a password |

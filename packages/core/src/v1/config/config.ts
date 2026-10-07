@@ -31,6 +31,7 @@ import { ConfigProviderV1 } from "./provider"
 import { ConfigSandboxV1 } from "./sandbox"
 import { ConfigServerV1 } from "./server"
 import { ConfigSkillsV1 } from "./skills"
+import { ConfigSubagentsV1 } from "./subagents"
 
 export type Layout = ConfigLayoutV1.Layout
 
@@ -143,6 +144,9 @@ export const Info = Schema.Struct({
   }),
   subagent_depth: Schema.optional(NonNegativeInt).annotate({
     description: "Maximum subagent nesting depth. Defaults to 1, which prevents subagents from launching subagents.",
+  }),
+  subagents: Schema.optional(ConfigSubagentsV1.Info).annotate({
+    description: "Background and parallel subagents (both off by default)",
   }),
   username: Schema.optional(Schema.String).annotate({
     description: "Custom username to display in conversations instead of system username",

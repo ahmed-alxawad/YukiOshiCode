@@ -155,6 +155,16 @@ function variantsFor(providers: RunProvider[], model: RunInput["model"]) {
 const RESIZE_DELAY = 250
 const LOCAL_REPLAY_ROW_LIMIT = 100
 
+// Whether the server has background subagents on (the config's subagents.background or the experimental switch).
+async function resolveBackgroundSubagents(ctx: BootContext): Promise<boolean> {
+  try {
+    const result = await ctx.sdk.experimental.capabilities.get({ directory: ctx.directory })
+    return result.data?.backgroundSubagents === true
+  } catch {
+    return false
+  }
+}
+
 async function resolveExitTitle(
   ctx: BootContext,
   input: RunRuntimeInput,
@@ -193,7 +203,13 @@ async function runInteractiveRuntime(input: RunRuntimeInput, deps: RunRuntimeDep
           variant: undefined,
         })
   const savedTask = resolveSavedVariant(ctx.model)
-  const [tuiConfig, session, savedVariant] = await Promise.all([tuiConfigTask, sessionTask, savedTask])
+  const backgroundTask = input.backgroundSubagents ? Promise.resolve(true) : resolveBackgroundSubagents(ctx)
+  const [tuiConfig, session, savedVariant, backgroundSubagents] = await Promise.all([
+    tuiConfigTask,
+    sessionTask,
+    savedTask,
+    backgroundTask,
+  ])
   const state: RuntimeState = {
     shown: !session.first,
     aborting: false,
@@ -243,7 +259,7 @@ async function runInteractiveRuntime(input: RunRuntimeInput, deps: RunRuntimeDep
     model: state.model,
     variant: state.activeVariant,
     tuiConfig,
-    backgroundSubagents: input.backgroundSubagents,
+    backgroundSubagents,
     onPermissionReply: async (next) => {
       if (state.demo?.permission(next)) {
         return

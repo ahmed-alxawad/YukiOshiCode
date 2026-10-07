@@ -19,6 +19,7 @@ import { SkillTool } from "./skill"
 import { MemoryRecallTool } from "./memory-recall"
 import { MemorySaveTool } from "./memory-save"
 import { TaskParallelTool } from "./task-parallel"
+import { parallelSubagents } from "./subagents"
 import { SessionSearchTool } from "./session-search"
 import { SkillSaveTool } from "./skill-save"
 import { DelegateTool } from "./delegate"
@@ -64,6 +65,7 @@ import { Worktree } from "../worktree"
 import { InstanceStore } from "@/project/instance-store"
 import { Permission } from "@/permission"
 import { BackgroundJob } from "@/background/job"
+import { Git } from "@/git"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { ProviderV2 } from "@yukioshi/core/provider"
 import { ModelV2 } from "@yukioshi/core/model"
@@ -230,7 +232,7 @@ const layer = Layer.effect(
         const cfg = yield* config.get()
         const questionEnabled = ["app", "cli", "desktop"].includes(flags.client) || flags.enableQuestionTool
         const memoryEnabled = cfg.memory?.enabled ?? false
-        const parallelTasksEnabled = flags.experimentalParallelTasks
+        const parallelTasksEnabled = parallelSubagents(flags, cfg)
         const indexingParsed = IndexingConfig.safeParse(cfg.indexing ?? {})
         const indexingEnabled = (indexingParsed.success && indexingParsed.data.enabled) ?? false
         const codeGraphEnabled = cfg.code_graph?.enabled ?? false
@@ -491,6 +493,7 @@ export const node = LayerNode.make({
     Indexing.node,
     CodeGraph.node,
     Worktree.node,
+    Git.node,
     InstanceStore.node,
     Session.node,
     BackgroundJob.node,

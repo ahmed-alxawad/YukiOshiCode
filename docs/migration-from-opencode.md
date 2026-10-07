@@ -34,7 +34,7 @@ workflow. Most opencode setups work after a few renames.
 - Claude Code-compatible hooks for six events (`hooks`).
 - Project memory (`memory`), semantic code search (`indexing`), and a code
   graph tool (`code_graph`), all off by default.
-- Parallel subagents in isolated git worktrees (`task_parallel`, experimental).
+- Background subagents, and parallel subagents in isolated git worktrees (`subagents` in config, off by default).
 - Optional post-turn verification (`--verify`) that runs the project's
   typecheck, lint, and test commands and reports the evidence.
 - Bundled skills (`nightmare`, `disaster`, `bugfix`, and the `engineering:*`,

@@ -249,10 +249,36 @@ that are not on your current branch; merge or save that work first, or add
 ## Subagents
 
 The `task` tool lets the main agent hand a focused job to a subagent with its
-own context. With `YUKIOSHI_EXPERIMENTAL_PARALLEL_TASKS=1`, the `task_parallel`
-tool runs up to eight subagents, four at a time, each optionally in its own git
-worktree so their edits do not collide. Worktrees are removed when the tasks
-finish.
+own context. Running more than one subagent at a time is off by default; turn
+on either way in your config:
+
+```json
+{
+  "subagents": {
+    "background": true,
+    "parallel": true
+  }
+}
+```
+
+- **Background** (`subagents.background`): the agent can start a subagent in
+  the background and keep working while it runs. When the subagent finishes,
+  its result is sent back to the session, which then continues. In the
+  terminal UI, `ctrl+b` moves subagents that are running in the foreground to
+  the background. `yukioshi run` waits until every background subagent has
+  reported back before it exits.
+- **Parallel** (`subagents.parallel`): the `task_parallel` tool runs up to
+  eight subagents, four at a time. A task with `worktree: true` runs in its own
+  Git worktree on the branch `yukioshi/<task>`, with the files checked out
+  before it starts, so parallel edits never collide. Afterwards, a worktree
+  whose task changed nothing is removed. One with changes is kept, because
+  removing it would delete the work, and the agent is told where it is. Review
+  those changes, bring in what you want, then delete the worktree with
+  `yukioshi worktree remove <name>`.
+
+`YUKIOSHI_EXPERIMENTAL_BACKGROUND_SUBAGENTS=1` and
+`YUKIOSHI_EXPERIMENTAL_PARALLEL_TASKS=1` also turn these on. `subagent_depth`
+(default 1) sets whether subagents may start subagents of their own.
 
 ## Delegating to other agents
 

@@ -10,6 +10,7 @@ import { Session } from "@/session/session"
 import type { SessionID } from "@/session/schema"
 import { ToolJsonSchema } from "@/tool/json-schema"
 import { ToolRegistry } from "@/tool/registry"
+import { backgroundSubagents } from "@/tool/subagents"
 import { Worktree } from "@/worktree"
 import { Effect, Option } from "effect"
 import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse"
@@ -37,7 +38,7 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
     const flags = yield* RuntimeFlags.Service
 
     const capabilities = Effect.fn("ExperimentalHttpApi.capabilities")(function* () {
-      return { backgroundSubagents: flags.experimentalBackgroundSubagents }
+      return { backgroundSubagents: backgroundSubagents(flags, yield* config.get()) }
     })
 
     const getConsole = Effect.fn("ExperimentalHttpApi.console")(function* () {
@@ -159,7 +160,7 @@ export const experimentalHandlers = HttpApiBuilder.group(InstanceHttpApi, "exper
     const sessionBackground = Effect.fn("ExperimentalHttpApi.sessionBackground")(function* (ctx: {
       params: { sessionID: SessionID }
     }) {
-      if (!flags.experimentalBackgroundSubagents) return false
+      if (!backgroundSubagents(flags, yield* config.get())) return false
       const jobs = (yield* background.list()).filter(
         (job) =>
           job.type === "task" &&

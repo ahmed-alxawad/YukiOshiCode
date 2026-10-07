@@ -14,6 +14,7 @@ import { Effect, Exit, Schema, Scope } from "effect"
 import { EffectBridge } from "@/effect/bridge"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Database } from "@yukioshi/core/database/database"
+import { backgroundSubagents } from "./subagents"
 
 export interface TaskPromptOps {
   cancel(sessionID: SessionID): Effect.Effect<void>
@@ -95,9 +96,9 @@ export const TaskTool = Tool.define(
     ) {
       const cfg = yield* config.get()
       const runInBackground = params.background === true
-      if (runInBackground && !flags.experimentalBackgroundSubagents) {
+      if (runInBackground && !backgroundSubagents(flags, cfg)) {
         return yield* Effect.fail(
-          new Error("Background subagents require YUKIOSHI_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true"),
+          new Error('Background subagents are off. Turn them on with "subagents": { "background": true } in the config.'),
         )
       }
 
@@ -358,14 +359,17 @@ export const TaskTool = Tool.define(
       )
     })
 
-    return {
-      description: flags.experimentalBackgroundSubagents
-        ? [DESCRIPTION, BACKGROUND_DESCRIPTION].join("\n\n")
-        : DESCRIPTION,
-      parameters: Parameters,
-      jsonSchema: flags.experimentalBackgroundSubagents ? undefined : ToolJsonSchema.fromSchema(BaseParameters),
-      execute: (params: Schema.Schema.Type<typeof Parameters>, ctx: Tool.Context) =>
-        run(params, ctx).pipe(Effect.orDie),
-    }
+    return () =>
+      Effect.gen(function* () {
+        // The background parameter is only offered when background subagents are on.
+        const background = backgroundSubagents(flags, yield* config.get())
+        return {
+          description: background ? [DESCRIPTION, BACKGROUND_DESCRIPTION].join("\n\n") : DESCRIPTION,
+          parameters: Parameters,
+          jsonSchema: background ? undefined : ToolJsonSchema.fromSchema(BaseParameters),
+          execute: (params: Schema.Schema.Type<typeof Parameters>, ctx: Tool.Context) =>
+            run(params, ctx).pipe(Effect.orDie),
+        }
+      })
   }),
 )

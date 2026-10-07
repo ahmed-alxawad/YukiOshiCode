@@ -740,6 +740,11 @@ export const RunCommand = effectCmd({
         async function loop(client: OpencodeClient, events: Awaited<ReturnType<typeof sdk.event.subscribe>>) {
           const toggles = new Map<string, boolean>()
           const sessions = new Set([sessionID])
+          // Background subagents still to report back, by subagent session. Each one reports to this session
+          // when it finishes and the session then continues, so the run only ends once all have reported.
+          const outstanding = new Map<string, number>()
+          const counted = new Set<string>()
+          const count = (id: string, change: number) => outstanding.set(id, (outstanding.get(id) ?? 0) + change)
           let error: string | undefined
 
           for await (const event of events.stream) {
@@ -780,6 +785,22 @@ export const RunCommand = effectCmd({
             if (event.type === "message.part.updated") {
               const part = event.properties.part
               if (part.sessionID !== sessionID) continue
+
+              if (
+                part.type === "tool" &&
+                part.tool === "task" &&
+                part.state.status === "completed" &&
+                part.state.metadata?.background === true &&
+                typeof part.state.metadata.sessionId === "string" &&
+                !counted.has(part.id)
+              ) {
+                counted.add(part.id)
+                count(part.state.metadata.sessionId, 1)
+              }
+              if (part.type === "text" && part.synthetic && !counted.has(part.id)) {
+                counted.add(part.id)
+                for (const match of part.text.matchAll(/<task id="([^"]+)"/g)) count(match[1]!, -1)
+              }
 
               if (part.type === "tool" && (part.state.status === "completed" || part.state.status === "error")) {
                 if (emit("tool_use", { part })) continue
@@ -859,7 +880,8 @@ export const RunCommand = effectCmd({
             if (
               event.type === "session.status" &&
               event.properties.sessionID === sessionID &&
-              event.properties.status.type === "idle"
+              event.properties.status.type === "idle" &&
+              ![...outstanding.values()].some((left) => left > 0)
             ) {
               break
             }
