@@ -117,7 +117,8 @@ Manage recurring prompts run by your operating system's background scheduler (cr
 | `yukioshi session list`         | list sessions                                           |
 | `yukioshi session delete <id>`  | delete a session                                        |
 | `yukioshi export [id]`          | export a session as JSON (`--sanitize` redacts sensitive data) |
-| `yukioshi import <file or url>` | import a session                                        |
+| `yukioshi import <file or url>` | import a session: an exported JSON file, a share URL, or a Claude Code or Codex conversation (`.jsonl`) |
+| `yukioshi import --from claude` | import this folder's newest Claude Code conversation (`--from codex` for Codex) |
 | `yukioshi stats`                | token use and cost (`--days`, `--models`, `--tools`, `--project`) |
 
 In the TUI, `/changes` shows the files changed by the latest turn. With

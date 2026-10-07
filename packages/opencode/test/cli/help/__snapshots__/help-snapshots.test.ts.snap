@@ -298,19 +298,22 @@ Options:
 `;
 
 exports[`yukioshi CLI help-text snapshots every documented command emits stable help text: yukioshi import --help 1`] = `
-"yukioshi import <file>
+"yukioshi import [file]
 
-import session data from JSON file or URL
+import a session: an exported JSON file, a share URL, or a Claude Code or Codex conversation
+(.jsonl)
 
 Positionals:
-  file  path to JSON file or share URL                                           [string] [required]
+  file  exported JSON file, share URL, or Claude Code or Codex .jsonl transcript            [string]
 
 Options:
   -h, --help        show help                                                              [boolean]
   -v, --version     show version number                                                    [boolean]
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
-      --pure        run without external plugins                                           [boolean]"
+      --pure        run without external plugins                                           [boolean]
+      --from        import the newest Claude Code or Codex conversation held in this folder
+                                                               [string] [choices: "claude", "codex"]"
 `;
 
 exports[`yukioshi CLI help-text snapshots every documented command emits stable help text: yukioshi github --help 1`] = `

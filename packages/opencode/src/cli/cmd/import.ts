@@ -2,7 +2,9 @@ import type { Session as SDKSession, Message, Part } from "@yukioshi/sdk/v2"
 import { SessionV1 } from "@yukioshi/core/v1/session"
 import { Session } from "@/session/session"
 import { MessageV2 } from "../../session/message-v2"
-import { CliError, effectCmd } from "../effect-cmd"
+import { CliError, effectCmd, fail } from "../effect-cmd"
+import { Config } from "@/config/config"
+import { latest, readTranscript, toExport, type Source } from "./import-transcripts"
 import { Database } from "@yukioshi/core/database/database"
 import { SessionTable, MessageTable, PartTable } from "@yukioshi/core/session/sql"
 import { InstanceRef } from "@/effect/instance-ref"
@@ -92,31 +94,78 @@ export function transformShareData(shareData: ShareData[]): {
 type ExportData = { info: SDKSession; messages: Array<{ info: Message; parts: Part[] }> }
 
 export const ImportCommand = effectCmd({
-  command: "import <file>",
-  describe: "import session data from JSON file or URL",
+  command: "import [file]",
+  describe: "import a session: an exported JSON file, a share URL, or a Claude Code or Codex conversation (.jsonl)",
   builder: (yargs) =>
-    yargs.positional("file", {
-      describe: "path to JSON file or share URL",
-      type: "string",
-      demandOption: true,
-    }),
+    yargs
+      .positional("file", {
+        describe: "exported JSON file, share URL, or Claude Code or Codex .jsonl transcript",
+        type: "string",
+      })
+      .option("from", {
+        type: "string",
+        choices: ["claude", "codex"] as const,
+        describe: "import the newest Claude Code or Codex conversation held in this folder",
+      }),
   handler: Effect.fn("Cli.import")(function* (args) {
     const ctx = yield* InstanceRef
     if (!ctx) return yield* Effect.die("InstanceRef not provided")
+    if (args.from) return yield* runTranscriptImport(args.from, undefined, ctx)
+    if (!args.file) return yield* fail("Name a file to import, or use --from claude or --from codex.")
+    if (args.file.endsWith(".jsonl")) return yield* runTranscriptImport(undefined, args.file, ctx)
     return yield* runImport(args.file, ctx)
   }),
 })
 
-const runImport = Effect.fn("Cli.import.body")(function* (file: string, ctx: InstanceContext) {
+const NAMES: Record<Source, string> = { claude: "Claude Code", codex: "Codex" }
+
+// A Claude Code or Codex conversation, from a file or the newest one held in this folder.
+const runTranscriptImport = Effect.fn("Cli.import.transcript")(function* (
+  from: Source | undefined,
+  file: string | undefined,
+  ctx: InstanceContext,
+) {
+  const transcript = from ? yield* Effect.promise(() => latest(from, ctx.directory)) : file
+  if (!transcript) return yield* fail(`No ${NAMES[from!]} conversation found for ${ctx.directory}.`)
+  const conversation = yield* Effect.tryPromise({
+    try: () => readTranscript(transcript),
+    catch: (error) =>
+      new CliError({
+        message: `Failed to read ${transcript}: ${error instanceof Error ? error.message : String(error)}`,
+      }),
+  })
+  if (!conversation) return yield* fail(`${transcript} is not a Claude Code or Codex conversation.`)
+  if (!conversation.turns.some((turn) => turn.role === "user"))
+    return yield* fail(`${transcript} has no messages to import.`)
+
+  // Imported messages carry your configured model, so continuing the session uses it.
+  const configured = (yield* (yield* Config.Service).get()).model
+  const [providerID, ...modelID] = configured?.split("/") ?? []
+  const model =
+    configured && modelID.length
+      ? { providerID: providerID!, modelID: modelID.join("/") }
+      : conversation.source === "claude"
+        ? { providerID: "anthropic", modelID: conversation.model ?? "claude" }
+        : { providerID: "openai", modelID: conversation.model ?? "gpt" }
+  const data = toExport(conversation, { ...model, directory: ctx.directory })
+  yield* runImport(data as unknown as ExportData, ctx)
+  process.stdout.write(
+    `Imported ${data.messages.length} messages from ${NAMES[conversation.source]}. Continue with: yukioshi -s ${data.info.id}${EOL}`,
+  )
+})
+
+const runImport = Effect.fn("Cli.import.body")(function* (file: string | ExportData, ctx: InstanceContext) {
   const share = yield* ShareNext.Service
   const fs = yield* FSUtil.Service
   const { db } = yield* Database.Service
 
-  let exportData: ExportData | undefined
+  let exportData: ExportData | undefined = typeof file === "string" ? undefined : file
 
-  const isUrl = file.startsWith("http://") || file.startsWith("https://")
+  const isUrl = typeof file === "string" && (file.startsWith("http://") || file.startsWith("https://"))
 
-  if (isUrl) {
+  if (typeof file !== "string") {
+    // Already converted (a Claude Code or Codex conversation).
+  } else if (isUrl) {
     const slug = parseShareUrl(file)
     if (!slug) {
       const baseUrl = yield* Effect.orDie(share.url())

@@ -424,6 +424,10 @@ jobs:
 - **Long sessions**: conversations are compacted automatically to stay within
   the model's context.
 - **Sessions**: list, continue (`-c`, `-s`), fork, export, and import them.
+  `yukioshi import --from claude` (or `--from codex`) brings in the newest
+  Claude Code or Codex conversation held in the current folder, or name its
+  `.jsonl` file. What was asked and answered is kept, and tool calls become
+  short notes, so you can continue the conversation with any model.
   The agent can search your past conversations with the `session_search` tool
   ("what did we decide about the cache last week?"); it searches this
   project's sessions unless asked to look across all projects.
