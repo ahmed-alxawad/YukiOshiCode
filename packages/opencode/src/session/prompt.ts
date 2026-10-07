@@ -1329,7 +1329,11 @@ const layer = Layer.effect(
           const model = fallbackModel ?? (yield* getModel(lastUser.model.providerID, lastUser.model.modelID, sessionID))
           const budgetDecision = yield* budget.check(sessionID)
           if (!budgetDecision.allowed) {
-            const error = new SessionV1.APIError({ message: budgetDecision.exceeded!, isRetryable: false }).toObject()
+            const error = new SessionV1.APIError({
+              message: budgetDecision.exceeded!,
+              isRetryable: false,
+              metadata: { reason: "budget" },
+            }).toObject()
             const blocked: SessionV1.Assistant = {
               id: MessageID.ascending(),
               parentID: lastUser.id,
@@ -1632,10 +1636,10 @@ const layer = Layer.effect(
 
     // ---- Standing goals (/goal) ------------------------------------------------------------------------
 
-    const pauseGoal = (sessionID: SessionID, note: string) =>
+    const pauseGoal = (sessionID: SessionID, note: string, paused: SessionGoal.PauseReason) =>
       Effect.promise(async () => {
         const goal = await SessionGoal.get(sessionID)
-        if (goal?.status === "active") await SessionGoal.update(sessionID, { status: "paused", note })
+        if (goal?.status === "active") await SessionGoal.update(sessionID, { status: "paused", note, paused })
       })
 
     // Asks a small model whether the goal is met, from the goal and the end of the latest turn.
@@ -1705,18 +1709,18 @@ const layer = Layer.effect(
           const info = result.info
           if (info.role !== "assistant") return result
           if (info.error) {
-            yield* pauseGoal(sessionID, "The last turn ended with an error.")
+            yield* pauseGoal(sessionID, "The last turn ended with an error.", "error")
             return result
           }
           const refused = result.parts.some(
             (part) => part.type === "tool" && part.state.status === "error" && /reject|denied/i.test(part.state.error),
           )
           if (refused) {
-            yield* pauseGoal(sessionID, "A permission was refused or denied.")
+            yield* pauseGoal(sessionID, "A permission was refused or denied.", "refused")
             return result
           }
           if (goal.rounds >= goal.maxRounds) {
-            yield* pauseGoal(sessionID, `It used all ${goal.rounds} rounds (goal.max_rounds).`)
+            yield* pauseGoal(sessionID, `It used all ${goal.rounds} rounds (goal.max_rounds).`, "rounds")
             return result
           }
 
@@ -1731,7 +1735,7 @@ const layer = Layer.effect(
             return result
           }
           if (verdict.verdict === "blocked") {
-            yield* pauseGoal(sessionID, verdict.reason)
+            yield* pauseGoal(sessionID, verdict.reason, "blocked")
             return result
           }
 
@@ -1745,7 +1749,7 @@ const layer = Layer.effect(
           }).pipe(Effect.orDie)
           result = yield* runLoop(sessionID)
         }
-      }).pipe(Effect.onInterrupt(() => pauseGoal(sessionID, "You interrupted it.")))
+      }).pipe(Effect.onInterrupt(() => pauseGoal(sessionID, "You interrupted it.", "interrupted")))
 
     // Writes "/goal …" and YukiOshi's reply into the session without a model call.
     const goalReply = Effect.fn("SessionPrompt.goalReply")(function* (input: CommandInput, text: string) {
@@ -1825,7 +1829,13 @@ const layer = Layer.effect(
         if (current.status === "done") return yield* goalReply(input, SessionGoal.status(current))
         // A resumed goal gets a fresh allowance of rounds.
         const goal = yield* Effect.promise(() =>
-          SessionGoal.set(sessionID, { ...current, status: "active", note: undefined, maxRounds: current.rounds + maxRounds }),
+          SessionGoal.set(sessionID, {
+            ...current,
+            status: "active",
+            note: undefined,
+            paused: undefined,
+            maxRounds: current.rounds + maxRounds,
+          }),
         )
         return yield* prompt({
           sessionID,

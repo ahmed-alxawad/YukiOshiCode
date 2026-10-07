@@ -10,6 +10,9 @@ export const DEFAULT_MAX_ROUNDS = 20
 
 export type Status = "active" | "paused" | "done"
 
+/** Why a goal paused by itself; `yukioshi run` turns it into an exit code. */
+export type PauseReason = "error" | "refused" | "rounds" | "blocked" | "interrupted"
+
 export interface Goal {
   readonly objective: string
   readonly status: Status
@@ -18,6 +21,8 @@ export interface Goal {
   readonly maxRounds: number
   /** Why the goal last paused or finished, or the judge's last note. */
   readonly note?: string
+  /** What kind of pause it is, while the goal is paused. */
+  readonly paused?: PauseReason
   readonly updated: number
 }
 

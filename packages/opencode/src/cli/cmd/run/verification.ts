@@ -47,6 +47,8 @@ export interface ExecutePostTurnVerificationOptions {
   readonly sessionID: string
   readonly promptResult?: any
   readonly emit?: (type: string, data: Record<string, unknown>) => boolean
+  /** --format json: report only through `emit`, never as text lines, so stdout stays one JSON event per line. */
+  readonly json?: boolean
   readonly isTTY?: boolean
   readonly out?: (line: string) => void
   readonly skip?: boolean
@@ -63,7 +65,7 @@ export async function executePostTurnVerification(
 ): Promise<Verification.Summary> {
   const isTTY = options.isTTY ?? Boolean(process.stdout.isTTY)
   const out = options.out ?? ((line: string) => process.stdout.write(line + EOL))
-  const isFormatted = !options.emit || !options.emit("", {})
+  const isFormatted = !options.json
 
   const summary = await runVerificationPipeline({
     cwd: options.cwd,
@@ -101,6 +103,6 @@ export async function executePostTurnVerification(
   })
 
   if (options.emit) options.emit("verification", { verification: summary })
-  out(formatVerificationOutput(summary, isTTY))
+  if (isFormatted) out(formatVerificationOutput(summary, isTTY))
   return summary
 }

@@ -26,7 +26,7 @@ describe("spending limits", () => {
         expect(yield* llm.calls).toBe(1)
 
         const second = yield* opencode.run("second turn", { env, extraArgs: ["--continue"] })
-        expect(second.exitCode).toBe(1)
+        expect(second.exitCode).toBe(6)
         expect(second.stderr).toContain("Session budget of 20 tokens reached")
         expect(second.stderr).toContain("Raise budget.tokens.session")
         expect(yield* llm.calls).toBe(1)
@@ -46,7 +46,7 @@ describe("spending limits", () => {
         expect(yield* llm.calls).toBe(1)
 
         const second = yield* opencode.run("new session", { env })
-        expect(second.exitCode).toBe(1)
+        expect(second.exitCode).toBe(6)
         expect(second.stderr).toContain("Daily budget of 12 tokens reached")
         expect(second.stderr).toContain("Raise budget.tokens.daily")
         expect(yield* llm.calls).toBe(1)
@@ -77,7 +77,7 @@ describe("spending limits", () => {
   )
 
   cliIt.live(
-    "run exits with code one when a budget blocks the turn",
+    "run exits with code 6 when a budget blocks the turn",
     ({ home, llm, opencode }) =>
       Effect.gen(function* () {
         globalConfig(home, { budget: { tokens: { session: 1 } } })
@@ -91,11 +91,12 @@ describe("spending limits", () => {
           format: "json",
           extraArgs: ["--continue"],
         })
-        expect(blocked.exitCode).toBe(1)
+        expect(blocked.exitCode).toBe(6)
         const events = opencode.parseJsonEvents(blocked.stdout)
         expect(events.some((event) => event.type === "error" && JSON.stringify(event).includes("budget.tokens.session"))).toBe(
           true,
         )
+        expect(events.at(-1)).toMatchObject({ type: "result", exit_code: 6, reason: "budget" })
       }),
     60_000,
   )

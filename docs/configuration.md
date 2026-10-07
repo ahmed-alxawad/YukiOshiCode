@@ -133,7 +133,8 @@ or `monthly` in US dollars, or use the matching `tokens` limits for providers
 without reliable prices. Limits include subagent usage and all projects stored
 in the same YukiOshi data store. At 80% YukiOshi warns once per session; at the
 limit it stops before the next model request and explains how to raise the
-limit. `yukioshi run` exits with status 1 when a limit stops the turn.
+limit. `yukioshi run` exits with status 6 when a limit stops the turn (see
+[exit codes](commands.md#exit-codes)).
 
 ```jsonc
 {

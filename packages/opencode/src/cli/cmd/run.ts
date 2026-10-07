@@ -28,6 +28,7 @@ import { FormatError, FormatUnknownError } from "../error"
 import { INTERACTIVE_INPUT_ERROR, resolveInteractiveStdin } from "./run/runtime.stdin"
 import { readPipedInput } from "../stdin"
 import { executePostTurnVerification } from "./run/verification"
+import { EXIT, dollars, goalExitCode, readOutputSchema } from "./run/outcome"
 import { formatFileChanges, type FileChange } from "@yukioshi/core/files-changed-summary"
 
 type ModelInput = Parameters<OpencodeClient["session"]["prompt"]>[0]["model"]
@@ -262,6 +263,18 @@ export const RunCommand = effectCmd({
         default: true,
         describe: "print the files changed after the turn (--no-summary to turn off)",
       })
+      .option("output-schema", {
+        type: "string",
+        describe: "JSON Schema (a file, or inline JSON) the final answer must match; the answer is printed as JSON",
+      })
+      .option("max-turns", {
+        type: "number",
+        describe: "stop after this many model turns (exit code 5)",
+      })
+      .option("max-cost", {
+        type: "number",
+        describe: "stop once this run has cost this many dollars (exit code 6)",
+      })
       .option("auto", {
         type: "boolean",
         describe: "auto-approve permissions that are not explicitly denied (dangerous!)",
@@ -371,6 +384,25 @@ export const RunCommand = effectCmd({
           dieInteractive(error)
         }
       }
+
+      const maxTurns = args["max-turns"]
+      const maxCost = args["max-cost"]
+      if (interactive && (args["output-schema"] !== undefined || maxTurns !== undefined || maxCost !== undefined)) {
+        die("--output-schema, --max-turns and --max-cost cannot be used with --mini")
+      }
+      if (maxTurns !== undefined && (!Number.isInteger(maxTurns) || maxTurns <= 0)) {
+        die("--max-turns must be a positive whole number")
+      }
+      if (maxCost !== undefined && !(maxCost > 0)) {
+        die("--max-cost must be a positive number of dollars")
+      }
+      if (args["output-schema"] !== undefined && args.command) {
+        die("--output-schema cannot be used with --command")
+      }
+      const outputSchema =
+        args["output-schema"] === undefined
+          ? undefined
+          : await readOutputSchema(args["output-schema"]).catch((error: Error) => die(error.message))
 
       const replay = args.replay === false ? false : args.replay || args["replay-limit"] !== undefined
 
@@ -737,6 +769,19 @@ export const RunCommand = effectCmd({
         // Set once the run has reported its own failure: the same failure also arrives as a session.error
         // event, which must not be printed a second time.
         let reported = false
+        // --max-turns counts this session's model turns; --max-cost adds up the cost of every reply in the run,
+        // subagents included. Reaching either stops the session, and the run exits with its own code.
+        let turns = 0
+        let stopped: "turns" | "cost" | undefined
+        let budgetBlocked = false
+        const replyCosts = new Map<string, number>()
+        const countedTurns = new Set<string>()
+        const spent = () => [...replyCosts.values()].reduce((sum, cost) => sum + cost, 0)
+        async function stop(client: OpencodeClient, reason: "turns" | "cost") {
+          if (stopped) return
+          stopped = reason
+          await client.session.abort({ sessionID }).catch(() => undefined)
+        }
         async function loop(client: OpencodeClient, events: Awaited<ReturnType<typeof sdk.event.subscribe>>) {
           const toggles = new Map<string, boolean>()
           const sessions = new Set([sessionID])
@@ -751,6 +796,15 @@ export const RunCommand = effectCmd({
             if (reported) break
             if (event.type === "session.created" && event.properties.info.parentID) {
               if (sessions.has(event.properties.info.parentID)) sessions.add(event.properties.info.id)
+            }
+
+            if (
+              event.type === "message.updated" &&
+              event.properties.info.role === "assistant" &&
+              sessions.has(event.properties.info.sessionID)
+            ) {
+              replyCosts.set(event.properties.info.id, event.properties.info.cost ?? 0)
+              if (maxCost !== undefined && spent() >= maxCost) await stop(client, "cost")
             }
 
             if (
@@ -802,6 +856,16 @@ export const RunCommand = effectCmd({
                 for (const match of part.text.matchAll(/<task id="([^"]+)"/g)) count(match[1]!, -1)
               }
 
+              if (part.type === "step-finish" && !countedTurns.has(part.id)) {
+                countedTurns.add(part.id)
+                turns++
+                // The model asked for tools, so another turn would follow: stop before it starts.
+                if (maxTurns !== undefined && turns >= maxTurns && part.reason === "tool-calls")
+                  await stop(client, "turns")
+              }
+              // A turn beyond the limit, for example a goal's next round, is stopped as it starts.
+              if (part.type === "step-start" && maxTurns !== undefined && turns >= maxTurns) await stop(client, "turns")
+
               if (part.type === "tool" && (part.state.status === "completed" || part.state.status === "error")) {
                 if (emit("tool_use", { part })) continue
                 if (part.state.status === "completed") {
@@ -836,7 +900,8 @@ export const RunCommand = effectCmd({
                 const text = part.text.trim()
                 if (!text) continue
                 if (!process.stdout.isTTY) {
-                  process.stdout.write(text + EOL)
+                  // With --output-schema, stdout carries only the JSON answer.
+                  ;(outputSchema ? process.stderr : process.stdout).write(text + EOL)
                   continue
                 }
                 UI.empty()
@@ -855,13 +920,17 @@ export const RunCommand = effectCmd({
                   UI.empty()
                   continue
                 }
-                process.stdout.write(line + EOL)
+                ;(outputSchema ? process.stderr : process.stdout).write(line + EOL)
               }
             }
 
             if (event.type === "session.error") {
               const props = event.properties
               if (props.sessionID !== sessionID || !props.error) continue
+              // The abort that --max-turns or --max-cost asked for is not an error.
+              if (stopped && props.error.name === "MessageAbortedError") continue
+              if (props.error.name === "APIError" && props.error.data.metadata?.reason === "budget")
+                budgetBlocked = true
               let err = String(props.error.name)
               if ("data" in props.error && props.error.data && "message" in props.error.data) {
                 err = String(props.error.data.message)
@@ -944,6 +1013,55 @@ export const RunCommand = effectCmd({
             }
           }
 
+          // Sets the exit code for how the run ended (EXIT in ./run/outcome) and says why on stderr, or in a
+          // final "result" event with --format json. With --output-schema the answer goes to stdout as JSON.
+          async function outcome(info: { structured?: unknown } | undefined) {
+            let code: number = process.exitCode ? EXIT.error : EXIT.ok
+            let reason = code ? "error" : "done"
+            let note: string | undefined
+            if (stopped === "turns") {
+              code = EXIT.maxTurns
+              reason = "max_turns"
+              note = `Stopped after ${turns} turn${turns === 1 ? "" : "s"} (--max-turns ${maxTurns}).`
+            } else if (stopped === "cost") {
+              code = EXIT.spending
+              reason = "max_cost"
+              note = `Stopped after spending ${dollars(spent())} (--max-cost ${dollars(maxCost!)}).`
+            } else if (budgetBlocked) {
+              code = EXIT.spending
+              reason = "budget"
+            } else if (code === EXIT.ok && outputSchema && info?.structured === undefined) {
+              code = EXIT.error
+              reason = "invalid_output"
+              note = "The model did not give an answer matching --output-schema."
+            } else if (code === EXIT.ok && !args.attach) {
+              const { SessionGoal } = await import("@/session/goal")
+              const goal = await SessionGoal.get(sessionID)
+              const goalCode = goalExitCode(goal, started)
+              if (goal && goalCode !== undefined) {
+                code = goalCode
+                reason = goalCode === EXIT.goalRounds ? "goal_rounds" : "goal_blocked"
+                note = `Goal paused: ${goal.note ?? "it needs you."}`
+              }
+            }
+            process.exitCode = code
+            const answer = code === EXIT.ok && outputSchema ? info?.structured : undefined
+            const result = { exit_code: code, reason, turns, cost: spent() }
+            if (
+              emit("result", {
+                ...result,
+                ...(note ? { message: note } : {}),
+                ...(answer !== undefined ? { structured: answer } : {}),
+              })
+            )
+              return
+            if (note) process.stderr.write(note + EOL)
+            if (answer !== undefined) process.stdout.write(JSON.stringify(answer) + EOL)
+          }
+          const started = Date.now()
+          // With --output-schema, stdout carries only the answer.
+          const verificationOut = outputSchema ? (line: string) => process.stderr.write(line + EOL) : undefined
+
           if (args.command) {
             const result = await client.session.command({
               sessionID,
@@ -957,6 +1075,7 @@ export const RunCommand = effectCmd({
               reported = true
               if (!emit("error", { error: result.error })) UI.error(formatRunError(result.error))
               process.exitCode = 1
+              emit("result", { exit_code: EXIT.error, reason: "error", turns, cost: spent() })
               return
             }
             await finish()
@@ -967,9 +1086,11 @@ export const RunCommand = effectCmd({
                 sessionID,
                 promptResult: result,
                 emit,
+                json: args.format === "json",
                 skip: Boolean(args["skip-verify"]),
               })
             }
+            await outcome(result.data?.info)
             return
           }
 
@@ -980,11 +1101,13 @@ export const RunCommand = effectCmd({
             model,
             variant: args.variant,
             parts: [...files, { type: "text", text: message }],
+            ...(outputSchema ? { format: { type: "json_schema" as const, schema: outputSchema } } : {}),
           })
           if (result.error) {
             reported = true
             if (!emit("error", { error: result.error })) UI.error(formatRunError(result.error))
             process.exitCode = 1
+            emit("result", { exit_code: EXIT.error, reason: "error", turns, cost: spent() })
             return
           }
           await finish()
@@ -995,9 +1118,12 @@ export const RunCommand = effectCmd({
               sessionID,
               promptResult: result,
               emit,
+              json: args.format === "json",
               skip: Boolean(args["skip-verify"]),
+              out: verificationOut,
             })
           }
+          await outcome(result.data?.info)
           return
         }
 
@@ -1141,6 +1267,12 @@ export async function runMini(input: MiniCommandInput) {
     "skip-verify": false,
     skipVerify: false,
     summary: true,
+    "output-schema": undefined,
+    outputSchema: undefined,
+    "max-turns": undefined,
+    maxTurns: undefined,
+    "max-cost": undefined,
+    maxCost: undefined,
     demo: input.demo ?? false,
   })
 }

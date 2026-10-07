@@ -76,47 +76,52 @@ Positionals:
   message  message to send                                                     [array] [default: []]
 
 Options:
-  -h, --help         show help                                                             [boolean]
-  -v, --version      show version number                                                   [boolean]
-      --print-logs   print logs to stderr                                                  [boolean]
-      --log-level    log level                  [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
-      --pure         run without external plugins                                          [boolean]
-      --command      the command to run, use message for args                               [string]
-  -c, --continue     continue the last session                                             [boolean]
-  -s, --session      session id to continue                                                 [string]
-      --fork         fork the session before continuing (requires --continue or --session) [boolean]
-      --share        share the session                                                     [boolean]
-  -m, --model        model to use in the format of provider/model                           [string]
-      --agent        mode or agent: build, plan, goal, reasoning, research, auto, or a custom agent
-                                                                                            [string]
-      --format       format: default (formatted) or json (raw JSON events)
+  -h, --help           show help                                                           [boolean]
+  -v, --version        show version number                                                 [boolean]
+      --print-logs     print logs to stderr                                                [boolean]
+      --log-level      log level                [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
+      --pure           run without external plugins                                        [boolean]
+      --command        the command to run, use message for args                             [string]
+  -c, --continue       continue the last session                                           [boolean]
+  -s, --session        session id to continue                                               [string]
+      --fork           fork the session before continuing (requires --continue or --session)
+                                                                                           [boolean]
+      --share          share the session                                                   [boolean]
+  -m, --model          model to use in the format of provider/model                         [string]
+      --agent          mode or agent: build, plan, goal, reasoning, research, auto, or a custom
+                       agent                                                                [string]
+      --format         format: default (formatted) or json (raw JSON events)
                                           [string] [choices: "default", "json"] [default: "default"]
-  -f, --file         file(s) to attach to message                                            [array]
-      --title        title for the session (uses truncated prompt if no value provided)     [string]
-      --attach       attach to a running yukioshi server (e.g., http://localhost:4096)      [string]
-  -p, --password     basic auth password (defaults to YUKIOSHI_SERVER_PASSWORD)             [string]
-  -u, --username     basic auth username (defaults to YUKIOSHI_SERVER_USERNAME or 'yukioshi')
+  -f, --file           file(s) to attach to message                                          [array]
+      --title          title for the session (uses truncated prompt if no value provided)   [string]
+      --attach         attach to a running yukioshi server (e.g., http://localhost:4096)    [string]
+  -p, --password       basic auth password (defaults to YUKIOSHI_SERVER_PASSWORD)           [string]
+  -u, --username       basic auth username (defaults to YUKIOSHI_SERVER_USERNAME or 'yukioshi')
                                                                                             [string]
-      --dir          directory to run in, path on remote server if attaching                [string]
-      --worktree     run in a git worktree of this project with this name (created if needed)
+      --dir            directory to run in, path on remote server if attaching              [string]
+      --worktree       run in a git worktree of this project with this name (created if needed)
                                                                                             [string]
-      --port         port for the local server (defaults to random port if no value provided)
+      --port           port for the local server (defaults to random port if no value provided)
                                                                                             [number]
-      --variant      model variant (provider-specific reasoning effort, e.g., high, max, minimal)
+      --variant        model variant (provider-specific reasoning effort, e.g., high, max, minimal)
                                                                                             [string]
-      --thinking     show thinking blocks                                                  [boolean]
-  -i, --interactive  run in direct interactive split-footer mode          [boolean] [default: false]
-      --verify       run full project verification on changed files (off by default)
+      --thinking       show thinking blocks                                                [boolean]
+  -i, --interactive    run in direct interactive split-footer mode        [boolean] [default: false]
+      --verify         run full project verification on changed files (off by default)
                                                                           [boolean] [default: false]
-      --skip-verify  skip verification checks after turn completion                        [boolean]
-      --summary      print the files changed after the turn (--no-summary to turn off)
+      --skip-verify    skip verification checks after turn completion                      [boolean]
+      --summary        print the files changed after the turn (--no-summary to turn off)
                                                                            [boolean] [default: true]
-      --auto         auto-approve permissions that are not explicitly denied (dangerous!)
+      --output-schema  JSON Schema (a file, or inline JSON) the final answer must match; the answer
+                       is printed as JSON                                                   [string]
+      --max-turns      stop after this many model turns (exit code 5)                       [number]
+      --max-cost       stop once this run has cost this many dollars (exit code 6)          [number]
+      --auto           auto-approve permissions that are not explicitly denied (dangerous!)
                                                                           [boolean] [default: false]
-      --mode         permission mode for this session: manual asks for anything not explicitly
-                     configured, auto auto-approves low-risk actions (reads/searches), auto-all
-                     auto-approves anything not explicitly denied or hard-blocked, plan restricts
-                     the agent to low-risk actions only
+      --mode           permission mode for this session: manual asks for anything not explicitly
+                       configured, auto auto-approves low-risk actions (reads/searches), auto-all
+                       auto-approves anything not explicitly denied or hard-blocked, plan restricts
+                       the agent to low-risk actions only
                                             [string] [choices: "manual", "auto", "auto-all", "plan"]"
 `;
 

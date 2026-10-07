@@ -46,9 +46,41 @@ interface), and `--verify` (turn on post-turn verification).
 | `--dir`                    | folder to run in                                            |
 | `--worktree <name>`        | run in a Git worktree of this project (created if needed; see [Features](features.md#worktrees)) |
 | `--verify`, `--skip-verify` | turn post-turn verification on or off                      |
+| `--output-schema <schema>` | the final answer must match this JSON Schema (a file, or inline JSON); stdout then holds only that answer, as JSON |
+| `--max-turns <n>`          | stop after this many model turns                            |
+| `--max-cost <dollars>`     | stop once this run has cost this much (subagents included; models without prices count as free) |
 
-The exit code is 0 when the turn finishes and 1 when it cannot start or fails
-(no model chosen, an unknown model or `--agent`, a provider error).
+#### Exit codes
+
+| Code | Meaning |
+| ---- | ------- |
+| 0    | finished; a goal worked on in this run is done |
+| 1    | an error: it could not start (no model chosen, an unknown model or `--agent`), the provider failed, or the answer did not match `--output-schema` |
+| 3    | a goal needs you: its check asked for a decision or access, or a permission was refused |
+| 4    | a goal used all its rounds (`goal.max_rounds`); `/goal resume` continues it |
+| 5    | stopped at `--max-turns` |
+| 6    | stopped by a spending limit: `--max-cost` or the `budget` setting |
+
+For 3 to 6, the reason is printed on stderr. With `--format json`, a run ends
+with a `result` event that carries the same information:
+
+```json
+{"type":"result","sessionID":"ses_…","exit_code":5,"reason":"max_turns","turns":3,"cost":0.42,"message":"Stopped after 3 turns (--max-turns 3)."}
+```
+
+`reason` is one of `done`, `error`, `invalid_output`, `goal_blocked`,
+`goal_rounds`, `max_turns`, `max_cost`, or `budget`. With `--output-schema`,
+the event also has the answer as `structured`.
+
+#### Structured answers
+
+```bash
+yukioshi run --output-schema '{"type":"object","properties":{"risk":{"enum":["low","high"]},"files":{"type":"array","items":{"type":"string"}}},"required":["risk","files"]}' \
+  "review the staged changes" | jq .risk
+```
+
+The model must answer through the schema; anything else it writes goes to
+stderr. `--output-schema` cannot be combined with `--command`.
 
 #### Piping input
 

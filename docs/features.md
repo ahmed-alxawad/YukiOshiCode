@@ -60,7 +60,9 @@ A goal pauses by itself when you interrupt, when a permission is refused, when
 a turn ends with an error, when the check says it needs you (a question, a
 decision, or missing access), or after `goal.max_rounds` continuation rounds
 (default 20). Each check is one small-model call. It also works from scripts:
-`yukioshi run --command goal "…"`. Turn it off with
+`yukioshi run --command goal "…"` exits with 0 when the goal is done, 3 when
+it needs you, and 4 when it used all its rounds (see
+[exit codes](commands.md#exit-codes)). Turn it off with
 `"goal": { "enabled": false }`.
 
 ## Loop

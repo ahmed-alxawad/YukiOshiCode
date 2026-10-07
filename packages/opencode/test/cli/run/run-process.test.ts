@@ -123,7 +123,7 @@ describe("opencode run (non-interactive subprocess)", () => {
           expect(typeof evt.type).toBe("string")
           expect(typeof evt.sessionID).toBe("string")
         }
-        expect(events.map((event) => event.type)).toEqual(["step_start", "text", "step_finish"])
+        expect(events.map((event) => event.type)).toEqual(["step_start", "text", "step_finish", "result"])
         expect(events.map(({ timestamp: _, sessionID: __, ...event }) => event)).toEqual([
           { type: "step_start", part: expect.objectContaining({ type: "step-start" }) },
           {
@@ -131,6 +131,7 @@ describe("opencode run (non-interactive subprocess)", () => {
             part: expect.objectContaining({ type: "text", text: "structured output" }),
           },
           { type: "step_finish", part: expect.objectContaining({ type: "step-finish" }) },
+          { type: "result", exit_code: 0, reason: "done", turns: 1, cost: 0 },
         ])
         expect(result.stdout.endsWith("\n")).toBe(true)
         expect(
@@ -144,7 +145,7 @@ describe("opencode run (non-interactive subprocess)", () => {
   )
 
   cliIt.concurrent(
-    "--format json emits a pure error record for a rejected prompt request",
+    "--format json emits an error record and a result for a rejected prompt request",
     ({ opencode }) =>
       Effect.gen(function* () {
         const result = yield* opencode.run("use an unknown model", {
@@ -154,14 +155,15 @@ describe("opencode run (non-interactive subprocess)", () => {
 
         expect(result.exitCode).not.toBe(0)
         const events = opencode.parseJsonEvents(result.stdout)
-        expect(events.map((event) => event.type)).toEqual(["error"])
+        expect(events.map((event) => event.type)).toEqual(["error", "result"])
         expect(events[0]).toEqual({
           type: "error",
           timestamp: expect.any(Number),
           sessionID: expect.any(String),
           error: expect.any(Object),
         })
-        expect(result.stdout.split("\n").filter(Boolean)).toHaveLength(1)
+        expect(events[1]).toMatchObject({ type: "result", exit_code: 1, reason: "error" })
+        expect(result.stdout.split("\n").filter(Boolean)).toHaveLength(2)
       }),
     30_000,
   )
@@ -194,6 +196,7 @@ describe("opencode run (non-interactive subprocess)", () => {
           "step_start",
           "text",
           "step_finish",
+          "result",
         ])
         expect(events.find((event) => event.type === "reasoning")?.part).toEqual(
           expect.objectContaining({ type: "reasoning", text: "reasoning" }),
@@ -241,11 +244,13 @@ describe("opencode run (non-interactive subprocess)", () => {
           "step_start",
           "text",
           "step_finish",
+          "result",
         ])
         expect(events[1]?.part).toEqual(expect.objectContaining({ type: "text", text: "partial json" }))
         expect(events[5]?.part).toEqual(expect.objectContaining({ type: "step-finish", reason: "unknown" }))
         expect(events[7]?.part).toEqual(expect.objectContaining({ type: "text", text: "recovered" }))
-        expect(events.at(-1)?.part).toEqual(expect.objectContaining({ type: "step-finish", reason: "stop" }))
+        expect(events.at(-2)?.part).toEqual(expect.objectContaining({ type: "step-finish", reason: "stop" }))
+        expect(events.at(-1)).toMatchObject({ type: "result", exit_code: 0, reason: "done" })
       }),
     60_000,
   )
