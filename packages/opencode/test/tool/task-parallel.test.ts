@@ -364,7 +364,9 @@ describe("tool.task_parallel", () => {
         })
 
         const committed = yield* def.execute(
-          { tasks: [{ description: "commit it", prompt: "edit and commit", subagent_type: "general", worktree: true }] },
+          {
+            tasks: [{ description: "commit it", prompt: "edit and commit", subagent_type: "general", worktree: true }],
+          },
           ctx(editingOps(seen, { commit: true })),
         )
         const committedDir = committed.output.match(/worktree="([^"]+)"/)![1]!

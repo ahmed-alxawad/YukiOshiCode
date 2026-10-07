@@ -28,7 +28,9 @@ function init(directory: string) {
 }
 
 function taskTool(input: Record<string, unknown>) {
-  const tools = Array.isArray(input.tools) ? (input.tools as { function?: { name?: string; parameters?: unknown } }[]) : []
+  const tools = Array.isArray(input.tools)
+    ? (input.tools as { function?: { name?: string; parameters?: unknown } }[])
+    : []
   return tools.find((tool) => tool.function?.name === "task")?.function?.parameters as
     | { properties?: Record<string, unknown> }
     | undefined
@@ -113,7 +115,12 @@ describe("subagents", () => {
           fromMain,
           reply().tool("task_parallel", {
             tasks: [
-              { description: "alpha", prompt: "SUB-ALPHA: copy the base file", subagent_type: "general", worktree: true },
+              {
+                description: "alpha",
+                prompt: "SUB-ALPHA: copy the base file",
+                subagent_type: "general",
+                worktree: true,
+              },
               { description: "beta", prompt: "SUB-BETA: only look around", subagent_type: "general", worktree: true },
             ],
           }),
