@@ -1382,6 +1382,44 @@ it.effect("omits --headless when browser.headless is false", () =>
   ),
 )
 
+it.effect("passes --browser flag to MCP server when browser.engine is set", () =>
+  withConfigTree(
+    {
+      project: {
+        browser: { enabled: true, engine: "chromium" },
+      },
+    },
+    Effect.gen(function* () {
+      const config = yield* Config.use.get()
+      expect(config.browser?.enabled).toBe(true)
+      expect(config.browser?.engine).toBe("chromium")
+      expect(config.mcp?.browser).toEqual({
+        type: "local",
+        command: ["npx", "-y", "@playwright/mcp@latest", "--isolated", "--headless", "--browser", "chromium"],
+      })
+    }),
+  ),
+)
+
+it.effect("passes --browser flag without --headless when headless is false and engine is set", () =>
+  withConfigTree(
+    {
+      project: {
+        browser: { enabled: true, headless: false, engine: "firefox" },
+      },
+    },
+    Effect.gen(function* () {
+      const config = yield* Config.use.get()
+      expect(config.browser?.enabled).toBe(true)
+      expect(config.browser?.engine).toBe("firefox")
+      expect(config.mcp?.browser).toEqual({
+        type: "local",
+        command: ["npx", "-y", "@playwright/mcp@latest", "--isolated", "--browser", "firefox"],
+      })
+    }),
+  ),
+)
+
 it.effect("preserves user's own mcp.browser when browser is enabled", () =>
   withConfigTree(
     {

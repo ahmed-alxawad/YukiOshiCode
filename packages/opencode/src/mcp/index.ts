@@ -501,6 +501,7 @@ const layer = Layer.effect(
               "@playwright/mcp@latest",
               "--isolated",
               ...(cfg.browser.headless !== false ? ["--headless"] : []),
+              ...(cfg.browser.engine ? ["--browser", cfg.browser.engine] : []),
             ],
           },
           ...mcp,

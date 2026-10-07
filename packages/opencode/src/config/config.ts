@@ -856,6 +856,7 @@ const layer = Layer.effect(
               "@playwright/mcp@latest",
               "--isolated",
               ...(result.browser.headless !== false ? ["--headless"] : []),
+              ...(result.browser.engine ? ["--browser", result.browser.engine] : []),
             ],
           }
           result.mcp = {
