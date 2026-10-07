@@ -9,6 +9,8 @@ import { MCP } from "../mcp"
 import { Skill } from "../skill"
 import PROMPT_INITIALIZE from "./template/initialize.txt"
 import PROMPT_REVIEW from "./template/review.txt"
+import PROMPT_COMMIT from "./template/commit.txt"
+import PROMPT_PR from "./template/pr.txt"
 import { LegacyEvent } from "@yukioshi/schema/legacy-event"
 
 type State = {
@@ -46,6 +48,8 @@ export function hints(template: string) {
 export const Default = {
   INIT: "init",
   REVIEW: "review",
+  COMMIT: "commit",
+  PR: "pr",
   GOAL: "goal",
   LOOP: "loop",
 } as const
@@ -87,6 +91,24 @@ const layer = Layer.effect(
         },
         subtask: true,
         hints: hints(PROMPT_REVIEW),
+      }
+      commands[Default.COMMIT] = {
+        name: Default.COMMIT,
+        description: "commit the current changes with a message in the repository's style [instructions]",
+        source: "command",
+        get template() {
+          return PROMPT_COMMIT.replace("${path}", ctx.worktree)
+        },
+        hints: hints(PROMPT_COMMIT),
+      }
+      commands[Default.PR] = {
+        name: Default.PR,
+        description: "open a pull request for the current branch with gh [base branch]",
+        source: "command",
+        get template() {
+          return PROMPT_PR.replace("${path}", ctx.worktree)
+        },
+        hints: hints(PROMPT_PR),
       }
 
       // Handled by the session itself (SessionPrompt.command), not by a prompt template.

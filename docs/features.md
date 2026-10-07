@@ -90,6 +90,23 @@ after `loop.max_runs` runs (default 50). Intervals shorter than
 session, and it lasts as long as the terminal UI or `yukioshi serve` keeps
 running; `yukioshi run` exits after the first run.
 
+## Review, commit, and pull requests
+
+| Command                  | Does |
+| ------------------------ | ---- |
+| `/review [commit, branch, or pr]` | reviews changes in a subagent: your uncommitted work by default, or a commit, a branch, or a pull request |
+| `/commit [instructions]` | commits the current changes with a message in the repository's own style |
+| `/pr [base branch]`      | opens a pull request for the current branch with the GitHub CLI (`gh`) and replies with its link |
+
+`/commit` commits what you staged, or stages only the files that belong to
+the change (never `git add -A`, and never files that look like secrets). It
+does not bypass commit hooks, rewrite history, or add co-author or tool
+attribution unless you ask. `/pr` pushes the branch if it has no upstream yet
+(never with force), writes the title and a summary, and stops instead if you
+are on the base branch, have uncommitted changes, or `gh` is not signed in.
+The git and `gh` commands they run follow your permission rules. From a
+script: `yukioshi run --command commit`.
+
 ## Scheduled tasks
 
 `yukioshi schedule` runs prompts on a recurring cron schedule, for example to summarize commits every morning or review dependencies weekly.

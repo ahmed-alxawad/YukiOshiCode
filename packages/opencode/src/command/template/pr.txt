@@ -1,0 +1,15 @@
+Open a pull request for the current branch of ${path} with the GitHub CLI (`gh`).
+
+Base branch or extra instructions from the user (may be empty): $ARGUMENTS
+
+1. Check the tools: run `gh auth status`. If `gh` is missing or not signed in, stop and tell the user to install it or run `gh auth login`.
+2. Find the base branch: the one the user named, otherwise the repository's default branch (`gh repo view --json defaultBranchRef -q .defaultBranchRef.name`).
+3. Check the branch:
+   - If the current branch is the base branch, stop and tell the user to create a branch for the change first.
+   - If there are uncommitted changes (`git status --short`), stop and ask whether to commit them first (they can use /commit).
+   - If a pull request already exists for this branch (`gh pr view --json url -q .url`), reply with its URL instead of opening another.
+4. Understand the change: `git log --oneline <base>..HEAD` and `git diff <base>...HEAD --stat`, then read the parts of the diff you need.
+5. Push the branch if it has no upstream yet: `git push -u origin HEAD`. Never force-push.
+6. Write a short title in the repository's style and a body with a "Summary" (what changed and why, as a few bullet points) and a "Testing" section (what was run, or that nothing was). Do not add AI or tool attribution unless the user asks.
+7. Create it: `gh pr create --base <base> --title "<title>" --body "<body>"` (use `--body-file` for a long body).
+8. Reply with the pull request's URL.

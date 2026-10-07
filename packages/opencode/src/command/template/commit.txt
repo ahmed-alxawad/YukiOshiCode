@@ -1,0 +1,19 @@
+Create a git commit for the current changes in ${path}.
+
+Extra instructions from the user (may be empty): $ARGUMENTS
+
+1. Look at the state of the repository:
+   - `git status --short`
+   - `git diff --staged` (and `git diff --staged --stat` if it is long)
+   - `git log -n 10 --format=%s` to learn how this repository writes commit messages
+2. Decide what goes into the commit:
+   - If files are already staged, commit exactly those. Do not stage more unless the user asked for it.
+   - If nothing is staged, look at `git diff` and the untracked files, and stage only the files that belong to one coherent change, by name. Never use `git add -A` or `git add .`.
+   - Never stage files that look like secrets or local settings (`.env`, keys, credentials, large generated files). Mention any you left out.
+   - If the changes are unrelated to each other and it is not clear what to commit, ask the user instead of guessing.
+3. Write the message in the repository's own style: a short subject line (at most about 72 characters) saying what changed, and, when the reason is not obvious from the subject, a blank line and a body that explains why. Follow the user's extra instructions when given.
+4. Commit with `git commit -m "<subject>"` (add `-m "<body>"` for a body).
+   - Do not add co-author trailers, sign-offs, or any tool or AI attribution unless the user asks for them.
+   - Never use `--no-verify`, `--amend`, or anything that rewrites history.
+   - If a commit hook fails, report what failed and fix the cause; do not bypass the hook.
+5. Reply with the new commit's short hash and subject, and what you left uncommitted, if anything.
