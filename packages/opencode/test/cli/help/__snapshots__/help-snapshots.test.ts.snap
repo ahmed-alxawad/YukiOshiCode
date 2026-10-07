@@ -98,6 +98,8 @@ Options:
   -u, --username     basic auth username (defaults to YUKIOSHI_SERVER_USERNAME or 'yukioshi')
                                                                                             [string]
       --dir          directory to run in, path on remote server if attaching                [string]
+      --worktree     run in a git worktree of this project with this name (created if needed)
+                                                                                            [string]
       --port         port for the local server (defaults to random port if no value provided)
                                                                                             [number]
       --variant      model variant (provider-specific reasoning effort, e.g., high, max, minimal)

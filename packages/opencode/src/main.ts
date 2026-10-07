@@ -31,6 +31,7 @@ import { Heap } from "./cli/heap"
 import { TrustCommand } from "./cli/cmd/trust"
 import { CheckpointCommand } from "./cli/cmd/checkpoint"
 import { ScheduleCommand } from "./cli/cmd/schedule"
+import { WorktreeCommand } from "./cli/cmd/worktree"
 
 const args = hideBin(process.argv)
 
@@ -104,6 +105,7 @@ const cli = yargs(args)
   .command(TrustCommand)
   .command(CheckpointCommand)
   .command(ScheduleCommand)
+  .command(WorktreeCommand)
   .command(DbCommand)
   .fail((msg, err) => {
     if (

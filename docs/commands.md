@@ -16,6 +16,7 @@ accept `--print-logs`, `--log-level DEBUG|INFO|WARN|ERROR`, and `--pure`
 | `yukioshi models [provider]`    | list the models you can use                             |
 | `yukioshi trust [folder]`       | trust a repository's hooks, plugins, and commands (`--status`, `--revoke`) |
 | `yukioshi checkpoint <action>`  | list, show, restore, or prune durable Git checkpoints |
+| `yukioshi worktree <action>`    | create (`new`), `list`, locate (`path`), or `remove` Git worktrees for parallel sessions |
 | `yukioshi upgrade [version]`    | upgrade to the latest or a specific version             |
 | `yukioshi uninstall`            | remove YukiOshi Code                                    |
 
@@ -43,6 +44,7 @@ interface), and `--verify` (turn on post-turn verification).
 | `--share`                  | share the session; needs your own share server (see [Features](features.md)) |
 | `--attach <url>`           | send the message to a running `yukioshi serve`              |
 | `--dir`                    | folder to run in                                            |
+| `--worktree <name>`        | run in a Git worktree of this project (created if needed; see [Features](features.md#worktrees)) |
 | `--verify`, `--skip-verify` | turn post-turn verification on or off                      |
 
 The exit code is 0 when the turn finishes and 1 when it cannot start or fails

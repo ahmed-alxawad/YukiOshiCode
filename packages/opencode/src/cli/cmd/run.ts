@@ -20,7 +20,7 @@ import { pathToFileURL } from "url"
 import { open } from "node:fs/promises"
 import { Effect } from "effect"
 import { UI } from "../ui"
-import { effectCmd } from "../effect-cmd"
+import { CliError, effectCmd, fail } from "../effect-cmd"
 import { EOL } from "os"
 import { Filesystem } from "@/util/filesystem"
 import { createOpencodeClient, type OpencodeClient, type ToolPart } from "@yukioshi/sdk/v2"
@@ -209,6 +209,10 @@ export const RunCommand = effectCmd({
         type: "string",
         describe: "directory to run in, path on remote server if attaching",
       })
+      .option("worktree", {
+        type: "string",
+        describe: "run in a git worktree of this project with this name (created if needed)",
+      })
       .option("port", {
         type: "number",
         describe: "port for the local server (defaults to random port if no value provided)",
@@ -293,6 +297,17 @@ export const RunCommand = effectCmd({
     const agentSvc = yield* Agent.Service
     const flags = yield* RuntimeFlags.Service
     const localInstance = yield* InstanceRef
+    if (args.worktree !== undefined && !args.attach) {
+      if (args.dir) return yield* fail("Use either --dir or --worktree, not both.")
+      const { resolveWorktree } = yield* Effect.promise(() => import("../worktree"))
+      const worktree = yield* resolveWorktree(args.worktree).pipe(
+        Effect.mapError((error) => new CliError({ message: error.message })),
+      )
+      process.stderr.write(
+        `${worktree.created ? "Created" : "Using"} worktree ${worktree.name}${worktree.branch ? ` (${worktree.branch})` : ""}: ${worktree.directory}\n`,
+      )
+      args.dir = worktree.directory
+    }
     yield* Effect.promise(async () => {
       const rawMessage = [...args.message, ...(args["--"] || [])].join(" ")
       const interactive = args.mini
@@ -1093,6 +1108,7 @@ export async function runMini(input: MiniCommandInput) {
     interactive: false,
     replay: input.replay ?? true,
     "replay-limit": input.replayLimit,
+    worktree: undefined,
     replayLimit: input.replayLimit,
     auto: false,
     yolo: false,

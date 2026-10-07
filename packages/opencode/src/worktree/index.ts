@@ -120,6 +120,8 @@ export interface Interface {
   readonly makeWorktreeInfo: (options?: { name?: string; detached?: boolean }) => Effect.Effect<Info, Error>
   readonly createFromInfo: (info: Info, startCommand?: string) => Effect.Effect<void, Error>
   readonly create: (input?: CreateInput) => Effect.Effect<Info, Error>
+  /** Like create, but returns only once the worktree's files are checked out (for the CLI). */
+  readonly createReady: (input?: CreateInput) => Effect.Effect<Info, Error>
   readonly list: () => Effect.Effect<(Omit<Info, "branch"> & { branch?: string })[], Error>
   readonly remove: (input: RemoveInput) => Effect.Effect<boolean, Error>
   readonly reset: (input: ResetInput) => Effect.Effect<boolean, Error>
@@ -289,6 +291,19 @@ const layer: Layer.Layer<
     const create = Effect.fn("Worktree.create")(function* (input?: CreateInput) {
       const info = yield* makeWorktreeInfo({ name: input?.name })
       yield* createFromInfo(info, input?.startCommand)
+      return info
+    })
+
+    const createReady = Effect.fn("Worktree.createReady")(function* (input?: CreateInput) {
+      const info = yield* makeWorktreeInfo({ name: input?.name })
+      yield* setup(info)
+      // Check the files out here so a failure is reported to the caller (boot only logs it).
+      const populated = yield* git(["reset", "--hard"], { cwd: info.directory })
+      if (populated.code !== 0)
+        return yield* new CreateFailedError({
+          message: populated.stderr || populated.text || "Failed to check out the worktree's files",
+        })
+      yield* boot(info, input?.startCommand)
       return info
     })
 
@@ -610,7 +625,7 @@ const layer: Layer.Layer<
       return true
     })
 
-    return Service.of({ makeWorktreeInfo, createFromInfo, create, list, remove, reset })
+    return Service.of({ makeWorktreeInfo, createFromInfo, create, createReady, list, remove, reset })
   }),
 )
 

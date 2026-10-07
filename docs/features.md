@@ -224,6 +224,28 @@ deletions. The TUI setting is on by default; use `/changes` to show the latest
 summary on demand. Headless `yukioshi run` prints the same summary to stderr;
 use `--no-summary` to suppress it.
 
+## Worktrees
+
+Run several sessions on the same repository without them editing the same
+files: each one works in its own Git worktree, a separate checkout on its own
+branch.
+
+```bash
+yukioshi --worktree login-fix            # terminal UI in the worktree "login-fix"
+yukioshi run --worktree docs "update the README"
+yukioshi worktree list                   # name, branch, folder
+cd "$(yukioshi worktree path login-fix)" # the folder, for your own tools
+yukioshi worktree remove login-fix
+```
+
+`--worktree <name>` reuses the worktree with that name or creates it, on the
+branch `yukioshi/<name>`, with the files checked out before the session
+starts; without a name, one is chosen for you. Worktrees live in YukiOshi's
+data folder, not inside your repository. `remove` deletes the worktree and its
+branch, so it refuses while the worktree has uncommitted changes or commits
+that are not on your current branch; merge or save that work first, or add
+`--yes`.
+
 ## Subagents
 
 The `task` tool lets the main agent hand a focused job to a subagent with its

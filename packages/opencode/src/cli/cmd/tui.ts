@@ -75,6 +75,10 @@ export const TuiThreadCommand = cmd({
   describe: "start yukioshi tui",
   builder: (yargs) =>
     withNetworkOptions(yargs)
+      .option("worktree", {
+        type: "string",
+        describe: "start in a git worktree of this project with this name (created if needed)",
+      })
       .positional("project", {
         type: "string",
         describe: "path to start yukioshi in",
@@ -153,6 +157,23 @@ export const TuiThreadCommand = cmd({
         default: false,
       }),
   handler: async (args) => {
+    if (args.worktree !== undefined) {
+      if (args.project) {
+        UI.error("Use either a project path or --worktree, not both.")
+        process.exitCode = 1
+        return
+      }
+      try {
+        const { worktreeDirectory } = await import("../worktree")
+        const root = resolveThreadDirectory(undefined)
+        const worktree = await worktreeDirectory(args.worktree, root)
+        args.project = worktree.directory
+      } catch (error) {
+        UI.error(error instanceof Error ? error.message : String(error))
+        process.exitCode = 1
+        return
+      }
+    }
     if (args.replay === true) {
       UI.error("--replay is not supported; replay is enabled by default")
       process.exitCode = 1
