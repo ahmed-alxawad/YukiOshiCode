@@ -24,6 +24,7 @@ import { ConfigV1 } from "@yukioshi/core/v1/config/config"
 import { RemoteAuthError } from "@yukioshi/core/v1/config/error"
 import { ConfigPermissionV1 } from "@yukioshi/core/v1/config/permission"
 import { ConfigPluginV1 } from "@yukioshi/core/v1/config/plugin"
+import { ConfigMCPV1 } from "@yukioshi/core/v1/config/mcp"
 import { ConfigAgent } from "./agent"
 import { ConfigCommand } from "./command"
 import { ConfigManaged } from "./managed"
@@ -447,7 +448,7 @@ const layer = Layer.effect(
           // Delegate agents run a command, webhooks send session events to a URL, enterprise/share
           // exfiltrates sessions, and remote skills/instructions/MCP headers fetch third-party code
           // or leak credentials, so like hooks they are ignored until the project is trusted.
-          const { hooks, plugin, delegate, webhooks, enterprise, ...safe } = next
+          const { hooks, plugin, delegate, webhooks, enterprise, browser, ...safe } = next
           if (plugin?.length) blockedExecutables.add(`${source} (plugins)`)
           if (delegate?.agents && Object.keys(delegate.agents).length > 0)
             blockedExecutables.add(`${source} (delegate agents)`)
@@ -456,6 +457,7 @@ const layer = Layer.effect(
             blockedExecutables.add(`${source} (hooks)`)
           }
           if (enterprise?.url) blockedExecutables.add(`${source} (enterprise)`)
+          if (browser?.enabled) blockedExecutables.add(`${source} (browser)`)
           if (safe.share === "auto") {
             blockedExecutables.add(`${source} (auto-share)`)
             safe.share = undefined
@@ -843,6 +845,23 @@ const layer = Layer.effect(
               mode: "primary" as const,
             },
           })
+        }
+
+        if (result.browser?.enabled) {
+          const browserMcp: ConfigMCPV1.Local = {
+            type: "local",
+            command: [
+              "npx",
+              "-y",
+              "@playwright/mcp@latest",
+              "--isolated",
+              ...(result.browser.headless !== false ? ["--headless"] : []),
+            ],
+          }
+          result.mcp = {
+            browser: browserMcp,
+            ...result.mcp,
+          }
         }
 
         if (Flag.YUKIOSHI_PERMISSION) {

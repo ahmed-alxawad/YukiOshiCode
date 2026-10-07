@@ -114,6 +114,7 @@ Keep API keys out of checked-in config files: use `{env:…}` or
 | `webhooks`             | optional outgoing notifications for turns, permission asks, and questions | [Webhooks](#webhooks) |
 | `budget`               | optional dollar/token limits for a session, day, or month | [Spending limits](#spending-limits) |
 | `delegate`             | hand tasks to other coding agents over ACP: `enabled`, `agents` (off by default) | [Features](features.md#delegating-to-other-agents) |
+| `browser`              | browser automation via Playwright MCP: `enabled` (off by default), `headless` (default true) | [Features](features.md#browser-automation) |
 | `checkpoints`          | durable git commits on `refs/yukioshi/checkpoints/*` (off by default) | [Features](features.md#git-checkpoints) |
 | `audit`                | local log of tool calls and approvals: `enabled` (off by default; global config only) | [Permissions and safety](permissions-and-safety.md#audit-log) |
 | `subagents`            | background subagents (`background`) and the `task_parallel` tool (`parallel`), both off by default | [Features](features.md#subagents) |
@@ -121,7 +122,7 @@ Keep API keys out of checked-in config files: use `{env:…}` or
 | `autoupdate`           | update behaviour                                                    | [Installation](installation.md)             |
 
 In a repository you have not trusted, `hooks`, `plugin`, `delegate`, `webhooks`,
-local MCP servers, `lsp` and `formatter` entries with their own command, and
+`browser`, local MCP servers, `lsp` and `formatter` entries with their own command, and
 custom provider endpoints (`api`, `options.baseURL`, `options.headers`, credentials)
 as well as project-only providers (e.g. Ollama, vLLM, LM Studio) are ignored
 until you run `yukioshi trust .`. See

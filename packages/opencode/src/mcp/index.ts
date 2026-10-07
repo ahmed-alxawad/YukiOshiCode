@@ -489,11 +489,31 @@ const layer = Layer.effect(
       }
     }
 
+    function effectiveMcpConfig(cfg: ConfigV1.Info): NonNullable<ConfigV1.Info["mcp"]> {
+      const mcp = cfg.mcp ?? {}
+      if (cfg.browser?.enabled && !mcp.browser) {
+        return {
+          browser: {
+            type: "local",
+            command: [
+              "npx",
+              "-y",
+              "@playwright/mcp@latest",
+              "--isolated",
+              ...(cfg.browser.headless !== false ? ["--headless"] : []),
+            ],
+          },
+          ...mcp,
+        }
+      }
+      return mcp
+    }
+
     const state = yield* InstanceState.make<State>(
       Effect.fn("MCP.state")(function* () {
         const cfg = yield* cfgSvc.get()
         const bridge = yield* EffectBridge.make()
-        const config = cfg.mcp ?? {}
+        const config = effectiveMcpConfig(cfg)
         const s: State = {
           config: {},
           status: {},
@@ -592,7 +612,7 @@ const layer = Layer.effect(
       const s = yield* InstanceState.get(state)
 
       const cfg = yield* cfgSvc.get()
-      const config = cfg.mcp ?? {}
+      const config = effectiveMcpConfig(cfg)
       const result: Record<string, Status> = {}
 
       for (const [key, mcp] of Object.entries(config)) {
@@ -668,7 +688,7 @@ const layer = Layer.effect(
       const s = yield* InstanceState.get(state)
 
       const cfg = yield* cfgSvc.get()
-      const config = cfg.mcp ?? {}
+      const config = effectiveMcpConfig(cfg)
       const defaultTimeout = cfg.experimental?.mcp_timeout
 
       for (const [clientName, client] of Object.entries(s.clients)) {
@@ -792,7 +812,7 @@ const layer = Layer.effect(
       if (s.config[mcpName]) return s.config[mcpName]
 
       const cfg = yield* cfgSvc.get()
-      const mcpConfig = cfg.mcp?.[mcpName]
+      const mcpConfig = effectiveMcpConfig(cfg)[mcpName]
       if (!mcpConfig || !isMcpConfigured(mcpConfig)) return undefined
       return mcpConfig
     })

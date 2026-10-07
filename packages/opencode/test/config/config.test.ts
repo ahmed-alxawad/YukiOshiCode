@@ -1331,6 +1331,100 @@ it.effect("loads project delegate agents and webhooks once the project is truste
   ),
 )
 
+it.effect("leaves browser and browser mcp server off by default", () =>
+  withConfigTree(
+    {
+      project: {
+        model: "project/model",
+      },
+    },
+    Effect.gen(function* () {
+      const config = yield* Config.use.get()
+      expect(config.browser).toBeUndefined()
+      expect(config.mcp?.browser).toBeUndefined()
+    }),
+  ),
+)
+
+it.effect("adds browser MCP server with isolated and headless flags when enabled", () =>
+  withConfigTree(
+    {
+      project: {
+        browser: { enabled: true },
+      },
+    },
+    Effect.gen(function* () {
+      const config = yield* Config.use.get()
+      expect(config.browser?.enabled).toBe(true)
+      expect(config.mcp?.browser).toEqual({
+        type: "local",
+        command: ["npx", "-y", "@playwright/mcp@latest", "--isolated", "--headless"],
+      })
+    }),
+  ),
+)
+
+it.effect("omits --headless when browser.headless is false", () =>
+  withConfigTree(
+    {
+      project: {
+        browser: { enabled: true, headless: false },
+      },
+    },
+    Effect.gen(function* () {
+      const config = yield* Config.use.get()
+      expect(config.browser?.enabled).toBe(true)
+      expect(config.mcp?.browser).toEqual({
+        type: "local",
+        command: ["npx", "-y", "@playwright/mcp@latest", "--isolated"],
+      })
+    }),
+  ),
+)
+
+it.effect("preserves user's own mcp.browser when browser is enabled", () =>
+  withConfigTree(
+    {
+      project: {
+        browser: { enabled: true },
+        mcp: {
+          browser: {
+            type: "local",
+            command: ["custom-browser-mcp"],
+          },
+        },
+      },
+    },
+    Effect.gen(function* () {
+      const config = yield* Config.use.get()
+      expect(config.mcp?.browser).toEqual({
+        type: "local",
+        command: ["custom-browser-mcp"],
+      })
+    }),
+  ),
+)
+
+it.effect("ignores project browser config until the project is trusted", () =>
+  withConfigTree(
+    {
+      trusted: false,
+      global: {
+        model: "global/model",
+      },
+      project: {
+        browser: { enabled: true },
+      },
+    },
+    Effect.gen(function* () {
+      const config = yield* Config.use.get()
+      expect(config.browser).toBeUndefined()
+      expect(config.mcp?.browser).toBeUndefined()
+    }),
+  ),
+)
+
+
 it.effect("ignores remote skills, instructions URLs, enterprise, auto-share, and MCP headers until trusted", () =>
   withConfigTree(
     {

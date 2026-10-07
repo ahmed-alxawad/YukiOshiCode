@@ -34,6 +34,7 @@ import { ConfigSkillsV1 } from "./skills"
 import { ConfigSubagentsV1 } from "./subagents"
 import { ConfigAuditV1 } from "./audit"
 import { ConfigWebSearchV1 } from "./web-search"
+import { ConfigBrowserV1 } from "./browser"
 
 export type Layout = ConfigLayoutV1.Layout
 
@@ -74,6 +75,9 @@ export const Info = Schema.Struct({
   }),
   delegate: Schema.optional(ConfigDelegateV1.Info).annotate({
     description: "Delegate tasks to external coding agents over ACP (off by default)",
+  }),
+  browser: Schema.optional(ConfigBrowserV1.Info).annotate({
+    description: "Browser automation through Playwright MCP (off by default)",
   }),
   webhooks: Schema.optional(Schema.Array(ConfigWebhookV1.Info)).annotate({
     description: "Outgoing notifications for turn, permission, and question events (off by default)",

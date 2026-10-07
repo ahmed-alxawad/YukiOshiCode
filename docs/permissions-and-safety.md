@@ -79,12 +79,14 @@ patterns:
 
 Patterns are checked in order and **the last match wins**, so put the catch-all
 `*` first and the specific patterns after it. Agents can carry their own
-`permission` block in their `agent` entry.
+`permission` block in their `agent` entry. Browser automation tools (`browser_browser_navigate`,
+`browser_browser_snapshot`, `browser_browser_click`, and other tools provided by the `browser` MCP server)
+follow the permission rules like other MCP tools (for example, `"browser_browser_*": "ask"`).
 
 ## Repository trust
 
 A repository can contain configuration that makes YukiOshi run programs or send
-data elsewhere: hooks, server and TUI plugins, local MCP servers, custom LSP and
+data elsewhere: hooks, server and TUI plugins, browser automation, local MCP servers, custom LSP and
 formatter commands, agents to delegate to, webhooks, enterprise and auto-sharing,
 remote skills and instructions URLs, and remote MCP headers.
 

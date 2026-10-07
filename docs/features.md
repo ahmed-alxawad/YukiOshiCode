@@ -361,6 +361,25 @@ When the delegated agent requests permission to execute a tool (e.g. running a t
 
 The `delegate` tool itself is classified as high-risk in YukiOshi's permission system.
 
+## Browser automation
+
+Browser automation is off by default. Turn it on in your configuration:
+
+```json
+{
+  "browser": {
+    "enabled": true,
+    "headless": true
+  }
+}
+```
+
+- `"headless"` defaults to `true`. Set `"headless": false` to show the browser window while working.
+- When enabled, YukiOshi registers a built-in MCP server named `browser` using Playwright (`npx -y @playwright/mcp@latest --isolated`, plus `--headless` unless `headless: false`).
+- This equips the model with browser tools to navigate pages (`browser_browser_navigate`), take snapshots (`browser_browser_snapshot`), click elements (`browser_browser_click`), fill forms (`browser_browser_fill_form`), and evaluate page content.
+- If your configuration defines its own `mcp.browser` entry, your custom entry takes precedence.
+- Like other executable tools, an untrusted repository's own project configuration cannot enable browser automation until explicitly trusted with `yukioshi trust .` (see [Repository trust](permissions-and-safety.md#repository-trust)).
+
 ## GitHub Actions
 
 YukiOshi has no GitHub app; a workflow calls `yukioshi run` itself, with your
