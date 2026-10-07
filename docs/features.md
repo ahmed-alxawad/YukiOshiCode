@@ -356,6 +356,56 @@ When the delegated agent requests permission to execute a tool (e.g. running a t
 
 The `delegate` tool itself is classified as high-risk in YukiOshi's permission system.
 
+## GitHub Actions
+
+YukiOshi has no GitHub app; a workflow calls `yukioshi run` itself, with your
+own provider key as a repository secret. This one reviews each pull request
+and posts the review as a comment:
+
+```yaml
+name: YukiOshi review
+on:
+  pull_request:
+    types: [opened, synchronize]
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install YukiOshi Code
+        run: curl -fsSL https://raw.githubusercontent.com/ahmed-alxawad/YukiOshiCode/main/install | bash
+      - name: Review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          gh pr diff "$PR" | yukioshi run --model anthropic/claude-sonnet-5-5 \
+            --mode plan --max-turns 30 --max-cost 2 \
+            "Review this pull request diff. List bugs, risky changes, and missing tests as a short Markdown list with file and line. Read files in the repository when you need more context." \
+            > review.md
+          gh pr comment "$PR" --body-file review.md
+```
+
+- The installer adds `yukioshi` to the job's `PATH`. Pin a version with
+  `bash -s -- --version <version>`.
+- Choose the model with `--model`; YukiOshi never picks one for you. Any
+  provider works through its usual environment variable.
+- `--mode plan` keeps the run to low-risk actions such as reading files, so
+  the review cannot change the checkout or run commands. The diff arrives on
+  stdin, so no shell access is needed. (This needs a release after 0.3.4;
+  until then `--mode plan` does not stop actions your rules allow.)
+- `--max-turns` and `--max-cost` cap the run; when one stops it, the step
+  fails with exit code 5 or 6 (see [exit codes](commands.md#exit-codes)).
+- The checked-out repository is not trusted, so its own YukiOshi config cannot
+  run hooks, plugins, or local MCP servers, or redirect your provider (see
+  [repository trust](permissions-and-safety.md#repository-trust)).
+- With `--output-schema`, the step can produce JSON for later steps instead of
+  Markdown.
+
 ## Also included
 
 - **MCP servers**: connect tools over the Model Context Protocol (`mcp` in
@@ -377,7 +427,7 @@ The `delegate` tool itself is classified as high-risk in YukiOshi's permission s
   --attach <url>` sends it a prompt. Protect it with `YUKIOSHI_SERVER_PASSWORD`.
 - **GitHub**: `yukioshi pr <number>` checks out a pull request and opens a
   session on it. To run YukiOshi in GitHub Actions, call `yukioshi run` from
-  your own workflow (a built-in GitHub agent is not available yet).
+  your own workflow; see [GitHub Actions](#github-actions).
 - **Sharing**: `/share` and `run --share` only work with a share server you
   configure (`"enterprise": { "url": "…" }`). YukiOshi has no public share
   service and never uploads sessions anywhere else.
