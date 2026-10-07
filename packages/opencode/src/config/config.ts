@@ -440,6 +440,13 @@ const layer = Layer.effect(
         }
 
         const projectConfig = (source: string, next: Info) => {
+          if (next.triggers) {
+            blockedExecutables.add(`${source} (triggers)`)
+            delete next.triggers
+          }
+          if (next.audit) {
+            delete next.audit
+          }
           for (const item of next.skills?.paths ?? []) projectSkillPaths.add(item)
           if (projectTrusted) {
             for (const item of next.skills?.urls ?? []) projectSkillUrls.add(item)
@@ -448,7 +455,7 @@ const layer = Layer.effect(
           // Delegate agents run a command, webhooks send session events to a URL, enterprise/share
           // exfiltrates sessions, and remote skills/instructions/MCP headers fetch third-party code
           // or leak credentials, so like hooks they are ignored until the project is trusted.
-          const { hooks, plugin, delegate, webhooks, enterprise, browser, ...safe } = next
+          const { hooks, plugin, delegate, webhooks, enterprise, browser, triggers, audit, ...safe } = next
           if (plugin?.length) blockedExecutables.add(`${source} (plugins)`)
           if (delegate?.agents && Object.keys(delegate.agents).length > 0)
             blockedExecutables.add(`${source} (delegate agents)`)

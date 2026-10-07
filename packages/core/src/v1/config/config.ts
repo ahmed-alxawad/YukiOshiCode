@@ -33,6 +33,7 @@ import { ConfigServerV1 } from "./server"
 import { ConfigSkillsV1 } from "./skills"
 import { ConfigSubagentsV1 } from "./subagents"
 import { ConfigAuditV1 } from "./audit"
+import { ConfigTriggersV1 } from "./triggers"
 import { ConfigWebSearchV1 } from "./web-search"
 import { ConfigBrowserV1 } from "./browser"
 
@@ -88,6 +89,9 @@ export const Info = Schema.Struct({
   }),
   audit: Schema.optional(ConfigAuditV1.Info).annotate({
     description: "A local audit log of tool calls and approvals (off by default; global config only)",
+  }),
+  triggers: Schema.optional(ConfigTriggersV1.Info).annotate({
+    description: "Authenticated HTTP trigger endpoint on yukioshi serve (off by default; global config only)",
   }),
   checkpoints: Schema.optional(ConfigCheckpointsV1.Info).annotate({
     description: "Durable git checkpoints on a separate YukiOshi ref (off by default)",

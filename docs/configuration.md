@@ -84,6 +84,14 @@ Keep API keys out of checked-in config files: use `{env:…}` or
     "secret": "{env:YUKIOSHI_WEBHOOK_SECRET}"
   }],
 
+  // Optional authenticated trigger on yukioshi serve (global only, off by default)
+  "triggers": {
+    "enabled": true,
+    "token_env": "YUKIOSHI_TRIGGER_TOKEN",
+    "directories": ["/home/user/projects/my-repo"],
+    "mode": "review" // "review" (default) or "plan"
+  },
+
   "autoupdate": "notify"
 }
 ```
@@ -119,6 +127,7 @@ Keep API keys out of checked-in config files: use `{env:…}` or
 | `audit`                | local log of tool calls and approvals: `enabled` (off by default; global config only) | [Permissions and safety](permissions-and-safety.md#audit-log) |
 | `subagents`            | background subagents (`background`) and the `task_parallel` tool (`parallel`), both off by default | [Features](features.md#subagents) |
 | `share`, `enterprise.url` | session sharing (`manual`, `auto`, `disabled`) and the share server it needs | [Features](features.md) |
+| `triggers`             | authenticated HTTP trigger endpoint on `yukioshi serve` (global only) | [Features](features.md#triggers) |
 | `autoupdate`           | update behaviour                                                    | [Installation](installation.md)             |
 
 In a repository you have not trusted, `hooks`, `plugin`, `delegate`, `webhooks`,

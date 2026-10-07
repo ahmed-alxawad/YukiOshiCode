@@ -39,6 +39,17 @@ export function summarize(input: Record<string, unknown> | undefined) {
   return short(JSON.stringify(value))
 }
 
+export async function writeEntry(entry: Record<string, unknown>, directory?: string) {
+  const now = new Date()
+  const target = file(now)
+  await fs.mkdir(path.dirname(target), { recursive: true, mode: 0o700 })
+  await fs.appendFile(
+    target,
+    JSON.stringify({ time: now.toISOString(), ...(directory ? { directory } : {}), ...entry }) + "\n",
+    { mode: 0o600 },
+  )
+}
+
 type ToolPart = {
   id: string
   sessionID: string

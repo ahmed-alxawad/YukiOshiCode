@@ -455,8 +455,35 @@ jobs:
 - The checked-out repository is not trusted, so its own YukiOshi config cannot
   run hooks, plugins, or local MCP servers, or redirect your provider (see
   [repository trust](permissions-and-safety.md#repository-trust)).
-- With `--output-schema`, the step can produce JSON for later steps instead of
-  Markdown.
+## Triggers
+
+`POST /trigger` on `yukioshi serve` lets an external system (such as a CI job, an issue webhook, or an automation service) start an unattended YukiOshi run in an allowed directory.
+
+Triggers are off by default. To enable them, configure `triggers` in your global `~/.config/yukioshi/yukioshi.json`:
+
+```json
+{
+  "triggers": {
+    "enabled": true,
+    "token_env": "YUKIOSHI_TRIGGER_TOKEN",
+    "directories": ["/home/user/projects/my-repo"],
+    "mode": "review"
+  }
+}
+```
+
+- **Authentication**: Requests must send `Authorization: Bearer <token>`, compared in constant time against the environment variable specified in `token_env`. The token must be at least 32 characters long. The trigger token only grants access to `POST /trigger`, never to the rest of the server API.
+- **Modes**: Runs in `"review"` (the default) or `"plan"` mode; never `"auto-all"`.
+- **Allowed directories**: The request body's `directory` must resolve to one of the directories configured in `triggers.directories` (returns 403 Forbidden otherwise). Project configs cannot enable triggers or alter allowed directories.
+- **Concurrency**: Only one run per directory at a time. A second trigger while a run is active returns 409 Conflict.
+- **Async execution**: Returns `202 Accepted` immediately with `{ "sessionID": "..." }`, while the run proceeds in the background.
+
+```bash
+curl -X POST http://127.0.0.1:4096/trigger \
+  -H "Authorization: Bearer $YUKIOSHI_TRIGGER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "Fix the failing test in packages/api", "directory": "/home/user/projects/my-repo"}'
+```
 
 ## Also included
 

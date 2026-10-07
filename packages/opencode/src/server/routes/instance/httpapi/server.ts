@@ -117,6 +117,7 @@ import { corsVaryFix } from "./middleware/cors-vary"
 import { errorLayer } from "./middleware/error"
 import { fenceLayer } from "./middleware/fence"
 import { schemaErrorLayer } from "./middleware/schema-error"
+import { triggerRoute } from "@/server/trigger"
 
 export const context = Context.makeUnsafe<unknown>(new Map())
 
@@ -283,6 +284,7 @@ export function createRoutes(
     ptyConnectApiRoutes,
     instanceRoutes,
     serverRoutes,
+    triggerRoute,
     docRoute,
     uiRoute,
   ).pipe(
