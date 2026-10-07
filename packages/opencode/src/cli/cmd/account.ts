@@ -15,7 +15,9 @@ const dim = (value: string) => UI.Style.TEXT_DIM + value + UI.Style.TEXT_NORMAL
 
 const activeSuffix = (isActive: boolean) => (isActive ? dim(" (active)") : "")
 
-export const defaultConsoleUrl = "https://opencode.ai/console"
+import { isOpencodeUrl } from "@/account/url"
+
+export { isOpencodeUrl }
 
 export const formatAccountLabel = (account: { email: string; url: string }, isActive: boolean) =>
   `${account.email} ${dim(account.url)}${activeSuffix(isActive)}`
@@ -38,7 +40,13 @@ const isActiveOrgChoice = (
   choice: { accountID: AccountID; orgID: OrgID },
 ) => Option.isSome(active) && active.value.id === choice.accountID && active.value.active_org_id === choice.orgID
 
-const loginEffect = Effect.fn("login")(function* (url: string) {
+const loginEffect = Effect.fn("login")(function* (url?: string) {
+  if (!url) {
+    return yield* println("A server URL is required. YukiOshi does not connect to opencode.ai.")
+  }
+  if (isOpencodeUrl(url)) {
+    return yield* println("Connecting to opencode.ai is not allowed. YukiOshi does not send credentials to opencode services.")
+  }
   const service = yield* Account.Service
 
   yield* Prompt.intro("Log in")
@@ -185,7 +193,7 @@ export const LoginCommand = effectCmd({
     }),
   handler: Effect.fn("Cli.account.login")(function* (args) {
     UI.empty()
-    yield* Effect.orDie(loginEffect(args.url ?? defaultConsoleUrl))
+    yield* Effect.orDie(loginEffect(args.url))
   }),
 })
 

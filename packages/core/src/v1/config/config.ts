@@ -58,7 +58,8 @@ export const Info = Schema.Struct({
     description: "Server configuration for yukioshi serve and web commands",
   }),
   command: Schema.optional(Schema.Record(Schema.String, ConfigCommandV1.Info)).annotate({
-    description: "Command configuration, see https://opencode.ai/docs/commands",
+    description:
+      "Command configuration, see https://github.com/ahmed-alxawad/YukiOshiCode/blob/main/docs/configuration.md",
   }),
   skills: Schema.optional(ConfigSkillsV1.Info).annotate({ description: "Additional skill folder paths" }),
   sandbox: Schema.optional(ConfigSandboxV1.Info).annotate({
@@ -179,7 +180,10 @@ export const Info = Schema.Struct({
       }),
       [Schema.Record(Schema.String, ConfigAgentV1.Info)],
     ),
-  ).annotate({ description: "Agent configuration, see https://opencode.ai/docs/agents" }),
+  ).annotate({
+    description:
+      "Agent configuration, see https://github.com/ahmed-alxawad/YukiOshiCode/blob/main/docs/configuration.md",
+  }),
   provider: Schema.optional(Schema.Record(Schema.String, ConfigProviderV1.Info)).annotate({
     description: "Custom provider configurations and model overrides",
   }),

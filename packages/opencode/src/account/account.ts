@@ -12,7 +12,7 @@ import {
 
 import { withTransientReadRetry } from "@/util/effect-http-client"
 import { AccountRepo, type AccountRow } from "./repo"
-import { normalizeServerUrl } from "./url"
+import { isOpencodeUrl, normalizeServerUrl } from "./url"
 import {
   type AccountError,
   AccessToken,
@@ -214,6 +214,9 @@ const layer: Layer.Layer<Service, never, AccountRepo.Service | HttpClient.HttpCl
       )
 
     const refreshToken = Effect.fnUntraced(function* (row: AccountRow) {
+      if (isOpencodeUrl(row.url)) {
+        return yield* Effect.fail(new AccountServiceError({ message: "Connecting to opencode.ai is not allowed" }))
+      }
       const now = yield* Clock.currentTimeMillis
 
       const response = yield* executeEffectOk(
@@ -283,6 +286,9 @@ const layer: Layer.Layer<Service, never, AccountRepo.Service | HttpClient.HttpCl
     })
 
     const fetchOrgs = Effect.fnUntraced(function* (url: string, accessToken: AccessToken) {
+      if (isOpencodeUrl(url)) {
+        return []
+      }
       const response = yield* executeReadOk(
         HttpClientRequest.get(`${url}/api/orgs`).pipe(
           HttpClientRequest.acceptJson,
@@ -296,6 +302,9 @@ const layer: Layer.Layer<Service, never, AccountRepo.Service | HttpClient.HttpCl
     })
 
     const fetchUser = Effect.fnUntraced(function* (url: string, accessToken: AccessToken) {
+      if (isOpencodeUrl(url)) {
+        return yield* Effect.fail(new AccountServiceError({ message: "Connecting to opencode.ai is not allowed" }))
+      }
       const response = yield* executeReadOk(
         HttpClientRequest.get(`${url}/api/user`).pipe(
           HttpClientRequest.acceptJson,
@@ -365,6 +374,9 @@ const layer: Layer.Layer<Service, never, AccountRepo.Service | HttpClient.HttpCl
       if (Option.isNone(resolved)) return Option.none()
 
       const { account, accessToken } = resolved.value
+      if (isOpencodeUrl(account.url)) {
+        return Option.none()
+      }
 
       const response = yield* executeRead(
         HttpClientRequest.get(`${account.url}/api/config`).pipe(
@@ -385,6 +397,9 @@ const layer: Layer.Layer<Service, never, AccountRepo.Service | HttpClient.HttpCl
     })
 
     const login = Effect.fn("Account.login")(function* (server: string) {
+      if (isOpencodeUrl(server)) {
+        return yield* Effect.fail(new AccountServiceError({ message: "Connecting to opencode.ai is not allowed" }))
+      }
       const normalizedServer = normalizeServerUrl(server)
       const response = yield* executeEffectOk(
         HttpClientRequest.post(`${normalizedServer}/auth/device/code`).pipe(
@@ -415,6 +430,9 @@ const layer: Layer.Layer<Service, never, AccountRepo.Service | HttpClient.HttpCl
     })
 
     const poll = Effect.fn("Account.poll")(function* (input: Login) {
+      if (isOpencodeUrl(input.server)) {
+        return yield* Effect.fail(new AccountServiceError({ message: "Connecting to opencode.ai is not allowed" }))
+      }
       const response = yield* executeEffect(
         HttpClientRequest.post(`${input.server}/auth/device/token`).pipe(
           HttpClientRequest.acceptJson,

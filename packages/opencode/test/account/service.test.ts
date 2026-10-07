@@ -522,3 +522,35 @@ it.live("poll returns poll error for other OAuth errors", () =>
     }
   }),
 )
+
+it.live("login rejects opencode.ai URLs", () =>
+  Effect.gen(function* () {
+    const dummyClient = HttpClient.make((req) => Effect.succeed(json(req, {}, 404)))
+    const error = yield* Account.Service.use((s) => s.login("https://opencode.ai/console")).pipe(
+      Effect.provide(live(dummyClient)),
+      Effect.flip,
+    )
+    expect(error.message).toContain("Connecting to opencode.ai is not allowed")
+  }),
+)
+
+it.live("poll rejects opencode.ai servers", () =>
+  Effect.gen(function* () {
+    const dummyClient = HttpClient.make((req) => Effect.succeed(json(req, {}, 404)))
+    const badLogin = new Login({
+      code: DeviceCode.make("code"),
+      user: UserCode.make("user"),
+      url: "https://opencode.ai/verify",
+      server: "https://opencode.ai",
+      expiry: Duration.minutes(5),
+      interval: Duration.seconds(5),
+    })
+    const error = yield* Account.Service.use((s) => s.poll(badLogin)).pipe(
+      Effect.provide(live(dummyClient)),
+      Effect.flip,
+    )
+    expect(error.message).toContain("Connecting to opencode.ai is not allowed")
+  }),
+)
+
+

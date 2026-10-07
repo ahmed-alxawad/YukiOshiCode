@@ -1,11 +1,15 @@
 import { describe, expect, test } from "bun:test"
 import stripAnsi from "strip-ansi"
 
-import { defaultConsoleUrl, formatAccountLabel, formatOrgLine } from "../../src/cli/cmd/account"
+import { formatAccountLabel, formatOrgLine, isOpencodeUrl } from "../../src/cli/cmd/account"
 
 describe("console account display", () => {
-  test("uses opencode.ai/console as the default login URL", () => {
-    expect(defaultConsoleUrl).toBe("https://opencode.ai/console")
+  test("identifies opencode.ai URLs as forbidden", () => {
+    expect(isOpencodeUrl("https://opencode.ai/console")).toBe(true)
+    expect(isOpencodeUrl("https://opencode.ai")).toBe(true)
+    expect(isOpencodeUrl("https://api.opencode.ai")).toBe(true)
+    expect(isOpencodeUrl("https://opncd.ai")).toBe(true)
+    expect(isOpencodeUrl("https://example.com/console")).toBe(false)
   })
 
   test("includes the account url in account labels", () => {
