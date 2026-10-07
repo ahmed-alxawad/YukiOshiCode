@@ -73,13 +73,9 @@ import { MCP } from "@/mcp"
 import { PermissionV1 } from "@yukioshi/core/v1/permission"
 import { McpCatalog } from "@/mcp/catalog"
 
-export function webSearchEnabled(providerID: ProviderV2.ID, flags = { exa: false, parallel: false }) {
-  return (
-    providerID === ProviderV2.ID.opencode ||
-    providerID === ProviderV2.ID.make("opencode-go") ||
-    flags.exa ||
-    flags.parallel
-  )
+/** websearch is offered only when it is turned on: web_search.enabled in the config, or an Exa or Parallel switch. */
+export function webSearchEnabled(options: { configured?: boolean; exa?: boolean; parallel?: boolean }) {
+  return options.configured === true || options.exa === true || options.parallel === true
 }
 
 type TaskDef = Tool.InferDef<typeof TaskTool>
@@ -299,7 +295,7 @@ const layer = Layer.effect(
             ...(tool.skillSave ? [tool.skillSave] : []),
             ...(tool.delegate ? [tool.delegate] : []),
             ...(tool.execute ? [tool.execute] : []),
-            ...(flags.experimentalLspTool ? [tool.lsp] : []),
+            ...(flags.experimentalLspTool || (cfg.lsp_tool === true && Boolean(cfg.lsp)) ? [tool.lsp] : []),
             ...(flags.experimentalPlanMode && flags.client === "cli" ? [tool.plan] : []),
           ],
           task: tool.task,
@@ -344,9 +340,14 @@ const layer = Layer.effect(
     })
 
     const tools: Interface["tools"] = Effect.fn("ToolRegistry.tools")(function* (input) {
+      const searchConfigured = (yield* config.get()).web_search?.enabled === true
       const filtered = (yield* all()).filter((tool) => {
         if (tool.id === WebSearchTool.id) {
-          return webSearchEnabled(input.providerID, { exa: flags.enableExa, parallel: flags.enableParallel })
+          return webSearchEnabled({
+            configured: searchConfigured,
+            exa: flags.enableExa,
+            parallel: flags.enableParallel,
+          })
         }
 
         const usePatch =

@@ -102,7 +102,9 @@ Keep API keys out of checked-in config files: use `{env:…}` or
 | `mcp`                  | MCP servers (`local` command or `remote` URL)                       |                                             |
 | `agent`                | custom agents and per-agent models, prompts, and permissions        |                                             |
 | `instructions`         | extra instruction files                                             |                                             |
-| `lsp`, `formatter`     | language servers and formatters                                     |                                             |
+| `lsp`, `formatter`     | language servers (off unless `lsp` is `true` or an object) and formatters |                                             |
+| `lsp_tool`             | the `lsp` code navigation tool when language servers are on (off by default) | [Features](features.md#code-navigation) |
+| `web_search`           | the `websearch` tool: `enabled` (off by default), `provider` (`exa` or `parallel`) | [Features](features.md#web-search) |
 | `compaction`           | how long conversations are summarised to stay within context        |                                             |
 | `goal`                 | `/goal`: `enabled` and `max_rounds` (default 20)                    | [Features](features.md)                     |
 | `loop`                 | `/loop` (off by default): `enabled`, `max_runs` (50), `min_interval` seconds (60) | [Features](features.md#loop) |

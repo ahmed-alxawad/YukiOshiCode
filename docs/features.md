@@ -280,6 +280,30 @@ on either way in your config:
 `YUKIOSHI_EXPERIMENTAL_PARALLEL_TASKS=1` also turn these on. `subagent_depth`
 (default 1) sets whether subagents may start subagents of their own.
 
+## Web search
+
+The `websearch` tool is off by default. Turn it on to let the agent search the
+web, for example in Research mode:
+
+```json
+{
+  "web_search": { "enabled": true, "provider": "exa" }
+}
+```
+
+Searches go to the service you choose: `exa` (the default) or `parallel`. Both
+work without an account; set `EXA_API_KEY` or `PARALLEL_API_KEY` for higher
+limits. Only the search query the agent writes is sent, never your session or
+files. Each search follows your `websearch` permission rules. With web search
+off, the agent can still read a page with `webfetch`.
+
+## Code navigation
+
+With language servers on (`"lsp": true`), adding `"lsp_tool": true` gives the
+agent the `lsp` tool: go to a definition or implementation, find references,
+read hover information, list a file's or the project's symbols, and follow
+calls in and out of a function. It is off by default.
+
 ## Delegating to other agents
 
 The `delegate` tool lets YukiOshi delegate a task or instruction to another coding agent you already have installed (such as Claude Code, OpenAI Codex, or Gemini CLI) using the Agent Client Protocol (ACP).
@@ -321,8 +345,8 @@ The `delegate` tool itself is classified as high-risk in YukiOshi's permission s
   (`agent` in config, or Markdown files in `.yukioshi/agent/`;
   `yukioshi agent create` writes one for you). Switch agents with `tab`.
 - **Custom slash commands**: Markdown files in `.yukioshi/command/`.
-- **LSP diagnostics and formatters**: errors from language servers are fed back
-  to the agent, and edited files are formatted automatically.
+- **LSP diagnostics and formatters**: with `"lsp": true`, errors from language
+  servers are fed back to the agent; edited files are formatted automatically.
 - **Long sessions**: conversations are compacted automatically to stay within
   the model's context.
 - **Sessions**: list, continue (`-c`, `-s`), fork, export, and import them.

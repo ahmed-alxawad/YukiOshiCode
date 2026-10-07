@@ -51,8 +51,6 @@ export const SearchArgs = Schema.Struct({
 export const ParallelSearchArgs = Schema.Struct({
   objective: Schema.String,
   search_queries: Schema.Array(Schema.String),
-  session_id: Schema.optional(Schema.String),
-  model_name: Schema.optional(Schema.String),
 })
 
 const McpRequest = <F extends Schema.Struct.Fields>(args: Schema.Struct<F>) =>

@@ -32,6 +32,7 @@ import { ConfigSandboxV1 } from "./sandbox"
 import { ConfigServerV1 } from "./server"
 import { ConfigSkillsV1 } from "./skills"
 import { ConfigSubagentsV1 } from "./subagents"
+import { ConfigWebSearchV1 } from "./web-search"
 
 export type Layout = ConfigLayoutV1.Layout
 
@@ -184,6 +185,13 @@ export const Info = Schema.Struct({
   lsp: Schema.optional(ConfigLSPV1.Info).annotate({
     description:
       "Enable or configure LSP servers. Omit or set to false to disable, true to enable built-ins, or an object to enable built-ins with overrides.",
+  }),
+  lsp_tool: Schema.optional(Schema.Boolean).annotate({
+    description:
+      "Give the agent the lsp tool (definitions, references, hover, symbols, calls) when LSP servers are on. Off by default.",
+  }),
+  web_search: Schema.optional(ConfigWebSearchV1.Info).annotate({
+    description: "The websearch tool and the search service it uses (off by default)",
   }),
   instructions: Schema.optional(Schema.mutable(Schema.Array(Schema.String))).annotate({
     description: "Additional instruction files or patterns to include",

@@ -3,8 +3,8 @@ import { HttpClient } from "effect/unstable/http"
 import * as Tool from "./tool"
 import * as McpWebSearch from "./mcp-websearch"
 import DESCRIPTION from "./websearch.txt"
-import { checksum } from "@yukioshi/core/util/encode"
 import { InstallationVersion } from "@yukioshi/core/installation/version"
+import { Config } from "@/config/config"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 
 export const Parameters = Schema.Struct({
@@ -27,13 +27,18 @@ export const Parameters = Schema.Struct({
 const WebSearchProviderSchema = Schema.Literals(["exa", "parallel"])
 export type WebSearchProvider = Schema.Schema.Type<typeof WebSearchProviderSchema>
 
-export function selectWebSearchProvider(sessionID: string, flags = { exa: false, parallel: false }): WebSearchProvider {
+/**
+ * The service a search goes to: YUKIOSHI_WEBSEARCH_PROVIDER, then web_search.provider in the config, then the
+ * Parallel switch; Exa otherwise.
+ */
+export function selectWebSearchProvider(
+  options: { configured?: WebSearchProvider; parallel?: boolean } = {},
+): WebSearchProvider {
   const override = process.env.YUKIOSHI_WEBSEARCH_PROVIDER
   if (override === "exa" || override === "parallel") return override
-  if (flags.parallel) return "parallel"
-  if (flags.exa) return "exa"
-
-  return Number.parseInt(checksum(sessionID) ?? "0", 36) % 2 === 0 ? "exa" : "parallel"
+  if (options.configured) return options.configured
+  if (options.parallel) return "parallel"
+  return "exa"
 }
 
 export function webSearchProviderLabel(provider: unknown) {
@@ -42,26 +47,17 @@ export function webSearchProviderLabel(provider: unknown) {
   return "Web Search"
 }
 
-export function webSearchModelName(extra: Tool.Context["extra"]) {
-  const model = extra?.model
-  if (!model || typeof model !== "object") return undefined
-  const api = "api" in model && model.api && typeof model.api === "object" ? model.api : undefined
-  const apiID = api && "id" in api && typeof api.id === "string" ? api.id : undefined
-  const id = "id" in model && typeof model.id === "string" ? model.id : undefined
-  return (apiID ?? id)?.slice(0, 100)
-}
-
 function parallelAuthHeaders() {
   const headers = { "User-Agent": `yukioshi/${InstallationVersion}` }
   if (!process.env.PARALLEL_API_KEY) return headers
   return { ...headers, Authorization: `Bearer ${process.env.PARALLEL_API_KEY}` }
 }
 
+// Only the query is sent: no session id, model name, or other detail about the session.
 function callProvider(
   http: HttpClient.HttpClient,
   provider: WebSearchProvider,
   params: Schema.Schema.Type<typeof Parameters>,
-  ctx: Tool.Context,
 ) {
   if (provider === "parallel") {
     return McpWebSearch.call(
@@ -72,8 +68,6 @@ function callProvider(
       {
         objective: params.query,
         search_queries: [params.query],
-        session_id: ctx.sessionID,
-        model_name: webSearchModelName(ctx.extra),
       },
       "25 seconds",
       parallelAuthHeaders(),
@@ -101,6 +95,7 @@ export const WebSearchTool = Tool.define(
   Effect.gen(function* () {
     const http = yield* HttpClient.HttpClient
     const flags = yield* RuntimeFlags.Service
+    const config = yield* Config.Service
 
     return {
       get description() {
@@ -109,8 +104,9 @@ export const WebSearchTool = Tool.define(
       parameters: Parameters,
       execute: (params: Schema.Schema.Type<typeof Parameters>, ctx: Tool.Context) =>
         Effect.gen(function* () {
-          const provider = selectWebSearchProvider(ctx.sessionID, {
-            exa: flags.enableExa,
+          const search = (yield* config.get()).web_search
+          const provider = selectWebSearchProvider({
+            configured: search?.enabled ? (search.provider ?? "exa") : undefined,
             parallel: flags.enableParallel,
           })
           const title = webSearchProviderLabel(provider)
@@ -130,7 +126,7 @@ export const WebSearchTool = Tool.define(
             },
           })
 
-          const result = yield* callProvider(http, provider, params, ctx)
+          const result = yield* callProvider(http, provider, params)
 
           return {
             output: result ?? "No search results found. Please try a different query.",
