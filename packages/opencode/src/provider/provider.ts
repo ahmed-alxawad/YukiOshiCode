@@ -9,6 +9,7 @@ import { Npm } from "@yukioshi/core/npm"
 import { Hash } from "@yukioshi/core/util/hash"
 import { Plugin } from "../plugin"
 import { KeyRotation } from "./key-rotation"
+import { ProjectTrust } from "@/project/trust"
 import { serviceUse } from "@yukioshi/core/effect/service-use"
 import { type LanguageModelV3 } from "@ai-sdk/provider"
 import { ModelsDev } from "@yukioshi/core/models-dev"
@@ -1230,11 +1231,16 @@ export class ModelNotFoundError extends Schema.TaggedErrorClass<ModelNotFoundErr
   providerID: ProviderV2.ID,
   modelID: ModelV2.ID,
   suggestions: Schema.optional(Schema.Array(Schema.String)),
+  /** The provider is unknown and the project is not trusted, so its own provider settings were ignored. */
+  untrustedProject: Schema.optional(Schema.Boolean),
   cause: Schema.optional(Schema.Defect()),
 }) {
   override get message() {
     const suggestions = this.suggestions?.length ? ` Did you mean: ${this.suggestions.join(", ")}?` : ""
-    return `Model not found: ${this.providerID}/${this.modelID}.${suggestions}`
+    const trust = this.untrustedProject
+      ? ` If ${this.providerID} is set up in this project's own config, run \`yukioshi trust .\` first: provider settings from an untrusted project are ignored.`
+      : ""
+    return `Model not found: ${this.providerID}/${this.modelID}.${suggestions}${trust}`
   }
 
   static isInstance(input: unknown): input is ModelNotFoundError {
@@ -2023,7 +2029,12 @@ const layer = Layer.effect(
           : fuzzysort
               .go(providerID, Object.keys({ ...s.catalog, ...s.providers }), { limit: 3, threshold: -10000 })
               .map((m) => m.target)
-        return yield* new ModelNotFoundError({ providerID, modelID, suggestions })
+        // An unknown provider in an untrusted project is often one the project defines itself.
+        const ctx = yield* InstanceState.context
+        const trusted = yield* Effect.promise(() =>
+          ProjectTrust.isTrusted(ProjectTrust.root(ctx)).catch(() => true),
+        )
+        return yield* new ModelNotFoundError({ providerID, modelID, suggestions, untrustedProject: !trusted })
       }
 
       const info = provider.models[modelID]
