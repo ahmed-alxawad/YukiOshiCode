@@ -21,9 +21,10 @@ skill, …) is checked against your rules and the session's mode.
 | `auto`     | approves low-risk actions such as reading and searching; asks for the rest  |
 | `auto-all` | approves everything that is not explicitly denied or hard-blocked           |
 | `plan`     | allows only low-risk actions, for exploring and planning                    |
+| `review`   | for unattended runs: a small model approves or refuses each action that is not low-risk |
 
 In the terminal UI, open the command palette (`ctrl+p`) and choose **Cycle
-permission mode**. With `yukioshi run`, pass `--mode manual|auto|auto-all|plan`.
+permission mode**. With `yukioshi run`, pass `--mode manual|auto|auto-all|plan|review`.
 `--auto` is a shortcut for `auto-all`.
 
 The default rules allow most actions; YukiOshi still asks before reading
@@ -38,10 +39,32 @@ ask for are answered (`auto` and `auto-all` approve them, `plan` refuses the
 ones that are not low-risk); actions your rules already allow are not
 prompted, so the mode does not change them.
 
+### Review mode
+
+`review` is for runs no one watches: `yukioshi run --mode review` and
+scheduled jobs added with `yukioshi schedule add … --review`. Each action that
+is not low-risk (commands, edits, fetching URLs, subagents, and so on) goes to
+the session's small model together with your request, even when your rules
+allow it. The model allows it, or refuses it with a reason that the agent sees
+so it can take another way. Reading and searching are not reviewed.
+
+- Hard blocks and `deny` rules apply first; the reviewer never overrides them.
+- If the reviewer gives no clear answer, the action is left to a person,
+  which in `yukioshi run` and scheduled jobs means it is refused.
+- Each reviewed action is one small-model call. Projects cannot change the
+  reviewer's instructions.
+- A refusal pauses a running goal, so `yukioshi run --command goal` exits
+  with 3 (see [exit codes](commands.md#exit-codes)).
+- A model can be wrong or be misled by what it reads, so keep the sandbox on
+  and use `plan` where no changes are needed. The mode is not in the terminal
+  UI's cycle.
+
 ## Rules
 
-Rules in `yukioshi.json` take precedence over the mode. Each tool takes
-`allow`, `ask`, or `deny`, or a set of patterns:
+Rules in `yukioshi.json` take precedence over the `auto` and `auto-all`
+modes, while `plan` and `review` also hold for actions the rules allow; a
+`deny` rule always wins. Each tool takes `allow`, `ask`, or `deny`, or a set of
+patterns:
 
 ```json
 {

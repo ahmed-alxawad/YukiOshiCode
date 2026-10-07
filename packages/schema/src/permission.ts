@@ -50,7 +50,7 @@ const Replied = define({
   },
 })
 
-export const Mode = Schema.Literals(["manual", "auto", "auto-all", "plan"]).annotate({
+export const Mode = Schema.Literals(["manual", "auto", "auto-all", "plan", "review"]).annotate({
   identifier: "PermissionV2.Mode",
 })
 export type Mode = typeof Mode.Type

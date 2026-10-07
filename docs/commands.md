@@ -31,7 +31,7 @@ interface), and `--verify` (turn on post-turn verification).
 | -------------------------- | ----------------------------------------------------------- |
 | `-m, --model`              | model as `provider/model`                                   |
 | `--agent`                  | mode or agent: `build`, `plan`, `goal`, `reasoning`, `research`, `auto`, or a custom agent; an unknown name stops with an error |
-| `--mode`                   | permission mode: `manual`, `auto`, `auto-all`, or `plan` (what it may do without asking; not the same as `--agent auto`) |
+| `--mode`                   | permission mode: `manual`, `auto`, `auto-all`, `plan`, or `review` (what it may do without asking; not the same as `--agent auto`; see [review mode](permissions-and-safety.md#review-mode)) |
 | `-c, --continue`           | continue the last session                                   |
 | `-s, --session`            | continue a session by id                                    |
 | `--fork`                   | fork the session before continuing                          |
@@ -102,7 +102,7 @@ Manage recurring prompts run by your operating system's background scheduler (cr
 
 | Subcommand | Effect |
 | ---------- | ------ |
-| `yukioshi schedule add "<cron>" "<prompt>"` | schedule a prompt (options: `--name`, `--dir`, `--model`, `--agent`, `--auto`) |
+| `yukioshi schedule add "<cron>" "<prompt>"` | schedule a prompt (options: `--name`, `--dir`, `--model`, `--agent`, and `--auto` to approve every action or `--review` to have a model decide them) |
 | `yukioshi schedule list` | list configured scheduled jobs, schedules, next run times, and statuses |
 | `yukioshi schedule run <id>` | execute the scheduled job immediately |
 | `yukioshi schedule logs <id> [--last]` | view output logs of previous runs |

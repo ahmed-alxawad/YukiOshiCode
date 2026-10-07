@@ -115,11 +115,16 @@ Unlike `/loop` (which runs in an active terminal session or server), scheduled t
 - **Linux and macOS:** manages a clearly marked block (`# BEGIN yukioshi schedule` ... `# END yukioshi schedule`) in your user `crontab`, leaving all other cron entries untouched.
 - **Windows:** registers tasks in Windows Task Scheduler via `schtasks` (under `YukiOshi\<id>`).
 
+A job refuses every approval prompt unless it was added with `--auto`, which
+approves them all, or `--review`, which has a small model approve or refuse
+each action that is not low-risk (see
+[review mode](permissions-and-safety.md#review-mode)).
+
 Each execution runs like `yukioshi run` in the job's directory, creates a normal session titled `Scheduled: <name>`, writes a persistent log to `<state>/schedule/<id>/<timestamp>.log` (retaining the last 50 logs per job), and enforces concurrency locks so multiple copies of the same job never run simultaneously. Spending limits (`budget`) are strictly respected: if a budget limit is reached, the run is logged as `skipped: budget`.
 
 ```bash
 # Add a scheduled task (standard 5-field cron)
-yukioshi schedule add "0 9 * * 1-5" "summarize yesterday's commits" --name "daily-summary" --auto
+yukioshi schedule add "0 9 * * 1-5" "summarize yesterday's commits" --name "daily-summary" --review
 
 # Inspect, run, or view logs
 yukioshi schedule list

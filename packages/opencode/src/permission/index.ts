@@ -2,7 +2,7 @@ import { LayerNode } from "@yukioshi/core/effect/layer-node"
 import { ConfigPermissionV1 } from "@yukioshi/core/v1/config/permission"
 import { InstanceState } from "@/effect/instance-state"
 import { Wildcard } from "@yukioshi/core/util/wildcard"
-import { Deferred, Effect, Layer, Context } from "effect"
+import { Cause, Deferred, Effect, Layer, Context } from "effect"
 import os from "os"
 import { PermissionV1 } from "@yukioshi/core/v1/permission"
 import { EventV2Bridge } from "@/event-v2-bridge"
@@ -11,6 +11,7 @@ import { RiskClassifier } from "@yukioshi/core/permission/risk"
 import { Hooks } from "@/hooks"
 import { Config } from "@/config/config"
 import { Permission as PermissionSchema } from "@yukioshi/schema/permission"
+import type { PermissionReview } from "./review"
 
 export const Event = PermissionV1.Event
 
@@ -19,8 +20,11 @@ export const Event = PermissionV1.Event
  * duplicated as a plain literal type rather than shared to avoid coupling this
  * legacy V1 service to the V2 schema module. Kept in sync by hand.
  */
-export type Mode = "manual" | "auto" | "auto-all" | "plan"
+export type Mode = "manual" | "auto" | "auto-all" | "plan" | "review"
 const DEFAULT_MODE: Mode = "manual"
+
+/** Decides an action for a session in review mode; the session layer provides it (see ./review). */
+export type Reviewer = (request: PermissionV1.Request) => Effect.Effect<PermissionReview.Verdict>
 
 export interface Interface {
   readonly ask: (input: PermissionV1.AskInput) => Effect.Effect<void, PermissionV1.Error>
@@ -28,6 +32,7 @@ export interface Interface {
   readonly list: () => Effect.Effect<ReadonlyArray<PermissionV1.Request>>
   readonly getMode: (sessionID: PermissionV1.Request["sessionID"]) => Effect.Effect<Mode>
   readonly setMode: (sessionID: PermissionV1.Request["sessionID"], mode: Mode) => Effect.Effect<void>
+  readonly setReviewer: (reviewer: Reviewer | undefined) => Effect.Effect<void>
 }
 
 interface PendingEntry {
@@ -95,6 +100,7 @@ const layer = Layer.effect(
     // newer permission service. Follow it here as well, so the mode holds for every tool call: without this,
     // `--mode plan` would let through anything the rules allow.
     const apiModes = new Map<string, Mode>()
+    let reviewer: Reviewer | undefined
     const unsubscribe = yield* events.listen((event) =>
       Effect.sync(() => {
         if (event.type !== PermissionSchema.Event.ModeChanged.type) return
@@ -148,8 +154,6 @@ const layer = Layer.effect(
         needsAsk = true
       }
 
-      if (!needsAsk) return
-
       const id = request.id ?? PermissionV1.ID.ascending()
       const info: PermissionV1.Request = {
         id,
@@ -160,6 +164,34 @@ const layer = Layer.effect(
         always: request.always,
         tool: request.tool,
       }
+
+      // Review mode: a reviewer model decides every action that is not low-risk, even one the rules allow
+      // (deny rules and hard blocks were checked above). If it cannot decide, a person is asked, which an
+      // unattended run answers with a refusal.
+      if (mode === "review" && risk !== "low") {
+        const verdict: PermissionReview.Verdict = reviewer
+          ? yield* reviewer(info).pipe(
+              Effect.catchCause((cause) =>
+                Cause.hasInterrupts(cause)
+                  ? Effect.interrupt
+                  : Effect.logWarning("permission review failed", { cause }).pipe(
+                      Effect.as({ verdict: "ask" as const, reason: "The review failed." }),
+                    ),
+              ),
+            )
+          : { verdict: "ask", reason: "No reviewer is available." }
+        yield* Effect.logInfo("reviewed", {
+          permission: info.permission,
+          verdict: verdict.verdict,
+          reason: verdict.reason,
+        })
+        if (verdict.verdict === "allow") return
+        if (verdict.verdict === "deny") return yield* new PermissionV1.ReviewedError({ reason: verdict.reason })
+        needsAsk = true
+      }
+
+      if (!needsAsk) return
+
       yield* Effect.logInfo("asking", { id, permission: info.permission, patterns: info.patterns })
 
       const deferred = yield* Deferred.make<void, PermissionV1.RejectedError | PermissionV1.CorrectedError>()
@@ -270,7 +302,11 @@ const layer = Layer.effect(
       modes.set(sessionID, mode)
     })
 
-    return Service.of({ ask, reply, list, getMode, setMode })
+    const setReviewer = Effect.fn("Permission.setReviewer")(function* (next: Reviewer | undefined) {
+      reviewer = next
+    })
+
+    return Service.of({ ask, reply, list, getMode, setMode, setReviewer })
   }),
 )
 

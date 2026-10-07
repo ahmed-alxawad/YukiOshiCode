@@ -57,6 +57,7 @@ const fakePermission = Permission.Service.of({
   list: () => Effect.succeed([]),
   getMode: () => Effect.succeed("manual" as const),
   setMode: () => Effect.void,
+  setReviewer: () => Effect.void,
 } satisfies Permission.Interface)
 
 const fakeHooks = Hooks.Service.of({

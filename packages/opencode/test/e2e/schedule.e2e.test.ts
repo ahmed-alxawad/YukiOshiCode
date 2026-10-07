@@ -2,8 +2,10 @@ import { describe, expect } from "bun:test"
 import { Effect } from "effect"
 import path from "node:path"
 import fs from "node:fs/promises"
+import { existsSync } from "node:fs"
 import { cliIt } from "../lib/cli-process"
-import { config, globalConfig, runtimeEnv } from "./helpers"
+import { reply } from "../lib/llm-server"
+import { config, globalConfig, requestText, runtimeEnv } from "./helpers"
 
 describe("scheduled tasks e2e", () => {
   cliIt.live(
@@ -152,5 +154,41 @@ describe("scheduled tasks e2e", () => {
         expect(listOut).toContain("[last: skipped: budget]")
       }),
     60_000,
+  )
+  cliIt.live(
+    "a --review job has the reviewer decide its actions",
+    ({ home, llm, opencode }) =>
+      Effect.gen(function* () {
+        const env = {
+          ...runtimeEnv(home),
+          YUKIOSHI_CONFIG_CONTENT: config(llm.url),
+          YUKIOSHI_CRONTAB: path.join(home, "fake-crontab"),
+        }
+        const both = yield* opencode.spawn(["schedule", "add", "0 9 * * *", "x", "--auto", "--review"], { env })
+        expect(both.exitCode).not.toBe(0)
+        expect(both.stderr).toContain("Use either --auto or --review, not both.")
+
+        const added = yield* opencode.spawn(
+          ["schedule", "add", "0 9 * * *", "tidy the notes", "--dir", home, "--model", "test/test-model", "--review"],
+          { env },
+        )
+        expect(added.exitCode).toBe(0)
+        const jobId = (added.stdout + added.stderr).match(/Added scheduled job ([0-9a-f]{8})/)![1]!
+
+        const fromReviewer = (hit: { body: Record<string, unknown> }) => requestText(hit.body).includes("<action>")
+        yield* llm.pushMatch(
+          (hit) => !fromReviewer(hit),
+          reply().tool("bash", { command: "touch reviewed-file", description: "create a file" }),
+          reply().text("finished").stop(),
+        )
+        yield* llm.pushMatch(fromReviewer, reply().text("DENY: the request did not ask for a new file").stop())
+        const run = yield* opencode.spawn(["schedule", "run", jobId], { env })
+        expect(run.exitCode).toBe(0)
+        expect(existsSync(path.join(home, "reviewed-file"))).toBe(false)
+        const reviews = (yield* llm.inputs).filter((input) => requestText(input).includes("<action>"))
+        expect(reviews).toHaveLength(1)
+        expect(requestText(reviews[0]!)).toContain("tidy the notes")
+      }),
+    90_000,
   )
 })

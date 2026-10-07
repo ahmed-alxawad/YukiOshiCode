@@ -1953,14 +1953,108 @@ export type Config = {
   skills?: {
     paths?: Array<string>
     urls?: Array<string>
+    /**
+     * Skills the agent writes itself, with a curator that keeps them few and useful (off by default)
+     */
+    learn?:
+      | boolean
+      | {
+          enabled?: boolean
+          max?: number
+          stale_days?: number
+        }
   }
   sandbox?: {
     enabled?: boolean
     network?: "allow" | "deny"
     writablePaths?: Array<string>
   }
+  fallback?: {
+    enabled?: boolean
+    models?: Array<string>
+    cooldown?: number
+    rotate_keys?: boolean
+  }
+  tool_limits?: {
+    repeat_nudge?: boolean
+    /**
+     * Time limit for tool calls in milliseconds: one number for all tools, or per tool ({ "*": 120000, "webfetch": 30000 }). 0 turns a limit off. A catch-all limit skips bash (which has its own), task, task_parallel, question, and plan_exit. No limit by default.
+     */
+    timeout?:
+      | number
+      | {
+          [key: string]: number
+        }
+  }
+  tool_search?: {
+    /**
+     * Control MCP tool search: "auto" turns search on when MCP tool definitions exceed threshold characters, true always enables, false disables. Defaults to "auto".
+     */
+    enabled?: boolean | "auto"
+    threshold?: number
+  }
+  delegate?: {
+    enabled?: boolean
+    agents?: {
+      [key: string]: {
+        /**
+         * Command and arguments to spawn the external ACP agent process.
+         */
+        command: Array<string>
+        env?: {
+          [key: string]: string
+        }
+        timeout?: number
+      }
+    }
+  }
+  webhooks?: Array<{
+    url: string
+    events?: Array<"turn.finished" | "turn.failed" | "permission.asked" | "question.asked">
+    secret?: string
+    headers?: {
+      [key: string]: string
+    }
+  }>
+  budget?: {
+    /**
+     * Maximum dollar cost for one session
+     */
+    session?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    /**
+     * Maximum dollar cost across sessions today
+     */
+    daily?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    /**
+     * Maximum dollar cost across sessions this month
+     */
+    monthly?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    tokens?: {
+      session?: number
+      daily?: number
+      monthly?: number
+    }
+  }
+  checkpoints?: {
+    enabled?: boolean
+  }
+  redact?: {
+    enabled?: boolean
+    patterns?: Array<string>
+    allow?: Array<string>
+  }
+  loop?: {
+    enabled?: boolean
+    max_runs?: number
+    min_interval?: number
+  }
+  goal?: {
+    enabled?: boolean
+    max_rounds?: number
+  }
   memory?: {
     enabled?: boolean
+    max_chars?: number
   }
   indexing?: IndexingConfig
   code_graph?: CodeGraphConfig
@@ -1996,6 +2090,10 @@ export type Config = {
   small_model?: string
   default_agent?: string
   subagent_depth?: number
+  subagents?: {
+    background?: boolean
+    parallel?: boolean
+  }
   username?: string
   mode?: {
     build?: AgentConfig
@@ -2060,6 +2158,11 @@ export type Config = {
               }
             }
       }
+  lsp_tool?: boolean
+  web_search?: {
+    enabled?: boolean
+    provider?: "exa" | "parallel"
+  }
   instructions?: Array<string>
   layout?: LayoutConfig
   permission?: PermissionConfig
@@ -3191,7 +3294,7 @@ export type PermissionV2Source = {
 
 export type PermissionV2Reply = "once" | "always" | "reject"
 
-export type PermissionV2Mode = "manual" | "auto" | "auto-all" | "plan"
+export type PermissionV2Mode = "manual" | "auto" | "auto-all" | "plan" | "review"
 
 export type QuestionV2Option = {
   /**

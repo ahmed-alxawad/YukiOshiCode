@@ -16,6 +16,8 @@ export interface ScheduleJob {
   model?: string
   agent?: string
   auto: boolean
+  /** Run in permission mode review: a small model decides each action that is not low-risk. */
+  review?: boolean
   enabled: boolean
   createdAt: number
   lastRunAt?: number

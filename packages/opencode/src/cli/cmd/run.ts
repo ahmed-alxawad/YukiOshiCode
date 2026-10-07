@@ -292,9 +292,9 @@ export const RunCommand = effectCmd({
       })
       .option("mode", {
         type: "string",
-        choices: ["manual", "auto", "auto-all", "plan"] as const,
+        choices: ["manual", "auto", "auto-all", "plan", "review"] as const,
         describe:
-          "permission mode for this session: manual asks for anything not explicitly configured, auto auto-approves low-risk actions (reads/searches), auto-all auto-approves anything not explicitly denied or hard-blocked, plan restricts the agent to low-risk actions only",
+          "permission mode for this session: manual asks for anything not explicitly configured, auto auto-approves low-risk actions (reads/searches), auto-all auto-approves anything not explicitly denied or hard-blocked, plan restricts the agent to low-risk actions only, review has a small model approve or refuse each action that is not low-risk",
       })
       .option("demo", {
         type: "boolean",

@@ -314,6 +314,7 @@ describe("SessionTools.resolve integration with tool_search", () => {
     list: () => Effect.succeed([]),
     getMode: () => Effect.succeed("manual" as const),
     setMode: () => Effect.void,
+    setReviewer: () => Effect.void,
   } satisfies Permission.Interface)
 
   const fakeHooks = Hooks.Service.of({

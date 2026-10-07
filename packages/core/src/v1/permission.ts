@@ -18,6 +18,15 @@ export class CorrectedError extends Schema.TaggedErrorClass<CorrectedError>()("P
   }
 }
 
+/** Review mode: the reviewer model refused the action. The agent sees why and can choose another way. */
+export class ReviewedError extends Schema.TaggedErrorClass<ReviewedError>()("PermissionReviewedError", {
+  reason: Schema.String,
+}) {
+  override get message() {
+    return `An automatic reviewer denied this tool call: ${this.reason}. Take a safer approach that fits the request, or stop and explain what you need.`
+  }
+}
+
 export class DeniedError extends Schema.TaggedErrorClass<DeniedError>()("PermissionDeniedError", {
   ruleset: Schema.Any,
 }) {
@@ -30,4 +39,4 @@ export class NotFoundError extends Schema.TaggedErrorClass<NotFoundError>()("Per
   requestID: ID,
 }) {}
 
-export type Error = DeniedError | RejectedError | CorrectedError
+export type Error = DeniedError | RejectedError | CorrectedError | ReviewedError

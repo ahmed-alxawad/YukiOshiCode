@@ -113,7 +113,9 @@ export async function runJob(id: string): Promise<RunJobResult> {
 
     appendLog(`Session created: ${sessionID}`)
 
-    if (job.auto) {
+    if (job.review) {
+      await sdk.v2.session.permission.mode.set({ sessionID, mode: "review" }).catch(() => {})
+    } else if (job.auto) {
       await sdk.v2.session.permission.mode.set({ sessionID, mode: "auto-all" }).catch(() => {})
     }
 

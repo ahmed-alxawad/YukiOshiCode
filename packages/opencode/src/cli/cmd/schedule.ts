@@ -65,6 +65,11 @@ export const ScheduleAddCommand = effectCmd({
         type: "boolean",
         default: false,
         describe: "automatically approve permission requests during runs",
+      })
+      .option("review", {
+        type: "boolean",
+        default: false,
+        describe: "have a small model approve or refuse each action that is not low-risk (permission mode review)",
       }),
   handler: Effect.fn("Cli.schedule.add")(function* (args: {
     cron: string
@@ -74,7 +79,9 @@ export const ScheduleAddCommand = effectCmd({
     model?: string
     agent?: string
     auto: boolean
+    review: boolean
   }) {
+    if (args.auto && args.review) return yield* fail("Use either --auto or --review, not both.")
     // 1. Validate cron expression
     let parsedCron
     try {
@@ -96,6 +103,7 @@ export const ScheduleAddCommand = effectCmd({
       model: args.model,
       agent: args.agent,
       auto: Boolean(args.auto),
+      ...(args.review ? { review: true } : {}),
       enabled: true,
       createdAt: Date.now(),
     }

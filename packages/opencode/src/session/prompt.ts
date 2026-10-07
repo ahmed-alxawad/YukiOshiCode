@@ -40,6 +40,7 @@ import { NamedError } from "@yukioshi/core/util/error"
 import { SessionProcessor } from "./processor"
 import { Tool } from "@/tool/tool"
 import { Permission } from "@/permission"
+import { PermissionReview } from "@/permission/review"
 import { SessionStatus } from "./status"
 import { LLM } from "./llm"
 import { Shell } from "@yukioshi/core/shell"
@@ -1697,6 +1698,79 @@ const layer = Layer.effect(
         )
       return answer ? SessionGoal.parseVerdict(answer) : ({ verdict: "blocked", reason: "The goal check failed." } as const)
     })
+
+    // Review mode (`yukioshi run --mode review`): a small model decides each action that is not low-risk. The
+    // reviewer's agent and prompt are fixed here rather than looked up by name, so no config can replace them.
+    const reviewerAgent: Agent.Info = {
+      name: "permission-reviewer",
+      mode: "primary",
+      native: true,
+      hidden: true,
+      temperature: 0,
+      permission: [{ permission: "*", pattern: "*", action: "deny" }],
+      prompt: PermissionReview.PROMPT,
+      options: {},
+    }
+    const undecided = (reason: string): PermissionReview.Verdict => ({ verdict: "ask", reason })
+
+    const reviewPermission = Effect.fn("SessionPrompt.reviewPermission")(function* (request: PermissionV1.Request) {
+      // Judge against what the person asked for in the top session, not a task an agent wrote for a subagent.
+      let session = yield* sessions.get(request.sessionID)
+      while (session.parentID) session = yield* sessions.get(session.parentID)
+      const msgs = yield* MessageV2.filterCompactedEffect(session.id).pipe(
+        Effect.provideService(Database.Service, database),
+      )
+      const users = msgs.filter((msg) => msg.info.role === "user")
+      const user = users.at(-1)?.info
+      if (user?.role !== "user") return undecided("There is no request to compare the action with.")
+      const asked =
+        users
+          .map((msg) =>
+            msg.parts
+              .flatMap((part) => (part.type === "text" && !part.synthetic ? [part.text] : []))
+              .join("\n")
+              .trim(),
+          )
+          .filter(Boolean)
+          .at(-1) ?? ""
+      const model =
+        (yield* provider.getSmallModel(user.model.providerID)) ??
+        (yield* provider
+          .getModel(user.model.providerID, user.model.modelID)
+          .pipe(Effect.catch(() => Effect.succeed(undefined))))
+      if (!model) return undecided("No model is available for the review.")
+
+      const answer = yield* llm
+        .stream({
+          agent: reviewerAgent,
+          user,
+          system: [],
+          small: true,
+          tools: {},
+          model,
+          sessionID: request.sessionID,
+          retries: 1,
+          messages: [{ role: "user", content: PermissionReview.input(request, asked) }],
+        })
+        .pipe(
+          Stream.filter(LLMEvent.is.textDelta),
+          Stream.map((event) => event.text),
+          Stream.mkString,
+          Effect.timeout("45 seconds"),
+        )
+      return PermissionReview.parse(answer)
+    })
+    yield* permission.setReviewer((request) =>
+      reviewPermission(request).pipe(
+        Effect.catchCause((cause) =>
+          Cause.hasInterrupts(cause)
+            ? Effect.interrupt
+            : Effect.logWarning("permission review failed", { error: Cause.squash(cause) }).pipe(
+                Effect.as(undecided("The review failed.")),
+              ),
+        ),
+      ),
+    )
 
     // Runs the loop, then keeps going while a goal is active and the judge says it is not met yet.
     const runWithGoal = (sessionID: SessionID): Effect.Effect<SessionV1.WithParts> =>
