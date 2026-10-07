@@ -10,6 +10,7 @@ import { SafetyGuards } from "@yukioshi/core/permission/guards"
 import { RiskClassifier } from "@yukioshi/core/permission/risk"
 import { Hooks } from "@/hooks"
 import { Config } from "@/config/config"
+import { Permission as PermissionSchema } from "@yukioshi/schema/permission"
 
 export const Event = PermissionV1.Event
 
@@ -90,6 +91,19 @@ const layer = Layer.effect(
       }),
     )
 
+    // A mode set through the API (`yukioshi run --mode`, the session permission mode endpoint) is kept by the
+    // newer permission service. Follow it here as well, so the mode holds for every tool call: without this,
+    // `--mode plan` would let through anything the rules allow.
+    const apiModes = new Map<string, Mode>()
+    const unsubscribe = yield* events.listen((event) =>
+      Effect.sync(() => {
+        if (event.type !== PermissionSchema.Event.ModeChanged.type) return
+        const data = event.data as { sessionID: string; mode: Mode }
+        apiModes.set(data.sessionID, data.mode)
+      }),
+    )
+    yield* Effect.addFinalizer(() => unsubscribe)
+
     const ask = Effect.fn("Permission.ask")(function* (input: PermissionV1.AskInput) {
       const { approved, pending, modes } = yield* InstanceState.get(state)
       const { ruleset, ...request } = input
@@ -105,7 +119,7 @@ const layer = Layer.effect(
         })
       }
 
-      const mode = modes.get(request.sessionID) ?? DEFAULT_MODE
+      const mode = modes.get(request.sessionID) ?? apiModes.get(request.sessionID) ?? DEFAULT_MODE
       const risk = RiskClassifier.classify(request.permission)
 
       // Plan mode: only low-risk (read-only) actions proceed, regardless of
@@ -245,7 +259,7 @@ const layer = Layer.effect(
 
     const getMode = Effect.fn("Permission.getMode")(function* (sessionID: PermissionV1.Request["sessionID"]) {
       const modes = (yield* InstanceState.get(state)).modes
-      return modes.get(sessionID) ?? DEFAULT_MODE
+      return modes.get(sessionID) ?? apiModes.get(sessionID) ?? DEFAULT_MODE
     })
 
     const setMode = Effect.fn("Permission.setMode")(function* (

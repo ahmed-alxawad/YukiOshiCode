@@ -26,6 +26,18 @@ In the terminal UI, open the command palette (`ctrl+p`) and choose **Cycle
 permission mode**. With `yukioshi run`, pass `--mode manual|auto|auto-all|plan`.
 `--auto` is a shortcut for `auto-all`.
 
+The default rules allow most actions; YukiOshi still asks before reading
+`.env` files or working outside the project, for example. Set rules (below)
+for what you want to approve yourself, such as `"edit": "ask"` and
+`"bash": "ask"`.
+
+With `yukioshi run --mode`, the mode applies to every tool call: `plan` refuses
+anything that is not low-risk (reading and searching), even actions your rules
+allow. In the terminal UI, the mode decides how the approval prompts your rules
+ask for are answered (`auto` and `auto-all` approve them, `plan` refuses the
+ones that are not low-risk); actions your rules already allow are not
+prompted, so the mode does not change them.
+
 ## Rules
 
 Rules in `yukioshi.json` take precedence over the mode. Each tool takes
