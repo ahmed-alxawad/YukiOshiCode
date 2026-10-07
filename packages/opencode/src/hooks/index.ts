@@ -6,7 +6,15 @@ import { Context, Effect, Exit, Layer, Stream } from "effect"
 import { ChildProcess } from "effect/unstable/process"
 import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner"
 
-export type EventName = "PreToolUse" | "PostToolUse" | "UserPromptSubmit" | "SessionStart" | "Stop" | "Notification"
+export type EventName =
+  | "PreToolUse"
+  | "PostToolUse"
+  | "UserPromptSubmit"
+  | "SessionStart"
+  | "Stop"
+  | "SubagentStop"
+  | "PreCompact"
+  | "Notification"
 
 const CONFIG_KEYS: Readonly<Record<EventName, keyof ConfigHooksV1.Info>> = {
   PreToolUse: "preToolUse",
@@ -14,6 +22,8 @@ const CONFIG_KEYS: Readonly<Record<EventName, keyof ConfigHooksV1.Info>> = {
   UserPromptSubmit: "userPromptSubmit",
   SessionStart: "sessionStart",
   Stop: "stop",
+  SubagentStop: "subagentStop",
+  PreCompact: "preCompact",
   Notification: "notification",
 }
 

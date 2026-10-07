@@ -1371,6 +1371,14 @@ const layer = Layer.effect(
           }
 
           if (task?.type === "compaction") {
+            const compactCfg = yield* config.get()
+            const compacting = yield* hooks.run({
+              hooks: compactCfg.hooks,
+              event: "PreCompact",
+              payload: { session_id: sessionID, trigger: task.auto ? "auto" : "manual" },
+              cwd: ctx.worktree === "/" ? ctx.directory : ctx.worktree,
+            })
+            for (const warning of compacting.warnings) yield* Effect.logWarning("preCompact hook warning", { warning })
             const result = yield* compaction.process({
               messages: msgs,
               parentID: lastUser.id,
@@ -1614,10 +1622,14 @@ const layer = Layer.effect(
         // documented as a gap rather than risking a subtle infinite-loop bug in this function.
         const stopCwd = ctx.worktree === "/" ? ctx.directory : ctx.worktree
         const stopCfg = yield* config.get()
+        // A subagent finishing is SubagentStop, as in Claude Code; Stop is for the session the person started.
+        const stopping = yield* sessions.get(sessionID).pipe(Effect.orDie)
         const stopResult = yield* hooks.run({
           hooks: stopCfg.hooks,
-          event: "Stop",
-          payload: { session_id: sessionID },
+          event: stopping.parentID ? "SubagentStop" : "Stop",
+          payload: stopping.parentID
+            ? { session_id: sessionID, parent_session_id: stopping.parentID }
+            : { session_id: sessionID },
           cwd: stopCwd,
         })
         for (const warning of stopResult.warnings) yield* Effect.logWarning("stop hook warning", { warning })

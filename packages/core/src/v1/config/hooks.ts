@@ -28,6 +28,12 @@ export const Info = Schema.Struct({
   stop: Schema.optional(Schema.Array(HookCommand)).annotate({
     description: "When a task completes.",
   }),
+  subagentStop: Schema.optional(Schema.Array(HookCommand)).annotate({
+    description: "When a subagent finishes its task.",
+  }),
+  preCompact: Schema.optional(Schema.Array(HookCommand)).annotate({
+    description: "Before a long conversation is compacted (summarised), automatically or on request.",
+  }),
   notification: Schema.optional(Schema.Array(HookCommand)).annotate({
     description: "When the agent is waiting for your permission approval.",
   }),
