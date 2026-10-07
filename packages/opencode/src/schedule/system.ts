@@ -32,8 +32,38 @@ export function getYukioshiBinary(): string {
   return process.execPath
 }
 
-export function buildCronLine(job: ScheduleJob, binaryPath: string, home: string, pathEnv: string): string {
-  return `${job.cron} HOME="${home}" PATH="${pathEnv}" "${binaryPath}" schedule run ${job.id}`
+/**
+ * Settings that tell YukiOshi where its config and data live. Cron starts jobs with almost no environment,
+ * so when they are set they are written into the job's line; without them a scheduled run would look in
+ * the default folders and not find its own jobs or config. Secrets (API keys) are never copied.
+ */
+export const CARRIED_ENV = [
+  "XDG_CONFIG_HOME",
+  "XDG_DATA_HOME",
+  "XDG_STATE_HOME",
+  "XDG_CACHE_HOME",
+  "YUKIOSHI_CONFIG",
+  "YUKIOSHI_CONFIG_DIR",
+] as const
+
+export function carriedEnv(env: Record<string, string | undefined> = process.env): Record<string, string> {
+  return Object.fromEntries(CARRIED_ENV.flatMap((name) => (env[name] ? [[name, env[name]!]] : [])))
+}
+
+/** A double-quoted value for a crontab line: shell-escaped, and `%` escaped because cron treats it as a newline. */
+export function cronQuote(value: string) {
+  return `"${value.replace(/[\\"$`]/g, "\\$&").replace(/%/g, "\\%")}"`
+}
+
+export function buildCronLine(
+  job: ScheduleJob,
+  binaryPath: string,
+  home: string,
+  pathEnv: string,
+  extraEnv: Record<string, string> = {},
+): string {
+  const extra = Object.entries(extraEnv).map(([name, value]) => ` ${name}=${cronQuote(value)}`)
+  return `${job.cron} HOME=${cronQuote(home)} PATH=${cronQuote(pathEnv)}${extra.join("")} ${cronQuote(binaryPath)} schedule run ${job.id}`
 }
 
 /**
@@ -46,6 +76,7 @@ export function updateCrontabBlock(
   binaryPath: string,
   home: string,
   pathEnv: string,
+  extraEnv: Record<string, string> = {},
 ): string {
   const enabledJobs = jobs.filter((j) => j.enabled)
   const blockRegex = /(?:^|\n)# BEGIN yukioshi schedule\r?\n[\s\S]*?\r?\n# END yukioshi schedule(?:\r?\n|$)/
@@ -61,7 +92,7 @@ export function updateCrontabBlock(
     return existingCrontab
   }
 
-  const lines = enabledJobs.map((j) => buildCronLine(j, binaryPath, home, pathEnv))
+  const lines = enabledJobs.map((j) => buildCronLine(j, binaryPath, home, pathEnv, extraEnv))
   const newBlock = `${CRON_BLOCK_START}\n${lines.join("\n")}\n${CRON_BLOCK_END}`
 
   if (blockRegex.test(existingCrontab)) {
@@ -199,6 +230,6 @@ export async function syncSystemSchedule(jobs: ScheduleJob[]): Promise<void> {
   const binary = getYukioshiBinary()
   const home = process.env.YUKIOSHI_TEST_HOME ?? process.env.HOME ?? os.homedir()
   const pathEnv = process.env.PATH ?? ""
-  const updated = updateCrontabBlock(existing, jobs, binary, home, pathEnv)
+  const updated = updateCrontabBlock(existing, jobs, binary, home, pathEnv, carriedEnv())
   await writeCrontab(updated)
 }

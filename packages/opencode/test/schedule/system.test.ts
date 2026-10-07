@@ -5,6 +5,8 @@ import fs from "fs/promises"
 import {
   updateCrontabBlock,
   buildCronLine,
+  carriedEnv,
+  cronQuote,
   readCrontab,
   writeCrontab,
   CRON_BLOCK_START,
@@ -279,3 +281,29 @@ describe("fake crontab file isolation via YUKIOSHI_CRONTAB", () => {
     }
   })
 })
+
+describe("cron line environment", () => {
+  const job = { id: "job1", name: "n", cron: "0 9 * * *", prompt: "p", directory: "/d", enabled: true, auto: false, createdAt: 0 } as any
+
+  it("carries config and data folder settings but never secrets", () => {
+    const env = carriedEnv({
+      XDG_STATE_HOME: "/data/state",
+      YUKIOSHI_CONFIG: "/etc/yk.json",
+      OPENAI_API_KEY: "sk-secret",
+      GITHUB_TOKEN: "ghp_x",
+      XDG_DATA_HOME: "",
+    })
+    expect(env).toEqual({ XDG_STATE_HOME: "/data/state", YUKIOSHI_CONFIG: "/etc/yk.json" })
+    const line = buildCronLine(job, "/bin/yukioshi", "/home/u", "/usr/bin", env)
+    expect(line).toBe(
+      `0 9 * * * HOME="/home/u" PATH="/usr/bin" XDG_STATE_HOME="/data/state" YUKIOSHI_CONFIG="/etc/yk.json" "/bin/yukioshi" schedule run job1`,
+    )
+    expect(line).not.toContain("sk-secret")
+  })
+
+  it("escapes characters that would break the shell or cron", () => {
+    expect(cronQuote('/home/a "b"/$x`y`\\z 100%')).toBe('"/home/a \\"b\\"/\\$x\\`y\\`\\\\z 100\\%"')
+    expect(cronQuote("/usr/bin")).toBe('"/usr/bin"')
+  })
+})
+

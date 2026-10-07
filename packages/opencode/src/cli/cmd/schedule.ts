@@ -106,10 +106,15 @@ export const ScheduleAddCommand = effectCmd({
     yield* cliTry("Failed to save scheduled jobs: ", () => saveJobs(jobs))
     yield* cliTry("Failed to update system scheduler: ", () => syncSystemSchedule(jobs))
 
-    const next = nextRun(parsedCron).toISOString()
+    const next = localTime(nextRun(parsedCron))
     UI.println(`Added scheduled job ${newJob.id} (${newJob.name})`)
     UI.println(`Schedule: ${newJob.cron} (next run: ${next})`)
     UI.println(`Directory: ${newJob.directory}`)
+    const keys = envOnlyKeys()
+    if (process.platform !== "win32" && keys.length > 0)
+      UI.println(
+        `Note: scheduled runs do not load your shell profile, so ${keys.join(", ")} will not be set for them. Store keys with \`yukioshi providers login\` so scheduled runs can use them.`,
+      )
   }),
 })
 
@@ -128,7 +133,7 @@ export const ScheduleListCommand = effectCmd({
       let nextStr = "disabled"
       if (job.enabled) {
         try {
-          nextStr = nextRun(job.cron).toISOString()
+          nextStr = localTime(nextRun(job.cron))
         } catch {
           nextStr = "invalid schedule"
         }
@@ -308,3 +313,17 @@ export const ScheduleCommand = cmd({
       .demandCommand(1, "Please specify a schedule action (add, list, remove, run, logs, enable, disable)"),
   async handler() {},
 })
+
+/** "2026-10-07 09:00 Asia/Dhaka": cron schedules are in local time, so show the next run the same way. */
+function localTime(date: Date) {
+  const pad = (n: number) => String(n).padStart(2, "0")
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())} ${zone}`
+}
+
+/** Provider keys that exist only as environment variables here; cron will not see them. */
+function envOnlyKeys(env: Record<string, string | undefined> = process.env) {
+  return Object.keys(env)
+    .filter((name) => /_API_KEY$|^(GITHUB|GH)_TOKEN$/.test(name) && env[name])
+    .sort()
+}
