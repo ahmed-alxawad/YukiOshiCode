@@ -115,6 +115,7 @@ Keep API keys out of checked-in config files: use `{env:…}` or
 | `budget`               | optional dollar/token limits for a session, day, or month | [Spending limits](#spending-limits) |
 | `delegate`             | hand tasks to other coding agents over ACP: `enabled`, `agents` (off by default) | [Features](features.md#delegating-to-other-agents) |
 | `checkpoints`          | durable git commits on `refs/yukioshi/checkpoints/*` (off by default) | [Features](features.md#git-checkpoints) |
+| `audit`                | local log of tool calls and approvals: `enabled` (off by default; global config only) | [Permissions and safety](permissions-and-safety.md#audit-log) |
 | `subagents`            | background subagents (`background`) and the `task_parallel` tool (`parallel`), both off by default | [Features](features.md#subagents) |
 | `share`, `enterprise.url` | session sharing (`manual`, `auto`, `disabled`) and the share server it needs | [Features](features.md) |
 | `autoupdate`           | update behaviour                                                    | [Installation](installation.md)             |

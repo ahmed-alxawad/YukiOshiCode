@@ -57,6 +57,7 @@ import { AppNodeBuilderV1 } from "./app-node-builder-v1"
 import { SessionProjector } from "@yukioshi/core/session/projector"
 import { CodeGraph } from "@/code-graph"
 import { Webhook } from "@/webhook"
+import { Audit } from "@/audit"
 import { Checkpoint } from "@/checkpoint"
 
 export const AppLayer = AppNodeBuilderV1.build(
@@ -103,6 +104,7 @@ export const AppLayer = AppNodeBuilderV1.build(
     ToolRegistry.node,
     CodeGraph.node,
     Webhook.node,
+    Audit.node,
     Checkpoint.node,
     Format.node,
     InstanceStore.node,

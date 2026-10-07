@@ -215,6 +215,34 @@ Normal code identifiers (such as `sk-` inside an unrelated word or Stripe test k
 }
 ```
 
+## Audit log
+
+A local record of what the agent did, for you or your team to review later. It
+is off by default; turn it on in your own global config
+(`~/.config/yukioshi/yukioshi.json`):
+
+```json
+{ "audit": { "enabled": true } }
+```
+
+YukiOshi then appends one JSON line for each tool call, approval prompt, and
+answer to `~/.local/state/yukioshi/audit/<date>.jsonl`:
+
+```json
+{"time":"2026-10-07T09:12:03.120Z","directory":"/home/me/app","event":"tool","session":"ses_…","tool":"bash","status":"completed","input":"npm test"}
+{"time":"2026-10-07T09:12:09.481Z","directory":"/home/me/app","event":"permission.asked","session":"ses_…","permission":"bash","patterns":["git push"]}
+{"time":"2026-10-07T09:12:15.002Z","directory":"/home/me/app","event":"permission.replied","session":"ses_…","reply":"reject"}
+```
+
+- A tool call is recorded with the part of its input that says what it did
+  (the command, file, URL, or search pattern), shortened to 500 characters.
+- Secrets in what is recorded are masked, as for [redaction](#secret-redaction).
+- Only the global config counts: a project's own config cannot turn the log on
+  or off.
+- Nothing is sent anywhere. On Linux and macOS the files are readable only by
+  you. YukiOshi keeps them until you delete them; `yukioshi uninstall` removes
+  them along with the rest of the state folder.
+
 ## Reporting a security problem
 
 Please report vulnerabilities privately; see [SECURITY.md](../SECURITY.md).

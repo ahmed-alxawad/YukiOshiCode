@@ -32,6 +32,7 @@ import { ConfigSandboxV1 } from "./sandbox"
 import { ConfigServerV1 } from "./server"
 import { ConfigSkillsV1 } from "./skills"
 import { ConfigSubagentsV1 } from "./subagents"
+import { ConfigAuditV1 } from "./audit"
 import { ConfigWebSearchV1 } from "./web-search"
 
 export type Layout = ConfigLayoutV1.Layout
@@ -79,6 +80,9 @@ export const Info = Schema.Struct({
   }),
   budget: Schema.optional(ConfigBudgetV1.Info).annotate({
     description: "Dollar and token spending limits for sessions, days, and months (off by default)",
+  }),
+  audit: Schema.optional(ConfigAuditV1.Info).annotate({
+    description: "A local audit log of tool calls and approvals (off by default; global config only)",
   }),
   checkpoints: Schema.optional(ConfigCheckpointsV1.Info).annotate({
     description: "Durable git checkpoints on a separate YukiOshi ref (off by default)",
