@@ -350,12 +350,14 @@ Options:
 `;
 
 exports[`yukioshi CLI help-text snapshots every documented command emits stable help text: yukioshi plugin --help 1`] = `
-"yukioshi plugin <module>
+"yukioshi plugin [action] [target] [extra]
 
-install plugin and update config
+install, list, or remove plugins (npm packages, or Claude Code plugins/marketplaces from git)
 
 Positionals:
-  module  npm module name                                                        [string] [required]
+  action  subcommand (add, list, remove) or npm module name                                 [string]
+  target  git URL or marketplace repository (for add), or plugin name (for remove)          [string]
+  extra   plugin name within marketplace (for add)                                          [string]
 
 Options:
   -h, --help        show help                                                              [boolean]
@@ -363,6 +365,7 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
+      --name        folder name to install under (add); defaults to the plugin name         [string]
   -g, --global      install in global config                              [boolean] [default: false]
   -f, --force       replace existing plugin version                       [boolean] [default: false]"
 `;

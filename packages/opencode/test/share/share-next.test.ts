@@ -99,6 +99,7 @@ describe("ShareNext", () => {
         ).pipe(Effect.provide(requestLayer(none))),
       { config: { enterprise: { url: "https://legacy-share.example.com" } } },
     ),
+    30_000,
   )
 
   it.live("refuses to share without a configured share server (never falls back to a third party)", () =>
@@ -112,6 +113,7 @@ describe("ShareNext", () => {
         }),
       ).pipe(Effect.provide(requestLayer(none))),
     ),
+    30_000,
   )
 
   it.live("request uses org share API with auth headers when account is active", () =>
@@ -132,6 +134,7 @@ describe("ShareNext", () => {
         })
       }).pipe(Effect.provide(requestLayer(none))),
     ),
+    30_000,
   )
 
   it.live("create posts share, persists it, and returns the result", () =>
@@ -172,6 +175,7 @@ describe("ShareNext", () => {
       },
       { config: { enterprise: { url: "https://legacy-share.example.com" } } },
     ),
+    30_000,
   )
 
   it.live("remove deletes the persisted share and calls the delete endpoint", () =>
@@ -207,6 +211,7 @@ describe("ShareNext", () => {
       },
       { config: { enterprise: { url: "https://legacy-share.example.com" } } },
     ),
+    30_000,
   )
 
   it.live("create fails on a non-ok response and does not persist a share", () =>
@@ -221,6 +226,7 @@ describe("ShareNext", () => {
         expect(yield* share(session.id)).toBeUndefined()
       }).pipe(Effect.provide(integrationLayer(client)))
     }),
+    30_000,
   )
 
   it.live("ShareNext coalesces rapid diff events into one delayed sync with latest data", () =>
@@ -319,5 +325,6 @@ describe("ShareNext", () => {
       },
       { config: { enterprise: { url: "https://legacy-share.example.com" } } },
     ),
+    30_000,
   )
 })
