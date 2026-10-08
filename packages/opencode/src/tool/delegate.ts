@@ -24,9 +24,12 @@ export const Parameters = Schema.Struct({
  * approved here. With no matching option the request is cancelled, never allowed.
  */
 export function permissionAnswer(options: readonly PermissionOption[], allowed: boolean): RequestPermissionOutcome {
-  const kinds = allowed ? ["allow_once", "allow_always"] : ["reject_once", "reject_always"]
-  const option = kinds.map((kind) => options.find((o) => o.kind === kind)).find(Boolean)
-  return option ? { outcome: "selected", optionId: option.optionId } : { outcome: "cancelled" }
+  if (!allowed) {
+    const reject = options.find((o) => o.kind === "reject_once") || options.find((o) => o.kind === "reject_always")
+    return reject ? { outcome: "selected", optionId: reject.optionId } : { outcome: "cancelled" }
+  }
+  const allowOnce = options.find((o) => o.kind === "allow_once")
+  return allowOnce ? { outcome: "selected", optionId: allowOnce.optionId } : { outcome: "cancelled" }
 }
 
 export const DelegateTool = Tool.define(

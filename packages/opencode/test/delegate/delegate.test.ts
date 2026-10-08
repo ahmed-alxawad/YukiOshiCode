@@ -387,7 +387,7 @@ describe("delegate: ACP client execution with mock agent", () => {
     ] as const
     expect(permissionAnswer([...options], true)).toEqual({ outcome: "selected", optionId: "once" })
     expect(permissionAnswer([...options], false)).toEqual({ outcome: "selected", optionId: "no" })
-    expect(permissionAnswer([options[0]], true)).toEqual({ outcome: "selected", optionId: "always" })
+    expect(permissionAnswer([options[0]], true)).toEqual({ outcome: "cancelled" })
     expect(permissionAnswer([options[2]], true)).toEqual({ outcome: "cancelled" })
   })
 
