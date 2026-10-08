@@ -29,7 +29,7 @@ function clip(text: string, max: number) {
 
 // Content must not be able to close the <request> or <action> block and pose as the reviewer's own text.
 function neutral(text: string) {
-  return text.replace(/<(\/?)(request|action)>/gi, "‹$1$2›")
+  return text.replace(/<\s*(\/?)\s*(request|action)(?:\s+[^>]*|\s*)>/gi, "‹$1$2›")
 }
 
 /** What the reviewer sees: the user's request and the action, each in its own block. */
