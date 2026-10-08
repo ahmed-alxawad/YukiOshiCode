@@ -43,7 +43,7 @@ jobs:
         continue-on-error: true
         working-directory: packages/opencode
         run: |
-          bun test 2>&1 | tee test-output.log
+          bun test --timeout 30000 2>&1 | tee test-output.log
 
       - name: Print failing tests in job summary
         if: always()
@@ -67,7 +67,11 @@ jobs:
 
             for (const line of lines) {
               const trimmed = line.trim();
-              const fileMatch = trimmed.match(/^(?:##\[group\])?([^\s:]+\.test\.[a-z]+):?$/i);
+              if (trimmed.startsWith("Ran ") && trimmed.includes("tests across")) {
+                totalLine = trimmed;
+                break;
+              }
+              const fileMatch = trimmed.match(/^(?:##\[group\]|::group::)?([^\s:]+\.test\.[a-z]+):?$/i);
               if (fileMatch) {
                 currentFile = fileMatch[1];
                 continue;
@@ -89,9 +93,6 @@ jobs:
               if (trimmed.endsWith("fail")) {
                 const m = trimmed.match(/^(\d+)\s+fail$/);
                 if (m) failCount = parseInt(m[1], 10);
-              }
-              if (trimmed.startsWith("Ran ") && trimmed.includes("tests across")) {
-                totalLine = trimmed;
               }
             }
 
