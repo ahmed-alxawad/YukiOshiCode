@@ -117,6 +117,7 @@ import { corsVaryFix } from "./middleware/cors-vary"
 import { errorLayer } from "./middleware/error"
 import { fenceLayer } from "./middleware/fence"
 import { hostGuardLayer } from "./middleware/host-guard"
+import { originGuardLayer } from "./middleware/origin-guard"
 import { schemaErrorLayer } from "./middleware/schema-error"
 import { triggerRoute } from "@/server/trigger"
 
@@ -296,6 +297,7 @@ export function createRoutes(
       fenceLayer,
       cors(corsOptions),
       hostGuardLayer(corsOptions),
+      originGuardLayer(corsOptions),
       AppNodeBuilderV1.build(MoveSession.node, [[LocationServiceMap.node, locationServiceMapV2]]),
       HttpServer.layerServices,
     ]),
