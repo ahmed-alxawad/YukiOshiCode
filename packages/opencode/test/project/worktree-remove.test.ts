@@ -121,7 +121,51 @@ describe("Worktree.remove", () => {
         const ref = yield* Effect.promise(() =>
           $`git show-ref --verify --quiet refs/heads/${branch}`.cwd(root).quiet().nothrow(),
         )
-        expect(ref.exitCode).not.toBe(0)
+      }),
+    { git: true },
+  )
+
+  it.instance(
+    "refuses to remove the primary repository worktree",
+    () =>
+      Effect.gen(function* () {
+        const root = (yield* TestInstance).directory
+        const svc = yield* Worktree.Service
+        const result = yield* Effect.exit(svc.remove({ directory: root }))
+        expect(result._tag).toBe("Failure")
+        if (result._tag === "Failure") {
+          expect(String(result.cause)).toContain("Cannot remove primary repository worktree")
+        }
+      }),
+    { git: true },
+  )
+
+  it.instance(
+    "refuses to remove arbitrary directory outside worktree storage folder",
+    () =>
+      Effect.gen(function* () {
+        const root = (yield* TestInstance).directory
+        const svc = yield* Worktree.Service
+        const externalDir = path.join(root, "..", `external-${Date.now().toString(36)}`)
+        yield* Effect.promise(() => fs.mkdir(externalDir, { recursive: true }))
+        yield* Effect.promise(() => fs.writeFile(path.join(externalDir, "important.txt"), "preserve me"))
+
+        const result = yield* Effect.exit(svc.remove({ directory: externalDir }))
+        expect(result._tag).toBe("Failure")
+        if (result._tag === "Failure") {
+          expect(String(result.cause)).toContain("outside worktree storage folder")
+        }
+
+        // Must NOT delete the external directory
+        const stillExists = yield* Effect.promise(() =>
+          fs
+            .stat(path.join(externalDir, "important.txt"))
+            .then(() => true)
+            .catch(() => false),
+        )
+        expect(stillExists).toBe(true)
+
+        yield* Effect.promise(() => fs.rm(externalDir, { recursive: true, force: true }))
       }),
     { git: true },
   )

@@ -407,6 +407,10 @@ const layer: Layer.Layer<
       }
 
       const directory = yield* canonical(input.directory)
+      const primary = yield* canonical(ctx.project.worktree)
+      if (directory === primary) {
+        return yield* new RemoveFailedError({ message: "Cannot remove primary repository worktree" })
+      }
 
       // Preserve the loaded path casing for the store cache; `directory` is lowercased on Windows.
       if (directory !== (yield* canonical(ctx.worktree))) yield* store.disposeDirectory(input.directory)
@@ -420,12 +424,23 @@ const layer: Layer.Layer<
       const entry = yield* locateWorktree(entries, directory)
 
       if (!entry?.path) {
+        const worktreeBase = yield* canonical(pathSvc.join(Global.Path.data, "worktree", ctx.project.id))
+        const sep = process.platform === "win32" ? "\\" : "/"
+        if (directory !== worktreeBase && !directory.startsWith(worktreeBase + sep)) {
+          return yield* new RemoveFailedError({
+            message: `Refusing to remove directory outside worktree storage folder: "${input.directory}"`,
+          })
+        }
         const directoryExists = yield* fs.exists(directory).pipe(Effect.orDie)
         if (directoryExists) {
           yield* stopFsmonitor(directory)
           yield* cleanDirectory(directory)
         }
         return true
+      }
+
+      if ((yield* canonical(entry.path)) === primary) {
+        return yield* new RemoveFailedError({ message: "Cannot remove primary repository worktree" })
       }
 
       // Git may return the original casing when a caller supplied a normalized Windows path.
