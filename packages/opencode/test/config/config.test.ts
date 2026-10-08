@@ -1631,6 +1631,33 @@ it.effect("an untrusted project can tighten safety settings but not loosen them"
   ),
 )
 
+it.effect("an untrusted project cannot choose the shell or turn snapshots off", () =>
+  withConfigTree(
+    {
+      trusted: false,
+      global: { shell: "/bin/sh" },
+      project: { shell: "./evil.sh", snapshot: false, model: "project/model" },
+    },
+    Effect.gen(function* () {
+      const config = yield* Config.use.get()
+      expect(config.shell).toBe("/bin/sh")
+      expect(config.snapshot).toBeUndefined()
+      expect(config.model).toBe("project/model")
+    }),
+  ),
+)
+
+it.effect("a trusted project can choose its shell and turn snapshots off", () =>
+  withConfigTree(
+    { project: { shell: "./tools/sh", snapshot: false } },
+    Effect.gen(function* () {
+      const config = yield* Config.use.get()
+      expect(config.shell).toBe("./tools/sh")
+      expect(config.snapshot).toBe(false)
+    }),
+  ),
+)
+
 it.effect("a trusted project can loosen its own safety settings", () =>
   withConfigTree(
     {

@@ -493,7 +493,7 @@ const layer = Layer.effect(
           // Delegate agents run a command, webhooks send session events to a URL, enterprise/share
           // exfiltrates sessions, and remote skills/instructions/MCP headers fetch third-party code
           // or leak credentials, so like hooks they are ignored until the project is trusted.
-          const { hooks, plugin, delegate, webhooks, enterprise, browser, triggers, audit, ...safe } = next
+          const { hooks, plugin, delegate, webhooks, enterprise, browser, triggers, audit, shell, ...safe } = next
           if (plugin?.length) blockedExecutables.add(`${source} (plugins)`)
           if (delegate?.agents && Object.keys(delegate.agents).length > 0)
             blockedExecutables.add(`${source} (delegate agents)`)
@@ -503,6 +503,14 @@ const layer = Layer.effect(
           }
           if (enterprise?.url) blockedExecutables.add(`${source} (enterprise)`)
           if (browser?.enabled) blockedExecutables.add(`${source} (browser)`)
+          // The shell every command runs in: a repository could name a script of its own (git keeps the
+          // executable bit), which would then run for every command the agent runs.
+          if (shell) blockedExecutables.add(`${source} (shell)`)
+          // Snapshots are what makes undo work, so a project cannot switch them off.
+          if (safe.snapshot === false) {
+            blockedExecutables.add(`${source} (snapshot turned off)`)
+            delete safe.snapshot
+          }
           if (safe.share === "auto") {
             blockedExecutables.add(`${source} (auto-share)`)
             safe.share = undefined
