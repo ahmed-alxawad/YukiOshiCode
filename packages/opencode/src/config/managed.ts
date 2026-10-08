@@ -42,8 +42,8 @@ export function managedConfigDir() {
 
 export function managedPreferencePaths(user: string) {
   return MANAGED_PLIST_DOMAINS.flatMap((domain) => [
-    path.join("/Library/Managed Preferences", user, `${domain}.plist`),
-    path.join("/Library/Managed Preferences", `${domain}.plist`),
+    path.posix.join("/Library/Managed Preferences", user, `${domain}.plist`),
+    path.posix.join("/Library/Managed Preferences", `${domain}.plist`),
   ])
 }
 
