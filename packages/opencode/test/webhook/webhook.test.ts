@@ -4,6 +4,7 @@ import {
   enqueueWebhook,
   webhookBody,
   webhookSignature,
+  webhookText,
   webhookWants,
   type WebhookPayload,
 } from "@/webhook"
@@ -129,5 +130,15 @@ describe("webhooks", () => {
     await deliverWebhook({ url: initialUrl, secret: "my-secret" }, payload, { timeoutMs: 200 })
     sameHostServer.stop()
     expect(finalReceived).toBe(true)
+  })
+  test("webhookText masks secrets and shortens long text", () => {
+    const token = "ghp_" + "Ab1".repeat(12)
+    const text = webhookText(`curl -H "Authorization: Bearer ${token}" https://api.example/x`)
+    expect(text).not.toContain(token)
+    expect(text).toContain("[REDACTED")
+    const long = webhookText("x".repeat(5_000))
+    expect(long.length).toBeLessThanOrEqual(301)
+    expect(long.endsWith("…")).toBe(true)
+    expect(webhookText("npm test")).toBe("npm test")
   })
 })

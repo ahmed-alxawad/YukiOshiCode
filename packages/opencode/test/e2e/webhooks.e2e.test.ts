@@ -2,6 +2,7 @@ import { createHmac } from "node:crypto"
 import { describe, expect } from "bun:test"
 import { Effect } from "effect"
 import { cliIt } from "../lib/cli-process"
+import { reply } from "../lib/llm-server"
 import { config, globalConfig, runtimeEnv, waitFor } from "./helpers"
 
 type Delivery = { body: string; signature: string | null }
@@ -112,6 +113,35 @@ describe("webhooks", () => {
         expect(hooked.exitCode).toBe(0)
         expect(hooked.durationMs).toBeLessThan(baseline.durationMs + 1_500)
         yield* Effect.promise(() => waitFor(() => deliveries.length === 1, "hanging receiver was never contacted"))
+      }),
+    60_000,
+  )
+  cliIt.live(
+    "permission.asked masks secrets in the command and shortens it",
+    ({ home, llm, opencode }) =>
+      Effect.gen(function* () {
+        const deliveries: Delivery[] = []
+        const server = receiver(deliveries)
+        yield* Effect.addFinalizer(() => Effect.sync(() => server.stop(true)))
+        globalConfig(home, { webhooks: [{ url: server.url.toString(), events: ["permission.asked"] }] })
+        const token = "ghp_" + "Ab1".repeat(12)
+        yield* llm.push(
+          reply().tool("bash", { command: `echo ${token} ${"a".repeat(2_000)}`, description: "print" }),
+        )
+        yield* llm.text("done")
+        const result = yield* opencode.run("print it", {
+          cwd: home,
+          env: {
+            ...runtimeEnv(home),
+            YUKIOSHI_CONFIG_CONTENT: config(llm.url, { permission: { bash: "ask" } }),
+          },
+        })
+        expect(result.exitCode).toBe(0)
+        yield* Effect.promise(() => waitFor(() => deliveries.length >= 1, "permission.asked webhook was not received"))
+        const body = deliveries[0]!.body
+        expect(body).not.toContain(token)
+        expect(body).toContain("REDACTED")
+        expect(body.length).toBeLessThan(2_000)
       }),
     60_000,
   )

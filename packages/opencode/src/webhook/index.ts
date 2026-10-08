@@ -1,6 +1,7 @@
 import { createHmac } from "node:crypto"
 import { ConfigWebhookV1 } from "@yukioshi/core/v1/config/webhook"
 import { LayerNode } from "@yukioshi/core/effect/layer-node"
+import { Redact } from "@yukioshi/core/redact"
 import { Effect, Layer, Context, Scope } from "effect"
 import { Config } from "@/config/config"
 import { EventV2Bridge } from "@/event-v2-bridge"
@@ -29,6 +30,14 @@ const TIMEOUT_MS = 10_000
 export type DeliveryOptions = {
   fetch?: typeof globalThis.fetch
   timeoutMs?: number
+}
+
+const DETAIL_MAX = 300
+
+/** Text that goes into a webhook: secrets masked and long text shortened (a command can hold both). */
+export function webhookText(text: string) {
+  const masked = Redact.mask(text)
+  return masked.length > DETAIL_MAX ? `${masked.slice(0, DETAIL_MAX)}…` : masked
 }
 
 export function webhookWants(config: ConfigWebhookV1.Info, event: WebhookEvent) {
@@ -213,14 +222,14 @@ const layer = Layer.effect(
           if (event.type === "session.error") {
             const data = event.data as { sessionID?: string; error?: unknown }
             return data.sessionID
-              ? emit("turn.failed", data.sessionID, { error: sessionErrorMessage(data.error) })
+              ? emit("turn.failed", data.sessionID, { error: webhookText(sessionErrorMessage(data.error)) })
               : Effect.void
           }
           if (event.type === "permission.asked") {
             const data = event.data as { sessionID: string; permission: string; patterns: string[] }
             return emit("permission.asked", data.sessionID, {
               permission: data.permission,
-              patterns: data.patterns.slice(0, 8),
+              patterns: data.patterns.slice(0, 8).map(webhookText),
             })
           }
           if (event.type === "question.asked") {

@@ -163,8 +163,12 @@ limit. `yukioshi run` exits with status 6 when a limit stops the turn (see
 Webhooks are off unless `webhooks` is configured. Each matching event sends a
 small JSON notification for `turn.finished`, `turn.failed`, `permission.asked`,
 or `question.asked`. Notifications never include prompts, message text, file
-contents, tool output, or environment values. A webhook can set `headers` and
-an `events` subset; omitted `events` means all four events.
+contents, tool output, or environment values. `permission.asked` names what is
+being asked for (such as the command), with secrets masked and each entry cut
+to 300 characters. A webhook can set `headers` and an `events` subset; omitted
+`events` means all four events. A webhook may point at any address, including
+one on your own network, because only your own config (or a repository you
+trust) can define one.
 
 When `secret` is set, YukiOshi sends `X-YukiOshi-Signature: sha256=<hex>`.
 Verify the raw request body before parsing it:
