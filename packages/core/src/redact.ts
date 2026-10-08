@@ -269,3 +269,29 @@ export function resolveEdit(
 
   return { oldString: resolvedOld, newString: resolvedNew }
 }
+
+const knownSecrets = new Set<string>()
+const BEARER = /\b(Bearer\s+)[A-Za-z0-9._~+/=-]{16,}/g
+
+/**
+ * Remember a credential that is in use (a provider API key). The value is then
+ * replaced wherever scrubKnown() is applied, even when it matches none of the
+ * format rules above (for example a custom gateway key).
+ */
+export function registerSecret(value: unknown): void {
+  if (typeof value === "string" && value.length >= 8) knownSecrets.add(value)
+}
+
+/**
+ * Replace every registered credential and any `Bearer <token>` in text.
+ * Used for logs and error text, where a provider may echo the request headers.
+ */
+export function scrubKnown(text: string): string {
+  if (!text) return text
+  let result = text
+  for (const secret of knownSecrets) {
+    if (result.includes(secret)) result = result.split(secret).join(`${PLACEHOLDER_PREFIX}provider-key]`)
+  }
+  if (result.includes("Bearer")) result = result.replace(BEARER, `$1${PLACEHOLDER_PREFIX}bearer-token]`)
+  return result
+}

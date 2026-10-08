@@ -1,12 +1,13 @@
 import { Formatter, Logger, type LogLevel } from "effect"
 import path from "path"
 import { Global } from "../global"
+import { Redact } from "../redact"
 import { runID } from "./shared"
 
 function formatter(id: string = runID) {
   return Logger.map(Logger.formatStructured, (output) => {
     const messages = Array.isArray(output.message) ? output.message : [output.message]
-    return [
+    const line = [
       ["timestamp", output.timestamp],
       ["level", output.level],
       ["run", id],
@@ -17,6 +18,8 @@ function formatter(id: string = runID) {
     ]
       .map(([key, value]) => `${key}=${format(value)}`)
       .join(" ")
+    // A provider can echo the Authorization header in an error body that ends up in the log.
+    return Redact.scrubKnown(line)
   })
 }
 

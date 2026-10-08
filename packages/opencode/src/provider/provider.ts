@@ -7,6 +7,7 @@ import { mapValues, mergeDeep, omit, pickBy, sortBy } from "remeda"
 import { NoSuchModelError, type Provider as SDK } from "ai"
 import { Npm } from "@yukioshi/core/npm"
 import { Hash } from "@yukioshi/core/util/hash"
+import { Redact } from "@yukioshi/core/redact"
 import { Plugin } from "../plugin"
 import { KeyRotation } from "./key-rotation"
 import { ProjectTrust } from "@/project/trust"
@@ -1924,6 +1925,9 @@ const layer = Layer.effect(
         delete options["apiKeys"]
         if (options["apiKey"] === undefined && apiKeys.length > 0) options["apiKey"] = apiKeys[0]
         if (options["apiKey"] === undefined && provider.key) options["apiKey"] = provider.key
+        // Providers sometimes echo the credential back in error bodies; remember it so logs and stored errors can mask it.
+        Redact.registerSecret(options["apiKey"])
+        for (const item of apiKeys) Redact.registerSecret(item)
         if (model.headers)
           options["headers"] = {
             ...options["headers"],

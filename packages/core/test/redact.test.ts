@@ -1,6 +1,20 @@
 import { describe, expect, test } from "bun:test"
 import { Redact } from "../src/redact"
 
+describe("known credential scrubbing", () => {
+  test("replaces a registered key that matches no format rule, and bare Bearer tokens", () => {
+    const key = "gateway-key-0123456789"
+    expect(Redact.scrubKnown(`echo ${key}`)).toBe(`echo ${key}`)
+    Redact.registerSecret(key)
+    Redact.registerSecret("short")
+    expect(Redact.scrubKnown(`a ${key} b ${key}`)).toBe("a [REDACTED:provider-key] b [REDACTED:provider-key]")
+    expect(Redact.scrubKnown("short stays")).toBe("short stays")
+    expect(Redact.scrubKnown("Authorization: Bearer abcdefghijklmnop1234")).toBe(
+      "Authorization: Bearer [REDACTED:bearer-token]",
+    )
+  })
+})
+
 describe("secret redaction", () => {
   describe("pattern detection (true positives)", () => {
     test("redacts GitHub tokens", () => {

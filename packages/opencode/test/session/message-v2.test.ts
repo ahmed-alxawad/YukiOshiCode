@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { SessionV1 } from "@yukioshi/core/v1/session"
 import { APICallError } from "ai"
+import { Redact } from "@yukioshi/core/redact"
 import { MessageV2 } from "../../src/session/message-v2"
 import { ProviderTransform } from "@/provider/transform"
 import type { Provider } from "@/provider/provider"
@@ -1466,6 +1467,24 @@ describe("session.message-v2.fromError", () => {
       const result = MessageV2.fromError(error, { providerID })
       expect(SessionV1.ContextOverflowError.isInstance(result)).toBe(true)
     })
+  })
+
+  test("masks a registered API key that the provider echoes in an error", () => {
+    const key = "sk-test-SECRETKEY-1234567890abcdef"
+    Redact.registerSecret(key)
+    const echoed = `Incorrect API key provided: Bearer ${key}`
+    const error = new APICallError({
+      message: echoed,
+      url: "https://example.com",
+      requestBodyValues: {},
+      statusCode: 401,
+      responseHeaders: { "content-type": "application/json", "x-echo": key },
+      responseBody: JSON.stringify({ error: { message: echoed } }),
+      isRetryable: false,
+    })
+    const result = MessageV2.fromError(error, { providerID })
+    expect(JSON.stringify(result)).not.toContain("SECRETKEY")
+    expect(JSON.stringify(result)).toContain("Incorrect API key provided")
   })
 
   test("detects context overflow from context_length_exceeded code in response body", () => {

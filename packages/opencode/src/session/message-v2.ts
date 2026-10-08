@@ -17,6 +17,7 @@ import {
 } from "@yukioshi/core/v1/session"
 
 import { NamedError } from "@yukioshi/core/util/error"
+import { Redact } from "@yukioshi/core/redact"
 import { APICallError, convertToModelMessages, LoadAPIKeyError, type ModelMessage, type UIMessage } from "ai"
 import { Database } from "@yukioshi/core/database/database"
 import { LayerNode } from "@yukioshi/core/effect/layer-node"
@@ -607,7 +608,23 @@ function isAfter(info: Info, other?: Info) {
   return info.id > other.id
 }
 
+function scrubValue<T>(value: T): T {
+  if (typeof value === "string") return Redact.scrubKnown(value) as T
+  if (Array.isArray(value)) return value.map(scrubValue) as T
+  if (value && typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype)
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, scrubValue(v)])) as T
+  return value
+}
+
+// A provider can echo the Authorization header in its error body; the error is stored, exported and printed.
 export function fromError(
+  e: unknown,
+  ctx: { providerID: ProviderV2.ID; aborted?: boolean },
+): NonNullable<Assistant["error"]> {
+  return scrubValue(convertError(e, ctx))
+}
+
+function convertError(
   e: unknown,
   ctx: { providerID: ProviderV2.ID; aborted?: boolean },
 ): NonNullable<Assistant["error"]> {
