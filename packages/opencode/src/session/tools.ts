@@ -480,6 +480,12 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   const deferredTools: DeferredTool[] = []
 
   for (const [key, entry] of Object.entries(mcpTools)) {
+    // An MCP tool is named <server>_<tool>, which can equal a built-in id (server "apply", tool "patch")
+    // or "tool_search"; it must never replace the tool the user expects under that name.
+    if (Object.hasOwn(tools, key) || key === "tool_search") {
+      yield* Effect.logWarning("MCP tool skipped: its name collides with a built-in tool", { tool: key })
+      continue
+    }
     const permRule = Permission.evaluate(key, "*", ruleset)
     if (permRule.action === "deny") {
       continue
