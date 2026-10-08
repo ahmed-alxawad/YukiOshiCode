@@ -79,3 +79,27 @@ describe("mcp redirect handling", () => {
     }),
   )
 })
+
+describe("mcp remote url", () => {
+  test("only http and https urls are accepted", () => {
+    for (const bad of ["file:///etc/passwd", "javascript:alert(1)", "ftp://x/y", "data:text/plain,hi", "not a url"])
+      expect(McpGuard.remoteUrl(bad)).toBeUndefined()
+    expect(McpGuard.remoteUrl("https://example.com/mcp")?.host).toBe("example.com")
+    expect(McpGuard.remoteUrl("http://127.0.0.1:1/mcp")?.host).toBe("127.0.0.1:1")
+  })
+
+  test("cleartext http to a non-local host is flagged", () => {
+    expect(McpGuard.isCleartextRemote(new URL("http://example.com/mcp"))).toBe(true)
+    expect(McpGuard.isCleartextRemote(new URL("https://example.com/mcp"))).toBe(false)
+    for (const local of ["http://localhost:1/", "http://127.0.0.1/", "http://[::1]:3/"])
+      expect(McpGuard.isCleartextRemote(new URL(local))).toBe(false)
+  })
+
+  it.instance("a file: server url is refused", () =>
+    Effect.gen(function* () {
+      const mcp = yield* MCP.Service
+      const result = yield* mcp.add("local-file", { type: "remote", url: "file:///etc/passwd", oauth: false })
+      expect(result.status).toMatchObject({ "local-file": { status: "failed", error: 'Invalid MCP URL for "local-file"' } })
+    }),
+  )
+})

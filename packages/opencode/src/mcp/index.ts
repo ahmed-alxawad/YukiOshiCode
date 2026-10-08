@@ -121,9 +121,7 @@ function isMcpConfigured(entry: McpEntry): entry is ConfigMCPV1.Info {
   return typeof entry === "object" && entry !== null && "type" in entry
 }
 
-function remoteURL(value: string) {
-  if (URL.canParse(value)) return new URL(value)
-}
+const remoteURL = McpGuard.remoteUrl
 
 interface CreateResult {
   mcpClient?: MCPClient
@@ -247,6 +245,11 @@ const layer = Layer.effect(
           status: { status: "failed" as const, error: `Invalid MCP URL for "${key}"` },
         }
       }
+      if (McpGuard.isCleartextRemote(url))
+        yield* Effect.logWarning("MCP server uses http:// to a non-local host; credentials are sent unencrypted", {
+          key,
+          host: url.host,
+        })
       let authProvider: McpOAuthProvider | undefined
 
       if (!oauthDisabled) {
