@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import path from "path"
 import fs from "fs/promises"
+import nodeFs from "node:fs"
+import os from "node:os"
 import { execSync } from "child_process"
 import { Cause, Effect, Exit } from "effect"
 import { LayerNode } from "@yukioshi/core/effect/layer-node"
@@ -11,7 +13,7 @@ import { RuntimeFlags } from "@/effect/runtime-flags"
 import { TestConfig } from "../fixture/config"
 import { noopBootstrapReplacement } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
-import { runDelegate, sanitizeDelegateEnv, assertInCwd } from "@/delegate/client"
+import { runDelegate, sanitizeDelegateEnv, assertInCwd, resolveInCwd } from "@/delegate/client"
 import { DelegateTool, permissionAnswer } from "@/tool/delegate"
 import { Tool } from "@/tool/tool"
 import { MessageID, SessionID } from "@/session/schema"
@@ -428,5 +430,44 @@ describe("delegate: ACP client execution with mock agent", () => {
     expect(() => assertInCwd("../evil.txt", cwd)).toThrow("resolves outside project directory")
     expect(() => assertInCwd(path.resolve("/etc/passwd"), cwd)).toThrow("resolves outside project directory")
     expect(() => assertInCwd("../../.bashrc", cwd)).toThrow("resolves outside project directory")
+  })
+  test("sanitizeDelegateEnv strips other credentials and the ssh agent socket", () => {
+    const sanitized = sanitizeDelegateEnv({
+      PATH: "/usr/bin",
+      HOME: "/home/me",
+      NPM_TOKEN: "npm_secret",
+      AWS_ACCESS_KEY_ID: "AKIAXXXX",
+      AWS_SESSION_TOKEN: "session",
+      AZURE_CLIENT_SECRET: "azure",
+      DATABASE_URL: "postgres://user:pass@host/db",
+      SSH_AUTH_SOCK: "/tmp/ssh-agent.sock",
+      STRIPE_SECRET: "sk_live_x",
+      DB_PASSWORD: "hunter2",
+      HF_TOKEN: "hf_x",
+      SLACK_BOT_TOKEN: "xoxb-x",
+      GPG_PASSPHRASE: "pp",
+      LANG: "en_US.UTF-8",
+      TERM: "xterm",
+      NODE_ENV: "development",
+    })
+    expect(Object.keys(sanitized).sort()).toEqual(["HOME", "LANG", "NODE_ENV", "PATH", "TERM"])
+  })
+
+  test("resolveInCwd refuses a link inside the project that points outside it", async () => {
+    const base = nodeFs.mkdtempSync(path.join(os.tmpdir(), "yk-delegate-"))
+    const project = path.join(base, "project")
+    const outside = path.join(base, "outside")
+    nodeFs.mkdirSync(project)
+    nodeFs.mkdirSync(outside)
+    nodeFs.writeFileSync(path.join(outside, "secret.txt"), "secret")
+    nodeFs.mkdirSync(path.join(project, "src"))
+    nodeFs.symlinkSync(outside, path.join(project, "link"), "dir")
+    nodeFs.symlinkSync(path.join(outside, "secret.txt"), path.join(project, "src", "file-link.txt"))
+
+    await expect(resolveInCwd("link/secret.txt", project)).rejects.toThrow("through a link")
+    await expect(resolveInCwd("link/new-file.txt", project)).rejects.toThrow("through a link")
+    await expect(resolveInCwd("src/file-link.txt", project)).rejects.toThrow("through a link")
+    await expect(resolveInCwd("../outside/secret.txt", project)).rejects.toThrow("outside project directory")
+    expect(await resolveInCwd("src/new/deep/file.ts", project)).toBe(path.join(project, "src/new/deep/file.ts"))
   })
 })

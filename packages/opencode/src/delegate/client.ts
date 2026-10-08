@@ -18,6 +18,7 @@ import {
   type ReadTextFileResponse,
 } from "@agentclientprotocol/sdk"
 import { InstallationVersion } from "@yukioshi/core/installation/version"
+import { Redact } from "@yukioshi/core/redact"
 import { DEFAULT_TIMEOUT, type Agent as ConfigAgent } from "@yukioshi/core/v1/config/delegate"
 
 export interface DelegateRunOptions {
@@ -80,6 +81,9 @@ export async function killProcessTree(child: ChildProcess): Promise<void> {
   }
 }
 
+const SECRET_NAME =
+  /(?:^|_)(?:TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|CREDENTIALS?|PRIVATE_KEY|API_?KEY|ACCESS_?KEY|SESSION_?KEY|AUTH)$|^(?:AWS|AZURE|GCP|GOOGLE_APPLICATION)_|^NPM_CONFIG_.*AUTH|^(?:DOCKER|REGISTRY)_.*(?:PASS|TOKEN)/
+
 export function sanitizeDelegateEnv(baseEnv: NodeJS.ProcessEnv): Record<string, string> {
   const result: Record<string, string> = {}
   for (const [key, value] of Object.entries(baseEnv)) {
@@ -94,6 +98,9 @@ export function sanitizeDelegateEnv(baseEnv: NodeJS.ProcessEnv): Record<string, 
       continue
     }
     if (upper === "GITHUB_TOKEN" || upper === "GH_TOKEN" || upper === "GIT_TOKEN") continue
+    // Anything that looks like a credential, whoever it belongs to, and the ssh agent socket. A delegated
+    // agent signs in with its own login; if it needs another variable, the agent's `env` setting passes it.
+    if (SECRET_NAME.test(upper) || upper === "SSH_AUTH_SOCK" || upper === "DATABASE_URL") continue
     if (upper.startsWith("YUKIOSHI_")) continue
     if (
       upper.startsWith("ANTHROPIC_") ||
@@ -124,6 +131,40 @@ export function assertInCwd(targetPath: string, cwd: string): string {
   }
   return resolved
 }
+
+/**
+ * Like assertInCwd, and also follows symbolic links: a link inside the project that points elsewhere (a
+ * repository can contain one) must not let the delegated agent read or write outside the project.
+ */
+export async function resolveInCwd(targetPath: string, cwd: string): Promise<string> {
+  const resolved = assertInCwd(targetPath, cwd)
+  const root = await fs.promises.realpath(cwd).catch(() => path.resolve(cwd))
+  let existing = resolved
+  for (;;) {
+    const real = await fs.promises.realpath(existing).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT" || error.code === "ENOTDIR") return undefined
+      throw error
+    })
+    if (real !== undefined) {
+      const rel = path.relative(root, real)
+      if (rel.startsWith("..") || path.isAbsolute(rel))
+        throw new Error(`Path "${targetPath}" resolves outside project directory "${cwd}" through a link.`)
+      return resolved
+    }
+    const parent = path.dirname(existing)
+    if (parent === existing) return resolved
+    existing = parent
+  }
+}
+
+// What the agent wrote on stderr ends up in an error the model reads: mask secrets and keep it short.
+function shownStderr(text: string) {
+  const masked = Redact.mask(text.trim())
+  return masked.length > 1_000 ? `${masked.slice(0, 1_000)}…` : masked
+}
+
+const READ_MAX = 10 * 1024 * 1024
+const STDERR_MAX = 64 * 1024
 
 /**
  * Run a delegated task to an external coding agent over ACP.
@@ -169,7 +210,7 @@ export async function runDelegate(options: DelegateRunOptions): Promise<Delegate
 
   let stderrBuffer = ""
   child.stderr?.on("data", (chunk: Buffer) => {
-    stderrBuffer += chunk.toString()
+    if (stderrBuffer.length < STDERR_MAX) stderrBuffer += chunk.toString()
   })
 
   // Watch for startup failure before connection establishes
@@ -192,7 +233,7 @@ export async function runDelegate(options: DelegateRunOptions): Promise<Delegate
     const handleTermination = (code: number | null, signal: NodeJS.Signals | null) => {
       exited = true
       if (!earlyExitError) {
-        const stderr = stderrBuffer.trim()
+        const stderr = shownStderr(stderrBuffer)
         const isAuthError =
           /auth|login|unauthenticated|not logged in|api[ _-]?key|token/i.test(stderr)
         if (isAuthError) {
@@ -296,7 +337,7 @@ export async function runDelegate(options: DelegateRunOptions): Promise<Delegate
 
     async writeTextFile(params: WriteTextFileRequest): Promise<WriteTextFileResponse> {
       if (params.path) {
-        const fullPath = assertInCwd(params.path, cwd)
+        const fullPath = await resolveInCwd(params.path, cwd)
         filesChanged.add(params.path)
         await fs.promises.mkdir(path.dirname(fullPath), { recursive: true })
         await fs.promises.writeFile(fullPath, params.content, "utf-8")
@@ -305,7 +346,9 @@ export async function runDelegate(options: DelegateRunOptions): Promise<Delegate
     },
 
     async readTextFile(params: ReadTextFileRequest): Promise<ReadTextFileResponse> {
-      const fullPath = assertInCwd(params.path, cwd)
+      const fullPath = await resolveInCwd(params.path, cwd)
+      const size = (await fs.promises.stat(fullPath)).size
+      if (size > READ_MAX) throw new Error(`"${params.path}" is too large to read (${size} bytes, limit ${READ_MAX}).`)
       const content = await fs.promises.readFile(fullPath, "utf-8")
       return { content }
     },
@@ -389,7 +432,7 @@ export async function runDelegate(options: DelegateRunOptions): Promise<Delegate
       if (earlyExitError) {
         throw earlyExitError
       }
-      const stderr = stderrBuffer.trim()
+      const stderr = shownStderr(stderrBuffer)
       const isAuthError = /auth|login|unauthenticated|not logged in|api[ _-]?key|token/i.test(stderr)
       if (isAuthError) {
         throw new Error(

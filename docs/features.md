@@ -356,6 +356,10 @@ Delegation is **off by default**. It is enabled in your configuration when `dele
 ### Authentication and Billing
 Delegated agents use their own existing authentication and logins (such as `~/.claude/` for Claude Code, `~/.codex/` for Codex, or `gemini login` for Gemini). Your own subscription or API plan with that external tool pays for any model requests it makes.
 
+### What the delegated agent can see
+
+The agent runs in your project folder. Environment variables that look like credentials (names ending in `TOKEN`, `SECRET`, `PASSWORD`, `API_KEY`, or starting with `AWS_` or `AZURE_`, your provider keys, `DATABASE_URL` and `SSH_AUTH_SOCK`) are not passed to it. If an agent needs one, set it in that agent's `env` setting. Files it reads or writes through YukiOshi must be inside the project, also when a link in the project points elsewhere.
+
 ### Permission behaviour
 When the delegated agent requests permission to execute a tool (e.g. running a terminal command or editing a file), the request is forwarded to YukiOshi as an interactive permission ask. YukiOshi never auto-approves actions on the external agent's behalf. If you deny the request in YukiOshi, a rejection is returned to the external agent.
 
