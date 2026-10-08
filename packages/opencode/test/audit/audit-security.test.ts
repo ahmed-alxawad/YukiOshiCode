@@ -59,9 +59,11 @@ describe("audit log security", () => {
     const dirStat = fs.statSync(auditDir)
     const fileStat = fs.statSync(target)
 
-    // Check POSIX permissions
-    expect(dirStat.mode & 0o777).toBe(0o700)
-    expect(fileStat.mode & 0o777).toBe(0o600)
+    // Check POSIX permissions (skipped on Windows where NTFS does not support Unix mode bits)
+    if (process.platform !== "win32") {
+      expect(dirStat.mode & 0o777).toBe(0o700)
+      expect(fileStat.mode & 0o777).toBe(0o600)
+    }
 
     const content = fs.readFileSync(target, "utf8")
     expect(content).not.toContain(token)
