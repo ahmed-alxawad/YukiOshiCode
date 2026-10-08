@@ -3,6 +3,7 @@ export * as ServerAuth from "./auth"
 import { ConfigService } from "@/effect/config-service"
 import { Flag } from "@yukioshi/core/flag/flag"
 import { Config as EffectConfig, Context, Option, Redacted } from "effect"
+import crypto from "node:crypto"
 
 export type Credentials = {
   password?: string
@@ -25,12 +26,19 @@ export function required(config: Info) {
   return Option.isSome(config.password) && config.password.value !== ""
 }
 
+// Hash both sides so the comparison time does not depend on where (or whether) the inputs differ.
+function safeEqual(a: string, b: string) {
+  const left = crypto.createHash("sha256").update(a, "utf8").digest()
+  const right = crypto.createHash("sha256").update(b, "utf8").digest()
+  return crypto.timingSafeEqual(left, right)
+}
+
 export function authorized(credentials: DecodedCredentials, config: Info) {
-  return (
-    Option.isSome(config.password) &&
-    credentials.username === config.username &&
-    Redacted.value(credentials.password) === config.password.value
-  )
+  if (!Option.isSome(config.password)) return false
+  // Evaluate both comparisons so a wrong username is not distinguishable from a wrong password by timing.
+  const username = safeEqual(credentials.username, config.username)
+  const password = safeEqual(Redacted.value(credentials.password), config.password.value)
+  return username && password
 }
 
 export function header(credentials?: Credentials) {
