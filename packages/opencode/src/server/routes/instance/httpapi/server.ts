@@ -116,6 +116,7 @@ import { compressionLayer } from "./middleware/compression"
 import { corsVaryFix } from "./middleware/cors-vary"
 import { errorLayer } from "./middleware/error"
 import { fenceLayer } from "./middleware/fence"
+import { hostGuardLayer } from "./middleware/host-guard"
 import { schemaErrorLayer } from "./middleware/schema-error"
 import { triggerRoute } from "@/server/trigger"
 
@@ -274,7 +275,7 @@ const app = LayerNode.group([
 ])
 
 export function createRoutes(
-  corsOptions?: CorsOptions,
+  corsOptions?: CorsOptions & { readonly hostname?: string },
 ): Layer.Layer<never, EffectConfig.ConfigError, RouteRequirements> {
   const locationServiceMapV2 = buildLocationServiceMap()
 
@@ -294,6 +295,7 @@ export function createRoutes(
       corsVaryFix,
       fenceLayer,
       cors(corsOptions),
+      hostGuardLayer(corsOptions),
       AppNodeBuilderV1.build(MoveSession.node, [[LocationServiceMap.node, locationServiceMapV2]]),
       HttpServer.layerServices,
     ]),

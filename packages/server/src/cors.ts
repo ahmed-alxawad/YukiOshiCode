@@ -35,3 +35,32 @@ function sameHost(origin: string, host: string) {
     return false
   }
 }
+
+const LOOPBACK_BIND = /^(localhost|127(\.\d{1,3}){3}|\[?::1\]?)$/
+
+export function isLoopbackBind(hostname: string | undefined) {
+  return !!hostname && LOOPBACK_BIND.test(hostname.toLowerCase())
+}
+
+// Host header allow-list for servers bound to loopback. A DNS-rebinding page is served from an
+// attacker-controlled name that resolves to 127.0.0.1, so its requests carry that name in Host.
+// Loopback names, IP literals and explicitly configured origins are the only legitimate values.
+export function isAllowedHost(host: string | undefined, opts?: CorsOptions) {
+  if (!host) return true
+  let name: string
+  try {
+    name = new URL(`http://${host}`).hostname.toLowerCase().replace(/\.$/, "")
+  } catch {
+    return false
+  }
+  if (name === "localhost" || name.endsWith(".localhost")) return true
+  if (name.startsWith("[")) return true
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(name)) return true
+  return (opts?.cors ?? []).some((origin) => {
+    try {
+      return new URL(origin).hostname.toLowerCase() === name
+    } catch {
+      return false
+    }
+  })
+}
