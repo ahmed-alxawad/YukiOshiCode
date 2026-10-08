@@ -110,6 +110,16 @@ jobs:
       ARCHIVE: ${{ matrix.archive }}
       BINARY: ${{ matrix.binary }}
     steps:
+      - uses: actions/checkout@v4
+        if: matrix.os == 'macos-14' || matrix.os == 'windows-latest' || (matrix.os == 'ubuntu-latest' && !matrix.use_alpine)
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: oven-sh/setup-bun@v2
+        if: matrix.os == 'macos-14' || matrix.os == 'windows-latest' || (matrix.os == 'ubuntu-latest' && !matrix.use_alpine)
+        with:
+          bun-version-file: package.json
+
       - name: Download release archive and SHA256SUMS
         shell: bash
         run: gh release download "$TAG" -p "$ARCHIVE" -p SHA256SUMS
@@ -155,6 +165,13 @@ jobs:
             "$BIN" debug paths || true
             exit 1
           fi
+
+      - name: Run cross-platform smoke tests
+        if: matrix.os == 'macos-14' || matrix.os == 'windows-latest' || (matrix.os == 'ubuntu-latest' && !matrix.use_alpine)
+        shell: bash
+        run: |
+          BIN="./$BINARY"
+          bun packages/opencode/script/smoke.ts "$BIN"
 
       - name: Verify in Alpine container
         if: matrix.use_alpine

@@ -25,6 +25,7 @@ jobs:
         working-directory: packages/opencode
         env:
           YUKIOSHI_CHANNEL: latest
+          YUKIOSHI_VERSION: "0.3.5"
         run: bun run script/build.ts --skip-embed-web-ui
 
       - name: Upload Linux x64 binary
