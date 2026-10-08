@@ -109,7 +109,8 @@ export namespace FSUtil {
 
       const writeJson = Effect.fn("FileSystem.writeJson")(function* (path: string, data: unknown, mode?: number) {
         const content = JSON.stringify(data, null, 2)
-        yield* fs.writeFileString(path, content)
+        // Create with the final mode so a secret file is never readable by others, even briefly.
+        yield* fs.writeFileString(path, content, mode ? { mode } : undefined)
         if (mode) yield* fs.chmod(path, mode)
       })
 
@@ -129,7 +130,9 @@ export namespace FSUtil {
         content: string | Uint8Array,
         mode?: number,
       ) {
-        const write = typeof content === "string" ? fs.writeFileString(path, content) : fs.writeFile(path, content)
+        const options = mode ? { mode } : undefined
+        const write =
+          typeof content === "string" ? fs.writeFileString(path, content, options) : fs.writeFile(path, content, options)
 
         yield* write.pipe(
           Effect.catchIf(
