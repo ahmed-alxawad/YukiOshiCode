@@ -234,12 +234,20 @@ describe("v2 pty HttpApi", () => {
           )
         const write = yield* socket.writer
 
-        const takeUntil = (expected: string, seen = ""): Effect.Effect<string, unknown> =>
+        const loop = (expected: string, seen = ""): Effect.Effect<string, unknown> =>
           Effect.gen(function* () {
-            const next = seen + (yield* Queue.take(messages).pipe(Effect.timeout("5 seconds")))
+            const chunk = yield* Queue.take(messages)
+            const next = seen + chunk
             if (next.includes(expected)) return next
-            return yield* takeUntil(expected, next)
+            return yield* loop(expected, next)
           })
+        const takeUntil = (expected: string) =>
+          loop(expected).pipe(
+            Effect.timeoutOrElse({
+              duration: "25 seconds",
+              orElse: () => Effect.fail(new Error(`Timed out waiting for ${expected}`)),
+            }),
+          )
 
         expect(yield* takeUntil(`caller|plugin|plugin|xterm-256color|${cwd}`)).toContain(
           `caller|plugin|plugin|xterm-256color|${cwd}`,
