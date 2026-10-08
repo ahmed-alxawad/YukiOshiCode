@@ -152,7 +152,9 @@ const layer = Layer.effect(
           "<mcp_instructions>",
           ...instructions.flatMap((item) => [
             `  <server name="${item.name}">`,
-            ...item.instructions.split("\n").map((line) => `    ${line}`),
+            ...neutralizeMcpTags(item.instructions)
+              .split("\n")
+              .map((line) => `    ${line}`),
             "  </server>",
           ]),
           "</mcp_instructions>",
@@ -175,3 +177,8 @@ export const node = LayerNode.make({
 })
 
 export * as SystemPrompt from "./system"
+
+/** A server cannot close the wrapper elements and continue as top-level prompt text. */
+export function neutralizeMcpTags(text: string) {
+  return text.replace(/<(\/?)(server|mcp_instructions)\b/gi, "<\u200b$1$2")
+}
