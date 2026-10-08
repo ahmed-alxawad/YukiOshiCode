@@ -52,7 +52,35 @@ export function webhookSignature(body: string, secret: string) {
   return `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`
 }
 
+export const MAX_WEBHOOK_BODY_BYTES = 64 * 1024
+
+/**
+ * Note on private-network addresses:
+ * Webhooks can only be declared in user configuration (`yukioshi.json`), because untrusted repository
+ * configurations have their `webhooks` stripped during configuration loading (`filterUntrustedProjectConfig`).
+ * Therefore, SSRF attacks via malicious repository checkouts are prevented at the configuration boundary.
+ * Private network and loopback destinations (e.g. `http://127.0.0.1:8080/hook` or local development bridges)
+ * are explicitly permitted so users can integrate with locally hosted services.
+ */
 async function fetchOnce(config: ConfigWebhookV1.Info, body: string, attempt: number, options: DeliveryOptions) {
+  if (Buffer.byteLength(body, "utf8") > MAX_WEBHOOK_BODY_BYTES) {
+    throw new WebhookDeliveryError(
+      `Webhook body exceeds maximum size of ${MAX_WEBHOOK_BODY_BYTES} bytes`,
+      false,
+    )
+  }
+
+  if (config.headers) {
+    for (const [key, value] of Object.entries(config.headers)) {
+      if (/[\r\n]/.test(key) || /[\r\n]/.test(value)) {
+        throw new WebhookDeliveryError(
+          `Invalid header "${key}": header names and values must not contain newline characters`,
+          false,
+        )
+      }
+    }
+  }
+
   let parsedUrl: URL
   try {
     parsedUrl = new URL(config.url)
@@ -100,6 +128,12 @@ async function fetchOnce(config: ConfigWebhookV1.Info, body: string, attempt: nu
         const nextUrl = new URL(location, currentUrl)
         if (nextUrl.protocol !== "http:" && nextUrl.protocol !== "https:") {
           throw new WebhookDeliveryError(`Redirect URL must be http: or https:, got: ${nextUrl.protocol}`, false)
+        }
+        if (parsedUrl.protocol === "https:" && nextUrl.protocol === "http:") {
+          throw new WebhookDeliveryError(
+            `Refusing to follow redirect downgrading HTTPS to HTTP`,
+            false,
+          )
         }
         if (nextUrl.host !== parsedUrl.host) {
           throw new WebhookDeliveryError(
@@ -172,13 +206,16 @@ function sessionInfo(sessionID: string) {
 function sessionErrorMessage(error: unknown) {
   if (!error || typeof error !== "object") return "session error"
   const value = error as { name?: unknown; message?: unknown; data?: unknown }
+  let msg = "session error"
   if (value.data && typeof value.data === "object") {
     const message = (value.data as { message?: unknown }).message
-    if (typeof message === "string") return message
+    if (typeof message === "string") msg = message
+  } else if (typeof value.message === "string") {
+    msg = value.message
+  } else if (typeof value.name === "string") {
+    msg = value.name
   }
-  if (typeof value.message === "string") return value.message
-  if (typeof value.name === "string") return value.name
-  return "session error"
+  return msg.slice(0, 4096)
 }
 
 const layer = Layer.effect(

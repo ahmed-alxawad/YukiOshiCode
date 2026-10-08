@@ -141,4 +141,60 @@ describe("webhooks", () => {
     expect(long.endsWith("…")).toBe(true)
     expect(webhookText("npm test")).toBe("npm test")
   })
+
+  test("refuses to follow redirect that downgrades HTTPS to HTTP", async () => {
+    // Mock fetch that simulates HTTPS initial request returning 302 redirecting to HTTP on same host
+    const mockFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const urlStr = String(input)
+      if (urlStr.startsWith("https://")) {
+        return new Response(null, {
+          status: 302,
+          headers: { location: "http://example.com/downgraded" },
+        })
+      }
+      return new Response("ok", { status: 200 })
+    }) as typeof globalThis.fetch
+
+    await expect(
+      deliverWebhook(
+        { url: "https://example.com/secure" },
+        payload,
+        { fetch: mockFetch, timeoutMs: 200 },
+      ),
+    ).rejects.toThrow("Refusing to follow redirect downgrading HTTPS to HTTP")
+  })
+
+  test("rejects headers with CRLF characters", async () => {
+    await expect(
+      deliverWebhook(
+        {
+          url: "http://127.0.0.1:1/hook",
+          headers: { "X-Custom\r\nInjected": "value" },
+        },
+        payload,
+        { timeoutMs: 100 },
+      ),
+    ).rejects.toThrow("header names and values must not contain newline")
+
+    await expect(
+      deliverWebhook(
+        {
+          url: "http://127.0.0.1:1/hook",
+          headers: { "X-Custom": "value\nInjected-Header: evil" },
+        },
+        payload,
+        { timeoutMs: 100 },
+      ),
+    ).rejects.toThrow("header names and values must not contain newline")
+  })
+
+  test("rejects webhook payloads exceeding maximum size", async () => {
+    const hugePayload: WebhookPayload = {
+      ...payload,
+      detail: { giant: "A".repeat(70 * 1024) },
+    }
+    await expect(
+      deliverWebhook({ url: "http://127.0.0.1:1/hook" }, hugePayload, { timeoutMs: 100 }),
+    ).rejects.toThrow("Webhook body exceeds maximum size")
+  })
 })
