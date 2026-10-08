@@ -32,8 +32,11 @@ export const Path = paths
 
 Flock.setGlobal({ state })
 
+// The data dir holds the session database, logs and credentials: keep it owner-only.
+await fs.mkdir(Path.data, { recursive: true, mode: 0o700 })
+if (process.platform !== "win32") await fs.chmod(Path.data, 0o700).catch(() => {})
+
 await Promise.all([
-  fs.mkdir(Path.data, { recursive: true }),
   fs.mkdir(Path.config, { recursive: true }),
   fs.mkdir(Path.state, { recursive: true }),
   fs.mkdir(Path.tmp, { recursive: true }),
