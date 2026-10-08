@@ -16,14 +16,28 @@ type GitResult = { stdout: string; status: number | null }
 // and no fsmonitor command, whatever the repository or core.hooksPath says.
 const SAFE_CONFIG = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"]
 
+// spawnSync stops a command at 1 MB of output by default; a repository with ~30,000 files exceeds that in `git status`.
+const MAX_OUTPUT = 1024 * 1024 * 1024
+
 function git(cwd: string, args: string[], env?: Record<string, string>): GitResult {
-  const result = spawnSync("git", [...SAFE_CONFIG, ...args], { cwd, env: { ...process.env, ...env }, encoding: "utf8" })
+  const result = spawnSync("git", [...SAFE_CONFIG, ...args], {
+    cwd,
+    env: { ...process.env, ...env },
+    encoding: "utf8",
+    maxBuffer: MAX_OUTPUT,
+  })
+  if (result.error) throw new Error(`git ${args[0]} failed: ${result.error.message}`)
   if (result.status !== 0) throw new Error(String(result.stderr || result.stdout || `git ${args[0]} failed`).trim())
   return { stdout: String(result.stdout), status: result.status }
 }
 
 function tryGit(cwd: string, args: string[], env?: Record<string, string>) {
-  const result = spawnSync("git", [...SAFE_CONFIG, ...args], { cwd, env: { ...process.env, ...env }, encoding: "utf8" })
+  const result = spawnSync("git", [...SAFE_CONFIG, ...args], {
+    cwd,
+    env: { ...process.env, ...env },
+    encoding: "utf8",
+    maxBuffer: MAX_OUTPUT,
+  })
   return { stdout: String(result.stdout), stderr: String(result.stderr), status: result.status }
 }
 
@@ -166,7 +180,10 @@ export function restoreCheckpoint(input: { directory: string; id: string; yes?: 
   const current = git(root, ["ls-files"]).stdout.trim().split("\n").filter(Boolean)
   for (const file of current) if (!target.has(file)) rmSync(path.join(root, file), { force: true })
   for (const file of target) {
-    const content = spawnSync("git", ["show", `${targetID}:${file}`], { cwd: root }).stdout
+    const shown = spawnSync("git", [...SAFE_CONFIG, "show", `${targetID}:${file}`], { cwd: root, maxBuffer: MAX_OUTPUT })
+    if (shown.error || shown.status !== 0)
+      throw new Error(`Could not read ${file} from the checkpoint: ${shown.error?.message ?? String(shown.stderr).trim()}`)
+    const content = shown.stdout
     const output = path.join(root, file)
     const parent = path.dirname(output)
     mkdirSync(parent, { recursive: true })
