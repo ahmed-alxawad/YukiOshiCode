@@ -24,3 +24,23 @@ describe("sandboxProfile writablePaths", () => {
     expect(writable([abs])).toContain(abs)
   })
 })
+
+describe("sandboxProfile protected YukiOshi folders", () => {
+  const denied = (writablePaths: string[] = [], inst = instance) =>
+    sandboxProfile(inst, { enabled: true, writablePaths }).filesystem.denyWrite.map((rule) => rule.path)
+
+  test("config, state and installed programs are read-only", () => {
+    expect(denied()).toEqual(expect.arrayContaining([GlobalPath.config, GlobalPath.state, GlobalPath.bin]))
+    expect(denied()).toContain(path.join(GlobalPath.data, "auth.json"))
+    expect(denied()).not.toContain(GlobalPath.log)
+  })
+
+  test("an explicit writablePaths entry opts a folder back in", () => {
+    expect(denied([GlobalPath.config])).not.toContain(GlobalPath.config)
+  })
+
+  test("a project that lives in a protected folder stays writable", () => {
+    const inst = { directory: path.join(GlobalPath.state, "p"), worktree: "/" } as typeof instance
+    expect(denied([], inst)).not.toContain(GlobalPath.state)
+  })
+})

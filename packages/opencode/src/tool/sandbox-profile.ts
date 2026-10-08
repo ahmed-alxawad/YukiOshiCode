@@ -5,6 +5,7 @@
  * project's sandbox-allowed tree?" logic. Centralising it here avoids drift
  * between the three sites and makes the policy easy to adjust in one place.
  */
+import { readdirSync } from "fs"
 import path from "path"
 import type { InstanceContext } from "../project/instance-context"
 import type { ConfigSandboxV1 } from "@yukioshi/core/v1/config/sandbox"
@@ -33,6 +34,7 @@ export function sandboxProfile(
       ? [instance.directory]
       : [instance.worktree, instance.directory]
 
+  const extra = (cfg?.writablePaths ?? []).map((entry) => resolveWritablePath(entry, project[0]))
   const writable = [
     ...project,
     GlobalPath.data,
@@ -43,19 +45,48 @@ export function sandboxProfile(
     GlobalPath.bin,
     GlobalPath.log,
     GlobalPath.repos,
-    ...(cfg?.writablePaths ?? []).map((entry) => resolveWritablePath(entry, project[0])),
+    ...extra,
   ].map((value) => ({ path: value, kind: "subtree" as const }))
+
+  // YukiOshi's own settings, trust and approval records, credentials and installed programs are read by
+  // YukiOshi outside the sandbox. A command that could rewrite them would outlive the sandbox (turn it off,
+  // trust a repository, pre-approve actions, replace a binary), so they stay read-only unless the user lists
+  // them in writablePaths or the project itself lives there.
+  const inside = (root: string, target: string) => {
+    const relative = path.relative(root, target)
+    return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))
+  }
+  const denyWrite = [GlobalPath.config, GlobalPath.state, GlobalPath.bin, ...protectedData()]
+    .filter((value) => !project.some((root) => inside(value, root)))
+    .filter((value) => !extra.some((root) => inside(root, value) || inside(value, root)))
+    .map((value) => ({ path: value, kind: "subtree" as const }))
 
   return {
     filesystem: {
       allowWrite: writable,
-      denyWrite: [],
+      denyWrite,
       denyNames: [".git"],
       temporaryDirectory: GlobalPath.tmp,
     },
     network: { mode: cfg?.network ?? "allow", allowedHosts: [] },
     environment: { deny: [], set: {} },
   }
+}
+
+const dataWritable = new Set(["log", "repos", "worktree"])
+
+// Credentials, approvals and the session database live in the data directory. Known names are listed even
+// when absent so the file tools refuse them; whatever else is there today is protected too.
+function protectedData() {
+  const known = ["auth.json", "mcp-auth.json", "secrets"]
+  const present = (() => {
+    try {
+      return readdirSync(GlobalPath.data).filter((name) => !dataWritable.has(name))
+    } catch {
+      return []
+    }
+  })()
+  return [...new Set([...known, ...present])].map((name) => path.join(GlobalPath.data, name))
 }
 
 /** Expands a leading `~` to the home directory and resolves relative entries against the project root. */
