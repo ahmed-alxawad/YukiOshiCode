@@ -52,6 +52,9 @@ export function carriedEnv(env: Record<string, string | undefined> = process.env
 
 /** A double-quoted value for a crontab line: shell-escaped, and `%` escaped because cron treats it as a newline. */
 export function cronQuote(value: string) {
+  if (/[\r\n]/.test(value)) {
+    throw new Error(`Cannot quote value containing newline in crontab: ${JSON.stringify(value)}`)
+  }
   return `"${value.replace(/[\\"$`]/g, "\\$&").replace(/%/g, "\\%")}"`
 }
 
@@ -62,6 +65,17 @@ export function buildCronLine(
   pathEnv: string,
   extraEnv: Record<string, string> = {},
 ): string {
+  if (!job.id || !/^[a-zA-Z0-9_-]+$/.test(job.id)) {
+    throw new Error(`Invalid job ID for crontab line: "${job.id}"`)
+  }
+  if (/[\r\n]/.test(job.cron)) {
+    throw new Error(`Invalid cron expression containing newline: "${job.cron}"`)
+  }
+  for (const name of Object.keys(extraEnv)) {
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
+      throw new Error(`Invalid environment variable name in crontab: "${name}"`)
+    }
+  }
   const extra = Object.entries(extraEnv).map(([name, value]) => ` ${name}=${cronQuote(value)}`)
   return `${job.cron} HOME=${cronQuote(home)} PATH=${cronQuote(pathEnv)}${extra.join("")} ${cronQuote(binaryPath)} schedule run ${job.id}`
 }

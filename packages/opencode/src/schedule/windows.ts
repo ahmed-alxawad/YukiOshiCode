@@ -34,6 +34,12 @@ function parseSingleInt(s: string, min: number, max: number): number | null {
  * Refuses unsupported expressions with a clear user-facing error message.
  */
 export function cronToSchtasksArgs(id: string, cron: string, binary: string): string[] {
+  if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) {
+    throw new Error(`Invalid job ID for schtasks: "${id}"`)
+  }
+  if (/[\r\n"]/.test(binary)) {
+    throw new Error(`Invalid binary path for schtasks: "${binary}"`)
+  }
   const trimmed = cron.trim()
   const fields = trimmed.split(/\s+/)
   if (fields.length !== 5) {
@@ -156,5 +162,8 @@ function parseSchtasksDays(dowStr: string): string[] {
 }
 
 export function schtasksDeleteArgs(id: string): string[] {
+  if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) {
+    throw new Error(`Invalid job ID for schtasks delete: "${id}"`)
+  }
   return ["/Delete", "/TN", `YukiOshi\\${id}`, "/F"]
 }

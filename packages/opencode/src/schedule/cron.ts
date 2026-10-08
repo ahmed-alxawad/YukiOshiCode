@@ -136,6 +136,9 @@ function parseField(
  * Throws a descriptive Error if the expression is invalid.
  */
 export function validateCron(expression: string): ParsedCron {
+  if (/[\r\n]/.test(expression)) {
+    throw new Error(`Invalid cron expression "${expression}": contains newline`)
+  }
   const trimmed = expression.trim()
   const fields = trimmed.split(/\s+/)
   if (fields.length !== 5) {

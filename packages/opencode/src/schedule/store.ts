@@ -32,8 +32,23 @@ export function getJobsPath(): string {
   return path.join(getScheduleDir(), "jobs.json")
 }
 
+export function assertSafeJobId(jobId: string): void {
+  if (!jobId || !/^[a-zA-Z0-9_-]+$/.test(jobId)) {
+    throw new Error(
+      `Invalid job ID: "${jobId}". Job IDs must contain only alphanumeric characters, underscores, and hyphens.`,
+    )
+  }
+}
+
 export function getJobLogsDir(jobId: string): string {
-  return path.join(getScheduleDir(), jobId)
+  assertSafeJobId(jobId)
+  const dir = path.join(getScheduleDir(), jobId)
+  const resolved = path.resolve(dir)
+  const base = path.resolve(getScheduleDir())
+  if (!resolved.startsWith(base + path.sep)) {
+    throw new Error(`Job ID "${jobId}" resolves outside schedule directory`)
+  }
+  return dir
 }
 
 export async function loadJobs(): Promise<ScheduleJob[]> {
@@ -75,11 +90,36 @@ export async function findJob(id: string): Promise<ScheduleJob | undefined> {
 }
 
 export async function writeRunLog(jobId: string, content: string, time: number = Date.now()): Promise<string> {
+  assertSafeJobId(jobId)
   const dir = getJobLogsDir(jobId)
+  try {
+    const st = await fs.lstat(dir)
+    if (st.isSymbolicLink()) {
+      throw new Error(`Log directory is a symbolic link: ${dir}`)
+    }
+  } catch (err: any) {
+    if (err.code !== "ENOENT") throw err
+  }
   await fs.mkdir(dir, { recursive: true })
   const filename = `${time}.log`
   const logPath = path.join(dir, filename)
-  await fs.writeFile(logPath, content, "utf8")
+
+  try {
+    const handle = await fs.open(logPath, "wx")
+    await handle.writeFile(content, "utf8")
+    await handle.close()
+  } catch (err: any) {
+    if (err.code === "EEXIST") {
+      const st = await fs.lstat(logPath)
+      if (st.isSymbolicLink()) {
+        throw new Error(`Refusing to write log to symlink: ${logPath}`)
+      }
+      await fs.writeFile(logPath, content, "utf8")
+    } else {
+      throw err
+    }
+  }
+
   await pruneLogs(jobId, 50)
   return logPath
 }
@@ -142,9 +182,28 @@ export interface JobLock {
  * Returns null if another process holds the lock.
  */
 export async function acquireJobLock(jobId: string): Promise<JobLock | null> {
+  assertSafeJobId(jobId)
   const dir = getJobLogsDir(jobId)
+  try {
+    const st = await fs.lstat(dir)
+    if (st.isSymbolicLink()) {
+      throw new Error(`Log directory is a symbolic link: ${dir}`)
+    }
+  } catch (err: any) {
+    if (err.code !== "ENOENT") throw err
+  }
   await fs.mkdir(dir, { recursive: true })
   const lockFile = path.join(dir, "lock")
+
+  // Check if lock file is a planted symlink
+  try {
+    const st = await fs.lstat(lockFile)
+    if (st.isSymbolicLink()) {
+      await fs.unlink(lockFile)
+    }
+  } catch (err: any) {
+    if (err.code !== "ENOENT") throw err
+  }
 
   // Check if lock file exists
   if (existsSync(lockFile)) {
