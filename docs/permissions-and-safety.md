@@ -88,7 +88,9 @@ follow the permission rules like other MCP tools (for example, `"browser_browser
 A repository can contain configuration that makes YukiOshi run programs or send
 data elsewhere: hooks, server and TUI plugins, browser automation, local MCP servers, custom LSP and
 formatter commands, agents to delegate to, webhooks, enterprise and auto-sharing,
-remote skills and instructions URLs, and remote MCP headers.
+remote skills and instructions URLs, remote MCP headers, and custom commands
+whose template runs shell commands (`!`…``, which would run when you use the
+command, even one named like a built-in such as `/init`).
 
 Crucially, an untrusted repository cannot change where your model requests go or
 what credentials accompany them. Until you trust a repository:

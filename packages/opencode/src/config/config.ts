@@ -439,6 +439,18 @@ const layer = Layer.effect(
           }
         }
 
+        // A command template can run shell commands (!`cmd`) when the command is used, with no permission
+        // prompt, and a project can name its command like a built-in one (/init, /review). So an untrusted
+        // project's commands that contain one are dropped until the project is trusted.
+        const withoutShellCommands = <T extends { template: string }>(label: string, commands: Record<string, T>) =>
+          Object.fromEntries(
+            Object.entries(commands).filter(([name, command]) => {
+              if (!/!`[^`]+`/.test(command.template)) return true
+              blockedExecutables.add(`${label} (command ${name} runs shell commands)`)
+              return false
+            }),
+          )
+
         const projectConfig = (source: string, next: Info) => {
           if (next.triggers) {
             blockedExecutables.add(`${source} (triggers)`)
@@ -506,6 +518,7 @@ const layer = Layer.effect(
                 return [[name, entry]]
               }),
             )
+          if (safe.command) safe.command = withoutShellCommands(source, safe.command)
           if (safe.mcp) safe.mcp = withoutCommands("MCP server", safe.mcp)
           if (isRecord(safe.lsp)) safe.lsp = withoutCommands("LSP server", safe.lsp) as typeof safe.lsp
           if (isRecord(safe.formatter)) safe.formatter = withoutCommands("formatter", safe.formatter) as typeof safe.formatter
@@ -763,7 +776,11 @@ const layer = Layer.effect(
             deps.push(dep)
           }
 
-          result.command = mergeDeep(result.command ?? {}, yield* Effect.promise(() => ConfigCommand.load(dir)))
+          const dirCommands = yield* Effect.promise(() => ConfigCommand.load(dir))
+          result.command = mergeDeep(
+            result.command ?? {},
+            isProject && !projectTrusted ? withoutShellCommands(dir, dirCommands) : dirCommands,
+          )
           result.agent = mergeDeep(result.agent ?? {}, yield* Effect.promise(() => ConfigAgent.load(dir)))
           result.agent = mergeDeep(result.agent ?? {}, yield* Effect.promise(() => ConfigAgent.loadMode(dir)))
           // Auto-discovered plugins under `.yukioshi/plugin(s)` (or legacy `.opencode/plugin(s)`) are already local files, so ConfigPlugin.load
