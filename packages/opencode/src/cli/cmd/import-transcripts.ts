@@ -24,14 +24,44 @@ export type Conversation = {
   tools: Map<string, Tool>
 }
 
+const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50 MB
+const MAX_LINE_LENGTH = 1_048_576 // 1 MB
 const OUTPUT_MAX = 2_000
 const DETAIL_MAX = 200
+
 // Text the tools add on the person's behalf (environment details, command echoes, notifications), not their words.
-const INJECTED =
-  /^<(environment_context|user_instructions|permissions instructions|local-command-caveat|local-command-stdout|local-command-stderr|command-name|command-message|command-args|system-reminder|task-notification|user-prompt-submit-hook)>/
+const INJECTED_TAGS =
+  "environment_context|user_instructions|permissions instructions|local-command-caveat|local-command-stdout|local-command-stderr|command-name|command-message|command-args|system-reminder|task-notification|user-prompt-submit-hook"
+
+const INJECTED_START = new RegExp(`^<\\s*\\/?\\s*(?:${INJECTED_TAGS})(?:\\s+[^>]*|\\s*)>`, "i")
+const INJECTED_BLOCK = new RegExp(`<(?:${INJECTED_TAGS})(?:\\s+[^>]*)?>[\\s\\S]*?<\\/(?:${INJECTED_TAGS})>`, "gi")
 
 function clip(text: string, max: number) {
   return text.length > max ? `${text.slice(0, max)}\n… (${text.length - max} more characters)` : text
+}
+
+export function sanitizeTitle(raw: string): string {
+  let title = raw
+    .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "")
+    .replace(/[\r\n\x00-\x1f\x7f-\x9f]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+  if (title.includes("..") || path.isAbsolute(title) || /^[a-zA-Z]:[\\/]/.test(title)) {
+    title = path.basename(title) || "conversation"
+  }
+  title = title.replace(/[/\\]/g, " ").replace(/\s+/g, " ").trim()
+  return clip(title || "conversation", 100)
+}
+
+export function sanitizeToolName(name: string): string {
+  const cleaned = name
+    .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "")
+    .replace(/[\r\n]+/g, " ")
+    .replace(/[\x00-\x1f\x7f-\x9f]/g, "")
+    .replace(/[*`#]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+  return clip(cleaned || "tool", 64)
 }
 
 function time(value: unknown, fallback: number) {
@@ -40,8 +70,8 @@ function time(value: unknown, fallback: number) {
 }
 
 function words(text: string) {
-  const trimmed = text.trim()
-  return trimmed && !INJECTED.test(trimmed) ? trimmed : undefined
+  const stripped = text.replace(INJECTED_BLOCK, "").trim()
+  return stripped && !INJECTED_START.test(stripped) ? stripped : undefined
 }
 
 function textOf(value: unknown): string {
@@ -92,7 +122,7 @@ class Builder {
 function parse(content: string) {
   return content
     .split("\n")
-    .filter((line) => line.trim())
+    .filter((line) => line.trim() && line.length <= MAX_LINE_LENGTH)
     .flatMap((line) => {
       try {
         const value = JSON.parse(line)
@@ -186,20 +216,25 @@ export function fromCodex(lines: Record<string, any>[], now = Date.now()): Conve
 }
 
 function detail(input: unknown) {
-  if (typeof input === "string") return input.split("\n")[0] ?? ""
+  if (typeof input === "string") return clip(input.split("\n")[0] ?? "", DETAIL_MAX)
   if (!input || typeof input !== "object") return ""
   const value = input as Record<string, unknown>
   for (const key of ["command", "cmd", "file_path", "filePath", "path", "pattern", "url", "query", "description"]) {
     const item = value[key]
-    if (typeof item === "string") return item
-    if (Array.isArray(item) && item.every((part) => typeof part === "string")) return item.join(" ")
+    if (typeof item === "string") return clip(item, DETAIL_MAX)
+    if (Array.isArray(item) && item.every((part) => typeof part === "string")) return clip(item.join(" "), DETAIL_MAX)
   }
-  return JSON.stringify(input)
+  try {
+    return clip(JSON.stringify(input), DETAIL_MAX)
+  } catch {
+    return ""
+  }
 }
 
 function note(tool: Tool) {
+  const cleanName = sanitizeToolName(tool.name)
   const what = clip(detail(tool.input).replace(/\s+/g, " ").trim(), DETAIL_MAX)
-  const head = `**${tool.name}**${what ? ` \`${what.replaceAll("`", "'")}\`` : ""}`
+  const head = `**${cleanName}**${what ? ` \`${what.replaceAll("`", "'")}\`` : ""}`
   const output = tool.output?.trim()
   return output ? `${head}\n\`\`\`\n${clip(output, OUTPUT_MAX).replaceAll("```", "'''")}\n\`\`\`` : head
 }
@@ -270,7 +305,7 @@ export function toExport(
       slug: Slug.create(),
       projectID: "global",
       directory: input.directory,
-      title: `${conversation.title ?? firstWords} (from ${NAMES[conversation.source]})`,
+      title: `${sanitizeTitle(conversation.title ?? firstWords)} (from ${NAMES[conversation.source]})`,
       version: InstallationVersion,
       time: { created, updated },
     },
@@ -279,6 +314,10 @@ export function toExport(
 }
 
 export async function readTranscript(file: string) {
+  const stat = await fs.stat(file)
+  if (stat.size > MAX_FILE_SIZE) {
+    throw new Error(`Transcript file is too large: ${file} (max 50 MB)`)
+  }
   const lines = parse(await fs.readFile(file, "utf8"))
   const source = detect(lines)
   if (!source) return undefined
