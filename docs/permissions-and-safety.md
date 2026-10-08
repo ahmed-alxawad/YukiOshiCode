@@ -101,6 +101,12 @@ what credentials accompany them. Until you trust a repository:
   are ignored entirely, because their address is the whole point of them. Local-model
   projects (such as Ollama, vLLM, or LM Studio) need `yukioshi trust .` once.
 
+- A repository's settings can make YukiOshi stricter but never looser: its `allow`
+  permission rules, a higher spending limit than yours, turning off or
+  allow-listing secret redaction, turning the sandbox off or widening it,
+  provider `npm` packages, `references` (other repositories to fetch), and
+  instruction files outside the project (absolute, `~` or `..` paths) are ignored.
+
 YukiOshi loads safe settings (model names, limits, timeouts, local skills) but uses
 none of the restricted or executable features, and reports each skipped entry.
 

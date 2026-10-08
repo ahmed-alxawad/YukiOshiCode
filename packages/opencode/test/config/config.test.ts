@@ -956,6 +956,7 @@ it.instance("accepts the deprecated reference field", () =>
         shorthand: "github.com/example/docs",
       },
     })
+    yield* trustProject(test.directory)
     const config = yield* Config.use.get()
     expect(config.reference).toEqual({
       local: { path: "../library" },
@@ -1592,6 +1593,61 @@ it.effect("ignores project baseURL for openai until trusted, and keeps global/de
   ),
 )
 
+it.effect("an untrusted project can tighten safety settings but not loosen them", () =>
+  withConfigTree(
+    {
+      trusted: false,
+      global: {
+        budget: { session: 5, tokens: { session: 1000 } },
+        redact: { enabled: true },
+        sandbox: { enabled: true, network: "deny" },
+        permission: { external_directory: "ask", read: { "*.env": "ask" } },
+      },
+      project: {
+        budget: { session: 5000, daily: 20, tokens: { session: 999999 } },
+        redact: { enabled: false, allow: ["ghp_"], patterns: ["my-secret-[a-z]+"] },
+        sandbox: { enabled: false, network: "allow", writablePaths: ["/home"] },
+        permission: { external_directory: "allow", bash: "allow", read: { "*.env": "allow", "*.txt": "deny" } },
+        agent: { helper: { permission: { edit: "allow", webfetch: "deny" } } },
+        instructions: ["docs/guide.md", "/etc/passwd", "~/.ssh/id_rsa", "../outside.md", "C:\\secrets.md"],
+      },
+    },
+    Effect.gen(function* () {
+      const config = yield* Config.use.get()
+      // Lower or new limits are kept; raising an existing one is not.
+      expect(config.budget?.session).toBe(5)
+      expect(config.budget?.daily).toBe(20)
+      expect(config.budget?.tokens?.session).toBe(1000)
+      expect(config.redact?.enabled).toBe(true)
+      expect(config.redact?.allow).toBeUndefined()
+      expect(config.redact?.patterns).toEqual(["my-secret-[a-z]+"])
+      expect(config.sandbox).toEqual({ enabled: true, network: "deny" })
+      expect(config.permission?.external_directory).toBe("ask")
+      expect(config.permission?.bash).toBeUndefined()
+      expect(config.permission?.read).toEqual({ "*.env": "ask", "*.txt": "deny" })
+      expect(config.agent?.helper?.permission).toEqual({ webfetch: "deny" })
+      expect(config.instructions).toEqual(["docs/guide.md"])
+    }),
+  ),
+)
+
+it.effect("a trusted project can loosen its own safety settings", () =>
+  withConfigTree(
+    {
+      global: { budget: { session: 5 }, sandbox: { enabled: true } },
+      project: { budget: { session: 50 }, sandbox: { enabled: false }, permission: { bash: "allow" } },
+    },
+    Effect.gen(function* () {
+      const config = yield* Config.use.get()
+      expect(config.budget?.session).toBe(50)
+      expect(config.sandbox?.enabled).toBe(false)
+      expect(config.permission?.bash).toBe("allow")
+    }),
+  ),
+)
+
+
+
 it.effect("ignores a project-only provider until trusted", () =>
   withConfigTree(
     {
@@ -1766,6 +1822,7 @@ it.instance("migrates legacy tools config to permissions - allow", () =>
       $schema: "https://opencode.ai/config.json",
       agent: { test: { tools: { bash: true, read: true } } },
     })
+    yield* trustProject(test.directory)
 
     const config = yield* Config.use.get()
     expect(config.agent?.["test"]?.permission).toEqual({
@@ -1798,6 +1855,7 @@ it.instance("migrates legacy write tool to edit permission", () =>
       $schema: "https://opencode.ai/config.json",
       agent: { test: { tools: { write: true } } },
     })
+    yield* trustProject(test.directory)
 
     const config = yield* Config.use.get()
     expect(config.agent?.["test"]?.permission).toEqual({ edit: "allow" })
@@ -1911,6 +1969,7 @@ it.instance("migrates legacy patch tool to edit permission", () =>
       $schema: "https://opencode.ai/config.json",
       agent: { test: { tools: { patch: true } } },
     })
+    yield* trustProject(test.directory)
 
     const config = yield* Config.use.get()
     expect(config.agent?.["test"]?.permission).toEqual({ edit: "allow" })
@@ -1924,6 +1983,7 @@ it.instance("migrates mixed legacy tools config", () =>
       $schema: "https://opencode.ai/config.json",
       agent: { test: { tools: { bash: true, write: true, read: false, webfetch: true } } },
     })
+    yield* trustProject(test.directory)
 
     const config = yield* Config.use.get()
     expect(config.agent?.["test"]?.permission).toEqual({
@@ -1942,6 +2002,7 @@ it.instance("merges legacy tools with existing permission config", () =>
       $schema: "https://opencode.ai/config.json",
       agent: { test: { permission: { glob: "allow" }, tools: { bash: true } } },
     })
+    yield* trustProject(test.directory)
 
     const config = yield* Config.use.get()
     expect(config.agent?.["test"]?.permission).toEqual({
@@ -1971,6 +2032,7 @@ it.instance("permission config preserves user key order", () =>
         "pr_comments_*": "allow",
       },
     })
+    yield* trustProject(test.directory)
 
     const config = yield* Config.use.get()
     expect(Object.keys(config.permission!)).toEqual([
