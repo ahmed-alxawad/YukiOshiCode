@@ -218,6 +218,8 @@ test("branch diff source requests branch VCS diff", async () => {
       name: "diff",
       params: { mode: "branch", sessionID: "session-1", returnRoute: startRoute },
     })
+    // Wait for the reactive resource to fetch VCS diff before asserting.
+    await waitForCondition(viewer.app, () => viewer.vcsDiffInput() !== undefined, "VCS diff was not requested")
     expect(viewer.vcsDiffInput()).toEqual({ directory: "/repo/session", mode: "branch", context: 12 })
     expect(viewer.sessionDiffInput()).toBeUndefined()
   } finally {
@@ -235,6 +237,8 @@ test("last-turn diff source requests session diff", async () => {
       name: "diff",
       params: { mode: "last-turn", sessionID: "session-1", messageID: "message-1", returnRoute: startRoute },
     })
+    // Wait for the reactive resource to fetch session diff before asserting.
+    await waitForCondition(viewer.app, () => viewer.sessionDiffInput() !== undefined, "session diff was not requested")
     expect(viewer.sessionDiffInput()).toEqual({ sessionID: "session-1", messageID: "message-1" })
     expect(viewer.vcsDiffInput()).toBeUndefined()
   } finally {
@@ -252,6 +256,21 @@ async function waitForCommand(
     if (commands.has(command)) return
     await new Promise((resolve) => setTimeout(resolve, 25))
   }
+  if (!commands.has(command)) throw new Error(`Timed out waiting for command "${command}" to be registered`)
+}
+
+async function waitForCondition(
+  app: Awaited<ReturnType<typeof testRender>>,
+  condition: () => boolean,
+  message: string,
+  maxAttempts = 20,
+) {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    await app.renderOnce()
+    if (condition()) return
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
+  if (!condition()) throw new Error(`Timed out: ${message}`)
 }
 
 const pluginMeta = {
