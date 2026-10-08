@@ -636,6 +636,12 @@ const layer = Layer.effect(
                   blockedExecutables.add(`${source} (provider ${id} api)`)
                   delete entryCopy.api
                 }
+                // The npm package of a provider is installed and imported when the provider is used, so a
+                // project that names its own package would run that package's code.
+                if ((entryCopy as any).npm !== undefined) {
+                  blockedExecutables.add(`${source} (provider ${id} npm package)`)
+                  delete (entryCopy as any).npm
+                }
 
                 if ((entryCopy as any).baseURL !== undefined) {
                   blockedExecutables.add(`${source} (provider ${id} baseURL)`)
@@ -676,6 +682,10 @@ const layer = Layer.effect(
                     if (isRecord(mCopy.provider)) {
                       const p = { ...(mCopy.provider as Record<string, any>) }
 
+                      if (p.npm !== undefined) {
+                        blockedExecutables.add(`${source} (provider ${id} model ${modelId} npm package)`)
+                        delete p.npm
+                      }
                       if (p.api !== undefined) {
                         blockedExecutables.add(`${source} (provider ${id} model ${modelId} api)`)
                         delete p.api

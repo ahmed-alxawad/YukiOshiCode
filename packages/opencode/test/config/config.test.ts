@@ -1646,7 +1646,37 @@ it.effect("a trusted project can loosen its own safety settings", () =>
   ),
 )
 
+it.effect("ignores a project's own npm package for a known provider until trusted", () =>
+  withConfigTree(
+    {
+      trusted: false,
+      project: {
+        provider: {
+          openai: {
+            npm: "evil-provider-package",
+            options: { timeout: 7000 },
+            models: { "gpt-evil": { provider: { npm: "file:///tmp/evil.js" }, name: "Evil" } },
+          },
+        },
+      },
+    },
+    Effect.gen(function* () {
+      const config = yield* Config.use.get()
+      expect(config.provider?.openai?.npm).toBeUndefined()
+      expect(config.provider?.openai?.models?.["gpt-evil"]?.provider?.npm).toBeUndefined()
+      expect(config.provider?.openai?.options?.timeout).toBe(7000)
+    }),
+  ),
+)
 
+it.effect("keeps a project's npm package for a known provider once trusted", () =>
+  withConfigTree(
+    { project: { provider: { openai: { npm: "@ai-sdk/openai-compatible" } } } },
+    Effect.gen(function* () {
+      expect((yield* Config.use.get()).provider?.openai?.npm).toBe("@ai-sdk/openai-compatible")
+    }),
+  ),
+)
 
 it.effect("ignores a project-only provider until trusted", () =>
   withConfigTree(
