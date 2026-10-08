@@ -132,8 +132,10 @@ async function startBackgroundRun(opts: {
 export const handleTrigger = (
   request: HttpServerRequest.HttpServerRequest,
   configSvc: Config.Interface,
-) =>
-  Effect.gen(function* () {
+  options?: { sdk?: OpencodeClient },
+) => {
+  let lockedDir: string | undefined
+  return Effect.gen(function* () {
     const globalConfig = yield* configSvc.getGlobal().pipe(Effect.orDie)
 
     const resolved = resolveTriggers(globalConfig)
@@ -219,87 +221,105 @@ export const handleTrigger = (
       )
     }
     activeDirectories.add(resolvedDir)
+    lockedDir = resolvedDir
 
-    try {
-      const { Server } = yield* Effect.promise(() => import("@/server/server"))
-      const { ServerAuth } = yield* Effect.promise(() => import("@/server/auth"))
+    const { Server } = yield* Effect.promise(() => import("@/server/server"))
+    const { ServerAuth } = yield* Effect.promise(() => import("@/server/auth"))
 
-      const fetchFn = (async (input: RequestInfo | URL, init?: RequestInit) => {
-        const req = new Request(input, init)
-        const headers = new Headers(req.headers)
-        const auth = ServerAuth.header()
-        if (auth) headers.set("Authorization", auth)
-        return Server.Default().app.fetch(new Request(req, { headers }))
-      }) as typeof globalThis.fetch
+    const fetchFn = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const req = new Request(input, init)
+      const headers = new Headers(req.headers)
+      const auth = ServerAuth.header()
+      if (auth) headers.set("Authorization", auth)
+      return Server.Default().app.fetch(new Request(req, { headers }))
+    }) as typeof globalThis.fetch
 
-      const sdk = createOpencodeClient({
+    const sdk =
+      options?.sdk ??
+      createOpencodeClient({
         baseUrl: "http://yukioshi.internal",
         fetch: fetchFn,
         directory: resolvedDir,
       })
 
-      const modelInput = pickModel(obj.model as string | undefined)
-      const sessResult = yield* Effect.promise(() =>
-        sdk.session.create({
-          title: `Trigger: ${(obj.prompt as string).slice(0, 50)}`,
-          model: modelInput ? { providerID: modelInput.providerID, id: modelInput.modelID } : undefined,
-        }),
-      )
+    const modelInput = pickModel(obj.model as string | undefined)
+    const sessResult = yield* Effect.promise(() =>
+      sdk.session.create({
+        title: `Trigger: ${(obj.prompt as string).slice(0, 50)}`,
+        model: modelInput ? { providerID: modelInput.providerID, id: modelInput.modelID } : undefined,
+      }),
+    )
 
-      const sessionID = sessResult.data?.id
-      if (!sessionID) {
-        throw new Error("Failed to create session")
-      }
+    const sessionID = sessResult.data?.id
+    if (!sessionID) {
+      throw new Error("Failed to create session")
+    }
 
-      yield* Effect.promise(() =>
-        sdk.v2.session.permission.mode.set({ sessionID, mode: resolved.mode }).catch(() => {}),
-      )
+    const setResult = yield* Effect.promise(() =>
+      sdk.v2.session.permission.mode.set({ sessionID, mode: resolved.mode }).catch((err) => ({ error: err })),
+    )
 
-      if (globalConfig.audit?.enabled === true) {
-        const { writeEntry } = yield* Effect.promise(() => import("@/audit"))
-        const { Redact } = yield* Effect.promise(() => import("@yukioshi/core/redact"))
-        yield* Effect.promise(() =>
-          writeEntry(
-            {
-              event: "trigger",
-              session: sessionID,
-              prompt: Redact.mask(obj.prompt as string),
-              mode: resolved.mode,
-              ...(obj.model ? { model: obj.model } : {}),
-            },
-            resolvedDir,
-          ).catch(() => {}),
-        )
-      }
+    const getResult = yield* Effect.promise(() =>
+      sdk.v2.session.permission.mode.get({ sessionID }).catch((err) => ({ error: err })),
+    )
 
-      // Start asynchronous run in the background
-      startBackgroundRun({
-        sdk,
-        sessionID,
-        prompt: obj.prompt as string,
-        model: obj.model as string | undefined,
-        directory: resolvedDir,
-      })
-
-      return HttpServerResponse.jsonUnsafe({ sessionID }, { status: 202 })
-    } catch (err) {
+    const getData = "data" in getResult ? getResult.data : undefined
+    const appliedMode = (getData as any)?.data ?? getData
+    const hasError = Boolean((setResult as any).error || (getResult as any).error)
+    if (hasError || appliedMode !== resolved.mode) {
       activeDirectories.delete(resolvedDir)
-      console.error("Trigger execution error:", err)
+      lockedDir = undefined
       return HttpServerResponse.jsonUnsafe(
-        { error: "Internal error starting trigger run" },
+        { error: "could not start the run safely" },
         { status: 500 },
       )
     }
+
+    if (globalConfig.audit?.enabled === true) {
+      const { writeEntry } = yield* Effect.promise(() => import("@/audit"))
+      const { Redact } = yield* Effect.promise(() => import("@yukioshi/core/redact"))
+      yield* Effect.promise(() =>
+        writeEntry(
+          {
+            event: "trigger",
+            session: sessionID,
+            prompt: Redact.mask(obj.prompt as string),
+            mode: resolved.mode,
+            ...(obj.model ? { model: obj.model } : {}),
+          },
+          resolvedDir,
+        ).catch(() => {}),
+      )
+    }
+
+    // Start asynchronous run in the background
+    startBackgroundRun({
+      sdk,
+      sessionID,
+      prompt: obj.prompt as string,
+      model: obj.model as string | undefined,
+      directory: resolvedDir,
+    })
+    lockedDir = undefined
+
+    return HttpServerResponse.jsonUnsafe({ sessionID }, { status: 202 })
   }).pipe(
     Effect.catchCause((cause) => {
-      return Effect.succeed(
-        HttpServerResponse.jsonUnsafe(
-          { error: "Internal error", detail: Cause.pretty(cause) },
-          { status: 500 },
+      if (lockedDir) {
+        activeDirectories.delete(lockedDir)
+        lockedDir = undefined
+      }
+      return Effect.logError("trigger endpoint error", { cause: Cause.pretty(cause) }).pipe(
+        Effect.as(
+          HttpServerResponse.jsonUnsafe(
+            { error: "Internal error" },
+            { status: 500 },
+          ),
         ),
       )
     }),
   )
+}
 
 export const triggerRoute = HttpRouter.use((router) =>
   Effect.gen(function* () {
