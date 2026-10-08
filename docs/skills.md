@@ -65,7 +65,7 @@ yukioshi skill remove team
 ```
 
 `skill add` clones the repository (`git clone --depth 1`) into
-`~/.config/yukioshi/skills/<name>/`, so its skills are available in every
+`~/.config/yukioshi/skills/<name>/` (or `%APPDATA%\yukioshi\skills\<name>\` on Windows), so its skills are available in every
 project. The repository needs a `SKILL.md`, at its root or in sub-folders (one
 skill per folder that has one), and the command prints the skill names it
 found. It refuses a repository without one.

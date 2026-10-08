@@ -221,14 +221,14 @@ Normal code identifiers (such as `sk-` inside an unrelated word or Stripe test k
 
 A local record of what the agent did, for you or your team to review later. It
 is off by default; turn it on in your own global config
-(`~/.config/yukioshi/yukioshi.json`):
+(`~/.config/yukioshi/yukioshi.json` on Linux and macOS, or `%APPDATA%\yukioshi\yukioshi.json` on Windows):
 
 ```json
 { "audit": { "enabled": true } }
 ```
 
 YukiOshi then appends one JSON line for each tool call, approval prompt, and
-answer to `~/.local/state/yukioshi/audit/<date>.jsonl`:
+answer to `<state>/audit/<date>.jsonl` (`~/.local/state/yukioshi/audit/<date>.jsonl` on Linux and macOS, or `%LOCALAPPDATA%\yukioshi\audit\<date>.jsonl` on Windows):
 
 ```json
 {"time":"2026-10-07T09:12:03.120Z","directory":"/home/me/app","event":"tool","session":"ses_…","tool":"bash","status":"completed","input":"npm test"}
@@ -241,8 +241,12 @@ answer to `~/.local/state/yukioshi/audit/<date>.jsonl`:
 - Secrets in what is recorded are masked, as for [redaction](#secret-redaction).
 - Only the global config counts: a project's own config cannot turn the log on
   or off.
-- Nothing is sent anywhere. On Linux and macOS the files are readable only by
-  you. YukiOshi keeps them until you delete them; `yukioshi uninstall` removes
+- Nothing is sent anywhere. On Linux and macOS the audit directory and log files
+  are created with owner-only file permissions (`0700` and `0600`), readable only by
+  you; on Windows the files inherit the permissions of the user's profile folder
+  (`%LOCALAPPDATA%`). YukiOshi keeps them until you delete them; `yukioshi uninstall`
+  removes them along with other state files.
+
 ## Triggers and unattended runs
 
 The `POST /trigger` endpoint on `yukioshi serve` accepts HTTP requests to start unattended runs in designated directories. Because triggered runs may be invoked from external systems or webhook handlers, YukiOshi enforces strict security boundaries:
@@ -250,7 +254,7 @@ The `POST /trigger` endpoint on `yukioshi serve` accepts HTTP requests to start 
 - **Token scope isolation**: The trigger bearer token provides access strictly to `POST /trigger`. It cannot authenticate any other endpoint on the server. Conversely, `YUKIOSHI_SERVER_PASSWORD` does not grant access to `POST /trigger`.
 - **Constant-time comparison**: Token verification computes SHA-256 digests and compares them using `crypto.timingSafeEqual` to protect against timing attacks. Tokens must be at least 32 characters long.
 - **Untrusted prompts & restricted modes**: Prompts sent to `POST /trigger` may come from external or untrusted sources. Therefore, triggers only support `"review"` (default, where a small model evaluates and approves/rejects non-low-risk actions) or `"plan"` (read-only exploration) modes. Unattended `"auto-all"` is prohibited and refused.
-- **Directory boundary**: Triggers can only run in directories explicitly enumerated in `triggers.directories` within the user's global configuration (`~/.config/yukioshi/yukioshi.json`). Project configurations cannot enable triggers or expand the directory list.
+- **Directory boundary**: Triggers can only run in directories explicitly enumerated in `triggers.directories` within the user's global configuration (`~/.config/yukioshi/yukioshi.json` on Linux/macOS, `%APPDATA%\yukioshi\yukioshi.json` on Windows). Project configurations cannot enable triggers or expand the directory list.
 - **Payload limits**: Request bodies are capped at 64 KB and strictly validated to reject unknown fields.
 - **Concurrency locking**: Only one run per directory may execute at any given time. Concurrent attempts return HTTP 409 Conflict until the active run finishes.
 - **Audit logging**: When audit logging is enabled (`audit.enabled`), every accepted trigger event is logged to the local audit trail with session ID, directory, mode, and masked prompt.
