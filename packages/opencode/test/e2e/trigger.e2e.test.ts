@@ -285,7 +285,7 @@ describe("authenticated trigger on yukioshi serve", () => {
             body: JSON.stringify({ prompt: bigPrompt, directory: home }),
           }),
         )
-        expect(resTooBig.status).toBe(400)
+        expect(resTooBig.status).toBe(413)
       }),
     60_000,
   )
