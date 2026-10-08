@@ -138,8 +138,9 @@ export function resolve(p: string): string {
   const resolved = pathResolve(windowsPath(p))
   try {
     return normalizePath(realpathSync(resolved))
-  } catch {
-    return normalizePath(resolved)
+  } catch (e) {
+    if (isEnoent(e)) return normalizePath(resolved)
+    throw e
   }
 }
 

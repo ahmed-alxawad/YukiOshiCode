@@ -180,7 +180,11 @@ async function write(file: string, store: Store) {
 }
 
 export function canonical(directory: string) {
-  return Filesystem.resolve(directory)
+  try {
+    return Filesystem.resolve(directory)
+  } catch {
+    return Filesystem.normalizePath(path.resolve(directory))
+  }
 }
 
 export function root(ctx: Pick<InstanceContext, "directory" | "worktree">) {
