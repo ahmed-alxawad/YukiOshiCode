@@ -424,6 +424,8 @@ const layer: Layer.Layer<
       const entry = yield* locateWorktree(entries, directory)
 
       if (!entry?.path) {
+        const directoryExists = yield* fs.exists(directory).pipe(Effect.orDie)
+        if (!directoryExists) return true
         const worktreeBase = yield* canonical(pathSvc.join(Global.Path.data, "worktree", ctx.project.id))
         const sep = process.platform === "win32" ? "\\" : "/"
         if (directory !== worktreeBase && !directory.startsWith(worktreeBase + sep)) {
@@ -431,11 +433,8 @@ const layer: Layer.Layer<
             message: `Refusing to remove directory outside worktree storage folder: "${input.directory}"`,
           })
         }
-        const directoryExists = yield* fs.exists(directory).pipe(Effect.orDie)
-        if (directoryExists) {
-          yield* stopFsmonitor(directory)
-          yield* cleanDirectory(directory)
-        }
+        yield* stopFsmonitor(directory)
+        yield* cleanDirectory(directory)
         return true
       }
 
