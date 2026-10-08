@@ -3,6 +3,7 @@ import { createOpencodeClient, type OpencodeClient } from "@yukioshi/sdk/v2"
 import { Cause, Effect } from "effect"
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import crypto from "node:crypto"
+import fs from "node:fs/promises"
 import path from "node:path"
 import type { ConfigV1 } from "@yukioshi/core/v1/config/config"
 
@@ -155,13 +156,21 @@ export const handleTrigger = (
       return HttpServerResponse.jsonUnsafe({ error: "Unauthorized" }, { status: 401 })
     }
 
+    const contentType = request.headers["content-type"]
+    if (!contentType || !contentType.toLowerCase().startsWith("application/json")) {
+      return HttpServerResponse.jsonUnsafe(
+        { error: "Unsupported Media Type: Content-Type must be application/json" },
+        { status: 415 },
+      )
+    }
+
     const contentLengthHeader = request.headers["content-length"]
     if (contentLengthHeader !== undefined) {
       const len = Number(contentLengthHeader)
       if (Number.isFinite(len) && len > 65_536) {
         return HttpServerResponse.jsonUnsafe(
           { error: "Payload too large: body must not exceed 64 KB" },
-          { status: 400 },
+          { status: 413 },
         )
       }
     }
@@ -170,7 +179,7 @@ export const handleTrigger = (
     if (Buffer.byteLength(rawBody, "utf-8") > 65_536) {
       return HttpServerResponse.jsonUnsafe(
         { error: "Payload too large: body must not exceed 64 KB" },
-        { status: 400 },
+        { status: 413 },
       )
     }
 
@@ -197,8 +206,11 @@ export const handleTrigger = (
       return HttpServerResponse.jsonUnsafe({ error: "Field 'prompt' must be a non-empty string" }, { status: 400 })
     }
 
-    if (typeof obj.directory !== "string" || obj.directory.trim().length === 0) {
-      return HttpServerResponse.jsonUnsafe({ error: "Field 'directory' must be a non-empty string" }, { status: 400 })
+    if (/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(obj.prompt)) {
+      return HttpServerResponse.jsonUnsafe(
+        { error: "Field 'prompt' must not contain control characters" },
+        { status: 400 },
+      )
     }
 
     if (obj.model !== undefined && (typeof obj.model !== "string" || obj.model.trim().length === 0)) {
@@ -208,20 +220,36 @@ export const handleTrigger = (
       )
     }
 
+    if (typeof obj.directory !== "string" || obj.directory.trim().length === 0) {
+      return HttpServerResponse.jsonUnsafe({ error: "Field 'directory' must be a non-empty string" }, { status: 400 })
+    }
+
+    if (obj.directory.includes("..")) {
+      return HttpServerResponse.jsonUnsafe(
+        { error: "Forbidden: directory path must not contain '..'" },
+        { status: 403 },
+      )
+    }
+
     const resolvedDir = path.resolve(obj.directory)
-    const allowedDirs = resolved.directories.map((d) => path.resolve(d))
-    if (!allowedDirs.includes(resolvedDir)) {
+    const realDir = yield* Effect.promise(() => fs.realpath(resolvedDir).catch(() => resolvedDir))
+    const realAllowed = yield* Effect.promise(() =>
+      Promise.all(
+        resolved.directories.map((d) => fs.realpath(path.resolve(d)).catch(() => path.resolve(d))),
+      ),
+    )
+    if (!realAllowed.includes(realDir)) {
       return HttpServerResponse.jsonUnsafe({ error: "Forbidden: directory not allowed" }, { status: 403 })
     }
 
-    if (activeDirectories.has(resolvedDir)) {
+    if (activeDirectories.has(realDir)) {
       return HttpServerResponse.jsonUnsafe(
         { error: "Conflict: a run is already active in this directory" },
         { status: 409 },
       )
     }
-    activeDirectories.add(resolvedDir)
-    lockedDir = resolvedDir
+    activeDirectories.add(realDir)
+    lockedDir = realDir
 
     const { Server } = yield* Effect.promise(() => import("@/server/server"))
     const { ServerAuth } = yield* Effect.promise(() => import("@/server/auth"))
@@ -239,7 +267,7 @@ export const handleTrigger = (
       createOpencodeClient({
         baseUrl: "http://yukioshi.internal",
         fetch: fetchFn,
-        directory: resolvedDir,
+        directory: realDir,
       })
 
     const modelInput = pickModel(obj.model as string | undefined)
@@ -267,7 +295,7 @@ export const handleTrigger = (
     const appliedMode = (getData as any)?.data ?? getData
     const hasError = Boolean((setResult as any).error || (getResult as any).error)
     if (hasError || appliedMode !== resolved.mode) {
-      activeDirectories.delete(resolvedDir)
+      activeDirectories.delete(realDir)
       lockedDir = undefined
       return HttpServerResponse.jsonUnsafe(
         { error: "could not start the run safely" },
@@ -287,7 +315,7 @@ export const handleTrigger = (
             mode: resolved.mode,
             ...(obj.model ? { model: obj.model } : {}),
           },
-          resolvedDir,
+          realDir,
         ).catch(() => {}),
       )
     }
@@ -298,7 +326,7 @@ export const handleTrigger = (
       sessionID,
       prompt: obj.prompt as string,
       model: obj.model as string | undefined,
-      directory: resolvedDir,
+      directory: realDir,
     })
     lockedDir = undefined
 

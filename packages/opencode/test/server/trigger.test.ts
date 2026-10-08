@@ -1,4 +1,7 @@
 import { describe, expect, it, beforeEach } from "bun:test"
+import fs from "node:fs"
+import os from "node:os"
+import path from "node:path"
 import { Effect } from "effect"
 import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import {
@@ -259,5 +262,115 @@ describe("handleTrigger failure modes and safety", () => {
     expect(bodyStr).not.toContain("/secret/path")
     expect(bodyStr).not.toContain("detail")
     expect(isDirectoryBusy(dir)).toBe(false)
+  })
+
+  it("rejects wrong or missing Content-Type with 415", async () => {
+    const req = HttpServerRequest.fromWeb(
+      new Request("http://localhost/trigger", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "text/plain",
+        },
+        body: JSON.stringify({ prompt: "hello", directory: dir }),
+      }),
+    )
+
+    const res = await Effect.runPromise(handleTrigger(req, configSvc))
+    expect(res.status).toBe(415)
+    const body = (await HttpServerResponse.toWeb(res).json()) as Record<string, unknown>
+    expect(body.error).toContain("Unsupported Media Type")
+  })
+
+  it("rejects prompt containing control characters with 400", async () => {
+    const req = HttpServerRequest.fromWeb(
+      new Request("http://localhost/trigger", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ prompt: "hello\x00world", directory: dir }),
+      }),
+    )
+
+    const res = await Effect.runPromise(handleTrigger(req, configSvc))
+    expect(res.status).toBe(400)
+    const body = (await HttpServerResponse.toWeb(res).json()) as Record<string, unknown>
+    expect(body.error).toContain("control characters")
+  })
+
+  it("rejects directory containing .. segments with 403", async () => {
+    const req = HttpServerRequest.fromWeb(
+      new Request("http://localhost/trigger", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ prompt: "hello", directory: `${dir}/../etc` }),
+      }),
+    )
+
+    const res = await Effect.runPromise(handleTrigger(req, configSvc))
+    expect(res.status).toBe(403)
+    const body = (await HttpServerResponse.toWeb(res).json()) as Record<string, unknown>
+    expect(body.error).toContain("Forbidden")
+  })
+
+  it("rejects directory symlink escaping allowed directories with 403", async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "yk-trigger-sym-"))
+    const allowedDir = path.join(tempDir, "allowed")
+    const secretDir = path.join(tempDir, "secret")
+    fs.mkdirSync(allowedDir, { recursive: true })
+    fs.mkdirSync(secretDir, { recursive: true })
+    const linkDir = path.join(allowedDir, "escape-link")
+    fs.symlinkSync(secretDir, linkDir)
+
+    const customConfigSvc = {
+      getGlobal: () =>
+        Effect.succeed({
+          triggers: {
+            enabled: true,
+            token_env: "TRIGGER_TEST_TOKEN",
+            directories: [allowedDir],
+            mode: "review",
+          },
+        }),
+    } as any
+
+    const req = HttpServerRequest.fromWeb(
+      new Request("http://localhost/trigger", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ prompt: "hello", directory: linkDir }),
+      }),
+    )
+
+    const res = await Effect.runPromise(handleTrigger(req, customConfigSvc))
+    expect(res.status).toBe(403)
+    const body = (await HttpServerResponse.toWeb(res).json()) as Record<string, unknown>
+    expect(body.error).toContain("Forbidden")
+  })
+
+  it("rejects payload exceeding 64 KB with 413", async () => {
+    const hugePrompt = "x".repeat(70_000)
+    const req = HttpServerRequest.fromWeb(
+      new Request("http://localhost/trigger", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+          "content-length": String(hugePrompt.length + 50),
+        },
+        body: JSON.stringify({ prompt: hugePrompt, directory: dir }),
+      }),
+    )
+
+    const res = await Effect.runPromise(handleTrigger(req, configSvc))
+    expect(res.status).toBe(413)
   })
 })
