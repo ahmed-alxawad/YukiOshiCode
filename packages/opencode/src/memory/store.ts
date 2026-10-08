@@ -17,6 +17,14 @@ export namespace MemoryStore {
 
   export type Saved = { key: string; changed: boolean; full?: { used: number; max: number } }
 
+  /**
+   * One line: memory is read back into every later session's prompt, and a line break would let one entry
+   * pose as several, or as a heading. (The memory_save tool masks secrets, using the user's redact settings.)
+   */
+  export function tidy(text: string) {
+    return text.replace(/\s*[\r\n\u2028\u2029]+\s*/g, " ").trim()
+  }
+
   function entrySize(entry: { key: string; text: string }) {
     return entry.key.length + entry.text.length
   }
@@ -77,13 +85,16 @@ export namespace MemoryStore {
     return queue(input.root, async () => {
       await ensureDir(input.root)
       const file = MemoryPaths.source(input.root, input.file)
+      const note = tidy(input.text)
+      if (!note) return { key: "", changed: false }
       const key =
-        input.key?.trim() || MemorySlug.safe(input.text, { max: MemorySlug.max.key, fallback: "note", lower: true })
+        tidy(input.key ?? "").replaceAll(" :: ", " : ") ||
+        MemorySlug.safe(note, { max: MemorySlug.max.key, fallback: "note", lower: true })
       const current = await readFileSafe(file)
       const { text, changed } = MemoryMarkdown.upsert({
         text: current,
         section: defaultSection(input.file),
-        line: MemoryMarkdown.line(key, input.text),
+        line: MemoryMarkdown.line(key, note),
       })
       if (!changed) return { key, changed }
       // The size limit counts what memory would hold after this save (a replaced entry no longer counts).

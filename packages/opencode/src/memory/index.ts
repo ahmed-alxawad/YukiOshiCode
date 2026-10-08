@@ -33,6 +33,11 @@ type SaveInput = { root: string; text: string; key?: string; maxChars?: number }
 const PROMPT_ORDER = ["corrections.md", "environment.md", "project.md"] as const
 const PROMPT_TITLE = { "corrections.md": "Corrections", "environment.md": "Environment", "project.md": "Facts" }
 
+// An entry must not be able to close the <project_memory> block and pose as the system's own text.
+function neutral(line: string) {
+  return line.replace(/<\s*(\/?)\s*(project_memory|system-reminder)[^>]*>/gi, "‹$1$2›")
+}
+
 /** Formats memory entries for the system prompt, cut at `maxChars` if files were edited past the limit. */
 export function promptText(entries: Partial<Record<MemorySchema.Source, { key: string; text: string }[]>>, maxChars: number) {
   const lines: string[] = []
@@ -56,7 +61,7 @@ export function promptText(entries: Partial<Record<MemorySchema.Source, { key: s
   return [
     "<project_memory>",
     "What you saved about this project in earlier sessions with memory_save. Follow the corrections.",
-    ...lines,
+    ...lines.map(neutral),
     ...(cut ? ["(Memory is over its size limit and was cut here; merge or forget entries.)"] : []),
     "</project_memory>",
   ].join("\n")
