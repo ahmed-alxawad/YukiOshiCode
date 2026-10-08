@@ -22,6 +22,14 @@ function server(handler: (request: Request) => Response | Promise<Response>) {
 }
 
 describe("webhooks", () => {
+  test("masks a configured provider key that matches no secret format", async () => {
+    const { Redact } = await import("@yukioshi/core/redact")
+    const { summarize } = await import("@/audit")
+    Redact.registerSecret("gw-key-ABCDEFGH12345")
+    expect(webhookText("curl -u gw-key-ABCDEFGH12345 x")).not.toContain("ABCDEFGH")
+    expect(summarize({ command: "curl -u gw-key-ABCDEFGH12345 x" })).not.toContain("ABCDEFGH")
+  })
+
   test("creates a safe payload and HMAC signature", () => {
     const body = webhookBody(payload)
     expect(body).toContain('"event":"turn.finished"')

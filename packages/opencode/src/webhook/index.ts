@@ -36,7 +36,7 @@ const DETAIL_MAX = 300
 
 /** Text that goes into a webhook: secrets masked and long text shortened (a command can hold both). */
 export function webhookText(text: string) {
-  const masked = Redact.mask(text)
+  const masked = Redact.scrubKnown(Redact.mask(text))
   return masked.length > DETAIL_MAX ? `${masked.slice(0, DETAIL_MAX)}…` : masked
 }
 

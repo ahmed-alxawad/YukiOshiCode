@@ -26,7 +26,7 @@ export function file(time: Date, dir = root()) {
 }
 
 function short(text: string) {
-  const masked = Redact.mask(text)
+  const masked = Redact.scrubKnown(Redact.mask(text))
   return masked.length > TEXT_MAX ? `${masked.slice(0, TEXT_MAX)}…` : masked
 }
 
