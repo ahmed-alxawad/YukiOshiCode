@@ -199,7 +199,7 @@ export function withCliFixture<A, E>(
     const fs = yield* FSUtil.Service
     const appProc = yield* AppProcess.Service
 
-    const home = yield* fs.makeTempDirectory({ prefix: "oc-cli-" })
+    const home = yield* fs.makeTempDirectory({ prefix: "oc-cli-" }).pipe(Effect.flatMap((dir) => fs.realPath(dir)))
     yield* Effect.addFinalizer(() =>
       fs
         .remove(home, { recursive: true })
@@ -532,7 +532,7 @@ export const cliIt = {
     body: (input: CliFixture) => Effect.Effect<A, E, Scope.Scope | HttpClient.HttpClient>,
     opts?: number | TestOptions,
   ) =>
-    (process.platform === "win32" ? test : test.concurrent)(
+    (process.platform !== "linux" ? test : test.concurrent)(
       name,
       () => Effect.runPromise(Effect.scoped(withCliFixture(body))),
       opts,
