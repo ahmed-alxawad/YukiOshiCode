@@ -29,7 +29,7 @@ import { INTERACTIVE_INPUT_ERROR, resolveInteractiveStdin } from "./run/runtime.
 import { readPipedInput } from "../stdin"
 import { executePostTurnVerification } from "./run/verification"
 import { EXIT, dollars, goalExitCode, readOutputSchema } from "./run/outcome"
-import { formatFileChanges, type FileChange } from "@yukioshi/core/files-changed-summary"
+import { combineFileChanges, formatFileChanges, type FileChange } from "@yukioshi/core/files-changed-summary"
 
 type ModelInput = Parameters<OpencodeClient["session"]["prompt"]>[0]["model"]
 
@@ -765,7 +765,7 @@ export const RunCommand = effectCmd({
         // to stdout/UI. `client` is passed explicitly because attach mode may
         // rebind the SDK to the session's directory after the subscription is
         // created, and replies issued from inside the loop must use that client.
-        let summaryDiffs: FileChange[] = []
+        const userDiffs = new Map<string, FileChange[]>()
         // Set once the run has reported its own failure: the same failure also arrives as a session.error
         // event, which must not be printed a second time.
         let reported = false
@@ -821,7 +821,9 @@ export const RunCommand = effectCmd({
             }
 
             if (event.type === "message.updated" && event.properties.sessionID === sessionID) {
-              if (event.properties.info.role === "user") summaryDiffs = event.properties.info.summary?.diffs ?? []
+              if (event.properties.info.role === "user") {
+                userDiffs.set(event.properties.info.id, event.properties.info.summary?.diffs ?? [])
+              }
             }
 
             // A later reply that completes cleanly (for example on a fallback model after the first model
@@ -1008,7 +1010,8 @@ export const RunCommand = effectCmd({
             const error = await completed
             if (error) process.exitCode = 1
             if (args.summary !== false) {
-              const summary = formatFileChanges(summaryDiffs, cwd)
+              const diffs = combineFileChanges(...userDiffs.values())
+              const summary = formatFileChanges(diffs, cwd)
               if (summary) process.stderr.write(summary + EOL)
             }
           }

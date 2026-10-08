@@ -31,4 +31,30 @@ describe("goal", () => {
     const goal = JSON.parse(yield* Effect.promise(() => Bun.file(`${home}-state/${goalFile}`).text())) as Record<string, unknown>
     expect(goal).toMatchObject({ status: "done", rounds: 1, note: "the goal is complete" })
   }), 60_000)
+
+  cliIt.live("edits file A in the first round and file B in the second and lists both in summary", ({ home, llm, opencode }) => Effect.gen(function* () {
+    Bun.spawnSync(["git", "init", "-q"], { cwd: home })
+    Bun.spawnSync(["git", "config", "user.email", "e2e@example.invalid"], { cwd: home })
+    Bun.spawnSync(["git", "config", "user.name", "E2E"], { cwd: home })
+    Bun.spawnSync(["git", "commit", "--allow-empty", "-qm", "initial"], { cwd: home })
+
+    yield* llm.push(
+      reply().tool("bash", { command: "printf 'alpha\\n' > a.txt", description: "edit file a" }),
+      reply().text("edited a").stop(),
+      reply().text("CONTINUE: edit b").stop(),
+      reply().tool("bash", { command: "printf 'beta\\n' > b.txt", description: "edit file b" }),
+      reply().text("edited b").stop(),
+      reply().text("DONE: complete").stop(),
+    )
+
+    const result = yield* opencode.run("edit files across rounds", {
+      command: "goal",
+      extraArgs: ["--dangerously-skip-permissions"],
+      env: { ...runtimeEnv(home), YUKIOSHI_CONFIG_CONTENT: config(llm.url, { goal: { max_rounds: 2 } }) },
+    })
+    expect(result.exitCode).toBe(0)
+    expect(result.stderr).toContain("Changed 2 files")
+    expect(result.stderr).toContain("a.txt (new)")
+    expect(result.stderr).toContain("b.txt (new)")
+  }), 60_000)
 })

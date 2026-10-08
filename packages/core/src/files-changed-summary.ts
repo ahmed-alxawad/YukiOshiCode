@@ -66,3 +66,29 @@ export function formatFileChanges(changes: readonly FileChange[], root?: string)
   if (summary.remaining > 0) lines.push(`  … and ${summary.remaining} more`)
   return lines.join("\n")
 }
+
+export function combineFileChanges(...changeSets: (readonly FileChange[] | undefined)[]): FileChange[] {
+  const merged = new Map<string, FileChange>()
+  for (const set of changeSets) {
+    if (!set) continue
+    for (const change of set) {
+      if (!change.file) continue
+      const existing = merged.get(change.file)
+      if (!existing) {
+        merged.set(change.file, {
+          file: change.file,
+          additions: change.additions ?? 0,
+          deletions: change.deletions ?? 0,
+          ...(change.status !== undefined ? { status: change.status } : {}),
+        })
+      } else {
+        existing.additions += change.additions ?? 0
+        existing.deletions += change.deletions ?? 0
+        if (change.status !== undefined) {
+          existing.status = change.status
+        }
+      }
+    }
+  }
+  return Array.from(merged.values())
+}
