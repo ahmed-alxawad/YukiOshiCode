@@ -45,6 +45,12 @@ function checkpointMessage(prompt: string, sessionID: string, turn: number) {
   return `${firstLine}\n\nSession: ${sessionID}\nTurn: ${turn}`
 }
 
+// The turn counts checkpoints of this session only; commits already on the user's branch must not be counted.
+function previousTurn(root: string, previous: string) {
+  const message = git(root, ["show", "-s", "--format=%B", previous]).stdout
+  return Number(/^Turn: (\d+)$/m.exec(message)?.[1] ?? 0)
+}
+
 export function createCheckpoint(input: { directory: string; sessionID: string; prompt: string; force?: boolean }) {
   const root = repositoryRoot(input.directory)
   if (!input.force && !hasWorkingTreeChanges(root)) return undefined
@@ -59,7 +65,7 @@ export function createCheckpoint(input: { directory: string; sessionID: string; 
     if (parent) git(root, ["read-tree", parent], env)
     git(root, ["add", "-A"], env)
     const tree = git(root, ["write-tree"], env).stdout.trim()
-    const turn = Number(previous ? git(root, ["rev-list", "--count", previous]).stdout.trim() : "0") + 1
+    const turn = (previous ? previousTurn(root, previous) : 0) + 1
     const args = ["commit-tree", tree]
     if (parent) args.push("-p", parent)
     args.push("-m", checkpointMessage(input.prompt, input.sessionID, turn))
