@@ -82,10 +82,16 @@ yukioshi run -c "now add a test for it"   # continue the last session
 - **A mode for each kind of work.** Build, Plan, Goal (work autonomously
   until done), Reasoning, and Research, or Auto, which picks one for each
   message. [Features](docs/features.md#modes)
-- **You decide what it may do.** Four permission modes (`manual`, `auto`,
-  `auto-all`, `plan`), per-tool rules, and hard blocks that refuse destructive
-  commands and secret files in every mode.
+- **You decide what it may do.** Five permission modes (`manual`, `auto`,
+  `auto-all`, `plan`, `review`), per-tool rules, hard blocks that refuse destructive
+  commands and secret files in every mode, and an optional local audit log.
   [Permissions and safety](docs/permissions-and-safety.md)
+- **Scripting and automation.** `--output-schema` for structured JSON answers,
+  `--max-turns` and `--max-cost` limits, documented exit codes ([Commands](docs/commands.md#exit-codes)), and an
+  authenticated trigger endpoint on `yukioshi serve` ([Features](docs/features.md#triggers)).
+- **Browser automation.** Opt-in Playwright MCP integration (`browser`) for
+  navigating, snapshotting, clicking, and filling forms in web apps.
+  [Features](docs/features.md#browser-automation)
 - **Safe in unfamiliar repositories.** A repository's hooks, plugins, local MCP
   servers, and custom LSP and formatter commands run only after you trust it,
   and trust lapses when that configuration changes. An optional OS sandbox
@@ -95,19 +101,25 @@ yukioshi run -c "now add a test for it"   # continue the last session
   typecheck, lint, and test commands and reports what passed.
   [Features](docs/features.md)
 - **Keeps going.** `/goal` works on an objective until a check says it is
-  done, `/loop` runs a prompt again on an interval, and fallback models with
+  done, `/loop` runs a prompt again on an interval, `yukioshi schedule` runs
+  recurring tasks via your system scheduler, and fallback models with
   API-key rotation carry a turn through rate limits and outages.
-  [Features](docs/features.md#goals), [Providers](docs/providers.md#fallback-models-and-key-rotation)
+  [Features](docs/features.md#goals), [Scheduled tasks](docs/features.md#scheduled-tasks), [Providers](docs/providers.md#fallback-models-and-key-rotation)
+- **Background and parallel subagents.** Run subagents in the background while
+  you keep working, or run tasks in parallel across isolated Git worktrees.
+  [Features](docs/features.md#subagents)
 - **Context that persists.** Search across past conversations, size-limited
   project memory, skills YukiOshi writes for itself (kept tidy by a curator),
   semantic code search, and a code-graph tool. Memory, self-written skills,
-  code search, and the code graph are off until you enable them.
+  web search, code search, and the code graph are off until you enable them.
 - **Works with your other tools.** MCP tool definitions load only when needed,
   tasks can be handed to Claude Code or Codex over ACP, and webhooks tell you
-  when a turn finishes or needs you.
+  when a turn finishes or needs you. Import past Claude Code and Codex conversations
+  with `yukioshi import`.
   [Configuration](docs/configuration.md)
 - **Extensible.** Claude Code-compatible [hooks](docs/hooks.md),
-  [skills](docs/skills.md), MCP servers, custom agents, and slash commands.
+  [skills](docs/skills.md) (with `yukioshi skill add` from git), MCP servers,
+  custom agents, and slash commands (/commit, /pr).
 - **Looks like YukiOshi.** A light and dark theme built from the YukiOshi brand
   palette, with the official logo. [Appearance](docs/appearance.md)
 

@@ -13,17 +13,18 @@ accept `--print-logs`, `--log-level DEBUG|INFO|WARN|ERROR`, and `--pure`
 | `yukioshi providers login`      | connect a provider (alias: `yukioshi auth login`)       |
 | `yukioshi providers list`       | show connected providers and credentials                |
 | `yukioshi providers logout`     | remove a credential                                     |
-| `yukioshi models [provider]`    | list the models you can use                             |
+| `yukioshi models [provider]`    | list the models you can use (`--verbose`, `--refresh`)   |
 | `yukioshi trust [folder]`       | trust a repository's hooks, plugins, and commands (`--status`, `--revoke`) |
-| `yukioshi checkpoint <action>`  | list, show, restore, or prune durable Git checkpoints |
-| `yukioshi worktree <action>`    | create (`new`), `list`, locate (`path`), or `remove` Git worktrees for parallel sessions |
-| `yukioshi upgrade [version]`    | upgrade to the latest or a specific version             |
-| `yukioshi uninstall`            | remove YukiOshi Code                                    |
+| `yukioshi checkpoint <action>`  | list, show, restore, or prune durable Git checkpoints (`--session`, `--yes`, `--older-than`) |
+| `yukioshi worktree <action>`    | create (`new`), `list`, locate (`path`), or `remove` Git worktrees for parallel sessions (`--yes`) |
+| `yukioshi upgrade [version]`    | upgrade to the latest or a specific version (`-m`)      |
+| `yukioshi uninstall`            | remove YukiOshi Code (`--keep-config`, `--keep-data`, `--dry-run`, `-f`) |
 
 Options for the terminal UI include `-m provider/model`, `--agent`, `-c`
-(continue the last session), `-s <id>` (open a session), `--prompt`, `--auto`
-(approve everything that is not explicitly denied), `--mini` (a minimal
-interface), and `--verify` (turn on post-turn verification).
+(continue the last session), `-s <id>` (open a session), `--fork`,
+`--worktree <name>`, `--prompt`, `--auto` (approve everything that is not
+explicitly denied), `--mini` (a minimal interface), `--no-replay`,
+`--replay-limit`, and `--verify` / `--skip-verify` (turn post-turn verification on or off).
 
 ### `yukioshi run`
 
@@ -43,9 +44,15 @@ interface), and `--verify` (turn on post-turn verification).
 | `--title`                  | name the session (by default a one-shot run is named after its message) |
 | `--share`                  | share the session; needs your own share server (see [Features](features.md)) |
 | `--attach <url>`           | send the message to a running `yukioshi serve`              |
+| `-p, --password`           | basic auth password when attaching (`--attach`); defaults to `YUKIOSHI_SERVER_PASSWORD` |
+| `-u, --username`           | basic auth username when attaching (`--attach`); defaults to `YUKIOSHI_SERVER_USERNAME` or `yukioshi` |
 | `--dir`                    | folder to run in                                            |
 | `--worktree <name>`        | run in a Git worktree of this project (created if needed; see [Features](features.md#worktrees)) |
+| `--port <port>`            | port for the local server                                   |
+| `-i, --interactive`        | run in direct interactive split-footer mode                 |
+| `--auto`                   | auto-approve permissions that are not explicitly denied (dangerous) |
 | `--verify`, `--skip-verify` | turn post-turn verification on or off                      |
+| `--summary`, `--no-summary` | print the files changed after the turn (defaults to on)     |
 | `--output-schema <schema>` | the final answer must match this JSON Schema (a file, or inline JSON); stdout then holds only that answer, as JSON |
 | `--max-turns <n>`          | stop after this many model turns                            |
 | `--max-cost <dollars>`     | stop once this run has cost this much (subagents included; models without prices count as free) |
@@ -138,9 +145,9 @@ interval; see [Features](features.md#loop).
 
 | Command                         | Does                                                   |
 | ------------------------------- | ------------------------------------------------------ |
-| `yukioshi serve`                | run without the terminal UI (`--port`, `--hostname`; protect it with `YUKIOSHI_SERVER_PASSWORD`) |
-| `yukioshi attach <url>`         | open the terminal UI against a running server          |
-| `yukioshi acp`                  | start an Agent Client Protocol server for editors       |
+| `yukioshi serve`                | run without the terminal UI (`--port`, `--hostname`, `--mdns`, `--cors`; protect it with `YUKIOSHI_SERVER_PASSWORD`) |
+| `yukioshi attach <url>`         | open the terminal UI against a running server (`-p`, `-u`, `--dir`, `-c`, `-s`, `--fork`, `--mini`) |
+| `yukioshi acp`                  | start an Agent Client Protocol server for editors (`--port`, `--hostname`, `--cwd`) |
 | `yukioshi pr <number>`          | check out a pull request and open a session on it       |
 
 ## Troubleshooting
@@ -153,5 +160,5 @@ interval; see [Features](features.md#loop).
 | `yukioshi debug lsp …`, `debug rg …`, `debug file …` | language server, search, and file checks |
 | `yukioshi debug agent <name>`   | show an agent's resolved configuration                  |
 | `yukioshi debug info`           | version and environment details for bug reports         |
-| `yukioshi db`                   | database tools                                          |
+| `yukioshi db [query], db path`  | open an interactive sqlite3 shell, run a query (`--format json\|tsv`), or print the database path |
 | `yukioshi completion`           | print a shell completion script                         |
