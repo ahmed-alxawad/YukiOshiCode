@@ -485,6 +485,29 @@ curl -X POST http://127.0.0.1:4096/trigger \
   -d '{"prompt": "Fix the failing test in packages/api", "directory": "/home/user/projects/my-repo"}'
 ```
 
+## Claude Code plugins and marketplaces
+
+Install skills, commands, and custom agents from Claude Code plugin repositories or marketplaces using git:
+
+```bash
+yukioshi plugin add https://github.com/example/claude-plugin.git
+yukioshi plugin add https://github.com/example/claude-marketplace.git my-plugin
+yukioshi plugin list
+yukioshi plugin remove <name>
+```
+
+When pointing `yukioshi plugin add` at a marketplace repository (containing a `marketplace.json` or `.claude-plugin/marketplace.json`), running without a plugin name lists the available plugins in the marketplace. Providing a plugin name installs that plugin.
+
+### Safe sandbox model
+
+To protect your system, YukiOshi installs only non-executable parts of a Claude Code plugin:
+
+- **Skills (`skills/`)**: installed as skills accessible to sessions and slash commands.
+- **Commands (`commands/`)**: converted into YukiOshi slash commands (`$ARGUMENTS` supported).
+- **Agents (`agents/`)**: converted into YukiOshi custom agents (`mode: subagent`), mapping standard attributes (`model`, `temperature`, `top_p`, etc.) and dropping unknown fields.
+- **Hooks and MCP servers are never enabled**: Hooks and MCP servers run arbitrary local programs or network processes. YukiOshi blocks them unconditionally and lists them as `not installed: runs programs` alongside the command lines they would execute, so you can inspect and configure them manually if desired.
+- **Safe git clone**: repositories are cloned with `--depth 1`, `--no-recurse-submodules`, git hooks disabled (`core.hooksPath=/dev/null`), protocol allowlist (`file:git:http:https:ssh`), and symbolic links removed.
+
 ## Also included
 
 - **MCP servers**: connect tools over the Model Context Protocol (`mcp` in

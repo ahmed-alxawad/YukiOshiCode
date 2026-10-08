@@ -78,6 +78,8 @@ wrote yourself are never touched. To update a skill, remove it and add it
 again. Skills can still tell the model what to do, so install only from
 sources you trust.
 
+If skills are packaged inside a Claude Code plugin or marketplace alongside commands and agents, you can install them using `yukioshi plugin add` (see [Claude Code plugins and marketplaces](features.md#claude-code-plugins-and-marketplaces)).
+
 ## Skills YukiOshi writes itself
 
 Off by default. Turn it on and YukiOshi can save a procedure it worked out

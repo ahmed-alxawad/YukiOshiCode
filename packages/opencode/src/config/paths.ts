@@ -40,8 +40,23 @@ export const directoryEntries = Effect.fn("ConfigPaths.directoryEntries")(functi
     start: Global.Path.home,
     stop: Global.Path.home,
   })
+  const pluginGlob = (cwd: string) =>
+    afs
+      .glob("plugins/*/.yukioshi-plugin.json", {
+        cwd,
+        absolute: true,
+        dot: true,
+      })
+      .pipe(
+        Effect.map((files) => files.map((file) => path.dirname(file))),
+        Effect.catch(() => Effect.succeed([] as string[])),
+      )
+  const pluginDirs = yield* pluginGlob(Global.Path.config)
+  const explicitPluginDirs = Flag.YUKIOSHI_CONFIG_DIR ? yield* pluginGlob(Flag.YUKIOSHI_CONFIG_DIR) : []
   const candidates: DirectoryEntry[] = [
     { path: Global.Path.config, scope: "global" },
+    ...pluginDirs.map((dir): DirectoryEntry => ({ path: dir, scope: "global" })),
+    ...explicitPluginDirs.map((dir): DirectoryEntry => ({ path: dir, scope: "explicit" })),
     ...project.map((path): DirectoryEntry => ({ path, scope: "project" })),
     ...home.map((path): DirectoryEntry => ({ path, scope: "global" })),
     ...(Flag.YUKIOSHI_CONFIG_DIR ? [{ path: Flag.YUKIOSHI_CONFIG_DIR, scope: "explicit" as const }] : []),

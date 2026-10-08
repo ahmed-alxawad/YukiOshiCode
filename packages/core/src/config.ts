@@ -184,8 +184,19 @@ const layer = Layer.effect(
             stop: location.project.directory,
           })
           .pipe(Effect.orDie)
+    const pluginDirectories = yield* fs
+      .glob("plugins/*/.yukioshi-plugin.json", {
+        cwd: global.config,
+        absolute: true,
+        dot: true,
+      })
+      .pipe(
+        Effect.map((files) => files.map((file) => AbsolutePath.make(path.dirname(file)))),
+        Effect.catch(() => Effect.succeed([] as AbsolutePath[])),
+      )
     const directories = [
       globalDirectory,
+      ...pluginDirectories,
       ...discovered
         .filter((item) => directoryNames.includes(path.basename(item)))
         .toReversed()

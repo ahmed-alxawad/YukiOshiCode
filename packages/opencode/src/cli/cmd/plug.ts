@@ -175,15 +175,53 @@ export function createPlugTask(input: PlugInput, dep: PlugDeps = defaultPlugDeps
   }
 }
 
+import { ClaudePlugin } from "../../plugin/claude"
+import { CliError, fail } from "../effect-cmd"
+
+function userFacing<A>(run: () => Promise<A>) {
+  return Effect.tryPromise({
+    try: run,
+    catch: (error) => new CliError({ message: error instanceof Error ? error.message : String(error) }),
+  })
+}
+
+export type PlugCmdArgs = {
+  action?: string
+  target?: string
+  extra?: string
+  name?: string
+  module?: string
+  global?: boolean
+  force?: boolean
+}
+
+import type { Argv } from "yargs"
+
 export const PluginCommand = effectCmd({
-  command: "plugin <module>",
+  command: "plugin [action] [target] [extra]",
   aliases: ["plug"],
-  describe: "install plugin and update config",
-  builder: (yargs) =>
+  describe: "install, list, or remove plugins (npm packages, or Claude Code plugins/marketplaces from git)",
+  instance: (args: PlugCmdArgs) => {
+    const act = String(args.action ?? "").toLowerCase().trim()
+    return !["add", "list", "remove", "rm"].includes(act)
+  },
+  builder: (yargs: Argv) =>
     yargs
-      .positional("module", {
+      .positional("action", {
         type: "string",
-        describe: "npm module name",
+        describe: "subcommand (add, list, remove) or npm module name",
+      })
+      .positional("target", {
+        type: "string",
+        describe: "git URL or marketplace repository (for add), or plugin name (for remove)",
+      })
+      .positional("extra", {
+        type: "string",
+        describe: "plugin name within marketplace (for add)",
+      })
+      .option("name", {
+        type: "string",
+        describe: "folder name to install under (add); defaults to the plugin name",
       })
       .option("global", {
         alias: ["g"],
@@ -197,8 +235,74 @@ export const PluginCommand = effectCmd({
         default: false,
         describe: "replace existing plugin version",
       }),
-  handler: Effect.fn("Cli.plug")(function* (args) {
-    const mod = String(args.module ?? "").trim()
+  handler: Effect.fn("Cli.plug")(function* (args: PlugCmdArgs) {
+    const rawAction = String(args.action ?? "").trim()
+    const action = rawAction.toLowerCase()
+
+    if (action === "list") {
+      const items = yield* userFacing(() => ClaudePlugin.list())
+      if (!items.length) {
+        UI.println("No plugins installed from git. Add one with: yukioshi plugin add <git-url>")
+        return
+      }
+      for (const item of items) {
+        UI.println(`${item.name}  ${item.url}`)
+        if (item.commands.length) UI.println(`  commands: ${item.commands.join(", ")}`)
+        if (item.agents.length) UI.println(`  agents: ${item.agents.join(", ")}`)
+        if (item.skills.length) UI.println(`  skills: ${item.skills.join(", ")}`)
+      }
+      return
+    }
+
+    if (action === "add") {
+      if (!args.target) return yield* fail("plugin add needs a git URL or marketplace repository")
+      const result = yield* userFacing(() => ClaudePlugin.add({ url: args.target!, plugin: args.extra, name: args.name }))
+      if (result.type === "marketplace") {
+        UI.println(`Marketplace: ${result.name} (${result.url})`)
+        if (result.description) UI.println(result.description)
+        UI.empty()
+        UI.println("Available plugins:")
+        for (const p of result.plugins) {
+          UI.println(`  ${p.name}${p.description ? `: ${p.description}` : ""}`)
+        }
+        UI.empty()
+        UI.println(`To install a plugin: yukioshi plugin add ${result.url} <plugin-name>`)
+        return
+      }
+
+      const p = result.plugin
+      UI.println(`Installed plugin ${p.name} from ${p.url}`)
+      if (p.commands.length) UI.println(`  Commands: ${p.commands.join(", ")}`)
+      if (p.agents.length) UI.println(`  Agents: ${p.agents.join(", ")}`)
+      if (p.skills.length) UI.println(`  Skills: ${p.skills.join(", ")}`)
+      for (const [agent, fields] of Object.entries(p.droppedFields)) {
+        if (fields.length) UI.println(`  Agent ${agent}: dropped unknown fields (${fields.join(", ")})`)
+      }
+      if (p.skippedHooks.length) {
+        UI.println(`  Hooks (not installed: runs programs):`)
+        for (const h of p.skippedHooks) {
+          UI.println(`    ${h.event ?? "hook"}: ${h.command}`)
+        }
+      }
+      if (p.skippedMcp.length) {
+        UI.println(`  MCP servers (not installed: runs programs):`)
+        for (const m of p.skippedMcp) {
+          UI.println(`    ${m.name ?? "server"}: ${m.command}`)
+        }
+      }
+      UI.println("Only skills, commands, and agents were installed; no programs or hooks were enabled.")
+      return
+    }
+
+    if (action === "remove" || action === "rm") {
+      if (!args.target) return yield* fail("plugin remove needs a plugin name; see yukioshi plugin list")
+      yield* userFacing(() => ClaudePlugin.remove(args.target!))
+      UI.println(`Removed ${args.target}`)
+      return
+    }
+
+    // Default: treat as npm module name (existing yukioshi plugin <module> behavior)
+    const mod = rawAction || String(args.module ?? "").trim()
     if (!mod) {
       UI.error("module is required")
       process.exitCode = 1

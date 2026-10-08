@@ -137,7 +137,8 @@ interval; see [Features](features.md#loop).
 | Command                                  | Does                                     |
 | ---------------------------------------- | ---------------------------------------- |
 | `yukioshi agent create`, `agent list`    | create or list custom agents             |
-| `yukioshi plugin <module>`               | install a plugin and add it to your config |
+| `yukioshi plugin <module>`               | install an npm plugin and add it to your config |
+| `yukioshi plugin add <git-url> [plugin]`, `plugin list`, `plugin remove <name>` | install, list, or remove skills, commands, and agents from Claude Code plugins or marketplaces (see [Features](features.md#claude-code-plugins-and-marketplaces)) |
 | `yukioshi mcp add`, `list`, `auth`, `logout`, `debug` | manage MCP servers and their sign-in |
 | `yukioshi skill add <git-url> [--name <name>]`, `skill list`, `skill remove <name>` | install, list, or remove skills from a git repository (see [Skills](skills.md#installing-skills-from-git)) |
 
