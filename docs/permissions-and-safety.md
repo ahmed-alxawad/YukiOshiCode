@@ -148,6 +148,26 @@ system's sandbox: bubblewrap on Linux (install the `bubblewrap` package) and
   is `"allow"`.
 - YukiOshi's file-editing tools (`edit`, `write`, and `apply_patch`) are held
   to the same boundary.
+- YukiOshi's own configuration, state (project trust, audit log, schedules),
+  installed binaries and credentials stay read-only, even though they are
+  YukiOshi's folders, so a command cannot turn the sandbox off or pre-approve
+  itself. List one in `writablePaths` to opt it back in.
+
+What the sandbox does not do:
+
+- It restricts writing, not reading. Commands can read any file your user can,
+  including `~/.ssh`, and they receive YukiOshi's environment variables,
+  including API keys. With the default `"network": "allow"` they can send what
+  they read anywhere.
+- Only the shell command is sandboxed. Hooks, local MCP servers, language
+  servers, formatters, and webhooks run outside it.
+- On Linux, host unix sockets for D-Bus, Docker, SSH agents, and tmux are
+  hidden, but other sockets you keep in your home directory are not. On
+  `"network": "allow"` the command shares the host's network, including
+  abstract sockets.
+- `/tmp` is the host's and read-only except `/tmp/yukioshi`.
+- There is no memory or process limit; a command ends at its timeout (two
+  minutes by default).
 
 ## Hard blocks
 
