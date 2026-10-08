@@ -30,6 +30,39 @@ export function goalExitCode(
   return undefined
 }
 
+const MAX_SCHEMA_SIZE = 65_536
+const MAX_SCHEMA_DEPTH = 32
+
+function validateSchemaSecurity(value: unknown, depth = 0): void {
+  if (depth > MAX_SCHEMA_DEPTH) {
+    throw new Error("--output-schema exceeds maximum nesting depth")
+  }
+  if (!value || typeof value !== "object") return
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      validateSchemaSecurity(item, depth + 1)
+    }
+    return
+  }
+  const obj = value as Record<string, unknown>
+  for (const [key, val] of Object.entries(obj)) {
+    if (key === "$ref" && typeof val === "string") {
+      const ref = val.trim()
+      if (
+        ref.startsWith("http:") ||
+        ref.startsWith("https:") ||
+        ref.startsWith("file:") ||
+        ref.startsWith("ftp:") ||
+        ref.startsWith("//") ||
+        /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(ref)
+      ) {
+        throw new Error(`--output-schema must not contain remote or external $ref references ("${ref}")`)
+      }
+    }
+    validateSchemaSecurity(val, depth + 1)
+  }
+}
+
 /** Reads --output-schema: inline JSON when the value starts with "{", otherwise a file. */
 export async function readOutputSchema(value: string, cwd = process.cwd()): Promise<Record<string, unknown>> {
   const inline = value.trim().startsWith("{")
@@ -40,6 +73,9 @@ export async function readOutputSchema(value: string, cwd = process.cwd()): Prom
         .catch(() => {
           throw new Error(`Cannot read the --output-schema file ${value}`)
         })
+  if (Buffer.byteLength(text, "utf-8") > MAX_SCHEMA_SIZE) {
+    throw new Error("--output-schema is too large (maximum 64 KB)")
+  }
   let schema: unknown
   try {
     schema = JSON.parse(text)
@@ -48,6 +84,7 @@ export async function readOutputSchema(value: string, cwd = process.cwd()): Prom
   }
   if (!schema || typeof schema !== "object" || Array.isArray(schema))
     throw new Error("--output-schema must be a JSON Schema object")
+  validateSchemaSecurity(schema)
   return schema as Record<string, unknown>
 }
 

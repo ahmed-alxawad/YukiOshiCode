@@ -37,6 +37,36 @@ describe("run outcome", () => {
     await expect(readOutputSchema("list.json", dir)).rejects.toThrow("must be a JSON Schema object")
   })
 
+  test("--output-schema rejects remote $ref URLs and external references", async () => {
+    await expect(readOutputSchema('{"type":"object","$ref":"https://evil.example.com/schema.json"}')).rejects.toThrow(
+      "must not contain remote or external $ref references",
+    )
+    await expect(readOutputSchema('{"type":"object","$ref":"http://169.254.169.254/latest/meta-data/"}')).rejects.toThrow(
+      "must not contain remote or external $ref references",
+    )
+    await expect(readOutputSchema('{"type":"object","$ref":"file:///etc/passwd"}')).rejects.toThrow(
+      "must not contain remote or external $ref references",
+    )
+    await expect(
+      readOutputSchema('{"type":"object","properties":{"user":{"$ref":"https://evil.com/user"}}}'),
+    ).rejects.toThrow("must not contain remote or external $ref references")
+    // Local in-schema references are allowed
+    expect(
+      await readOutputSchema('{"type":"object","properties":{"user":{"$ref":"#/$defs/user"}},"$defs":{"user":{"type":"string"}}}'),
+    ).toMatchObject({ type: "object" })
+  })
+
+  test("--output-schema rejects oversized and deeply nested schemas", async () => {
+    const huge = JSON.stringify({ type: "object", description: "a".repeat(70_000) })
+    await expect(readOutputSchema(huge)).rejects.toThrow("too large")
+
+    let deep: Record<string, unknown> = { type: "string" }
+    for (let i = 0; i < 35; i++) {
+      deep = { type: "object", properties: { nested: deep } }
+    }
+    await expect(readOutputSchema(JSON.stringify(deep))).rejects.toThrow("exceeds maximum nesting depth")
+  })
+
   test("dollars shows small amounts with more precision", () => {
     expect(dollars(2.5)).toBe("$2.50")
     expect(dollars(0.0123)).toBe("$0.0123")
