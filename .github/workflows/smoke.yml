@@ -1,0 +1,85 @@
+name: Smoke
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build binaries
+        working-directory: packages/opencode
+        env:
+          YUKIOSHI_CHANNEL: latest
+        run: bun run script/build.ts --skip-embed-web-ui
+
+      - name: Upload Linux x64 binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: yukioshi-linux-x64
+          path: packages/opencode/dist/yukioshi-linux-x64/bin/yukioshi
+
+      - name: Upload Windows x64 binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: yukioshi-windows-x64
+          path: packages/opencode/dist/yukioshi-windows-x64/bin/yukioshi.exe
+
+      - name: Upload macOS ARM64 binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: yukioshi-darwin-arm64
+          path: packages/opencode/dist/yukioshi-darwin-arm64/bin/yukioshi
+
+  smoke:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: yukioshi-linux-x64
+            binary: yukioshi
+          - os: windows-latest
+            artifact: yukioshi-windows-x64
+            binary: yukioshi.exe
+          - os: macos-14
+            artifact: yukioshi-darwin-arm64
+            binary: yukioshi
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+
+      - name: Download native binary
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: bin
+
+      - name: Run cross-platform smoke tests
+        shell: bash
+        run: |
+          BIN="./bin/${{ matrix.binary }}"
+          if [ -f "$BIN" ]; then
+            chmod +x "$BIN"
+          fi
+          bun packages/opencode/script/smoke.ts "$BIN"
