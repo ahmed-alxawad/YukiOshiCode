@@ -39,15 +39,36 @@ export function summarize(input: Record<string, unknown> | undefined) {
   return short(JSON.stringify(value))
 }
 
-export async function writeEntry(entry: Record<string, unknown>, directory?: string) {
+export function sanitizeField(value: unknown): unknown {
+  if (typeof value === "string") {
+    return short(value)
+  }
+  if (Array.isArray(value)) {
+    return value.map(sanitizeField)
+  }
+  if (value && typeof value === "object") {
+    const result: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      result[k] = sanitizeField(v)
+    }
+    return result
+  }
+  return value
+}
+
+export async function writeEntry(entry: Record<string, unknown>, directory?: string, logDir = root()) {
   const now = new Date()
-  const target = file(now)
+  const target = file(now, logDir)
   await fs.mkdir(path.dirname(target), { recursive: true, mode: 0o700 })
+  await fs.chmod(path.dirname(target), 0o700).catch(() => {})
+  const cleanEntry = sanitizeField(entry) as Record<string, unknown>
+  const cleanDir = directory ? (sanitizeField(directory) as string) : undefined
   await fs.appendFile(
     target,
-    JSON.stringify({ time: now.toISOString(), ...(directory ? { directory } : {}), ...entry }) + "\n",
+    JSON.stringify({ time: now.toISOString(), ...(cleanDir ? { directory: cleanDir } : {}), ...cleanEntry }) + "\n",
     { mode: 0o600 },
   )
+  await fs.chmod(target, 0o600).catch(() => {})
 }
 
 type ToolPart = {
@@ -79,11 +100,15 @@ const layer = Layer.effect(
             const now = new Date()
             const target = file(now)
             await fs.mkdir(path.dirname(target), { recursive: true, mode: 0o700 })
+            await fs.chmod(path.dirname(target), 0o700).catch(() => {})
+            const cleanEntry = sanitizeField(entry) as Record<string, unknown>
+            const cleanDir = sanitizeField(ctx.directory) as string
             await fs.appendFile(
               target,
-              JSON.stringify({ time: now.toISOString(), directory: ctx.directory, ...entry }) + "\n",
+              JSON.stringify({ time: now.toISOString(), directory: cleanDir, ...cleanEntry }) + "\n",
               { mode: 0o600 },
             )
+            await fs.chmod(target, 0o600).catch(() => {})
           }).pipe(Effect.catchCause((cause) => Effect.logWarning("audit log write failed", { cause })))
 
         const unsubscribe = yield* events.listen((event) => {
