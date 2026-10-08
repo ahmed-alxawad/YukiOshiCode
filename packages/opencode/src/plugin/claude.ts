@@ -80,6 +80,25 @@ export type AddResult =
 
 export const root = () => path.join(Global.Path.config, "plugins")
 
+const MAX_REPO_SIZE = 50 * 1024 * 1024 // 50 MB
+
+export function validateGitUrl(raw: string): string {
+  const url = raw.trim()
+  if (!url || url.startsWith("-")) {
+    throw new Error(`Not a git URL: ${raw}`)
+  }
+  if (/^file:(?:\/\/)?/i.test(url)) {
+    throw new Error(`Git URLs cannot use the file:// protocol: ${raw}`)
+  }
+  if (/[\s\r\n\x00-\x1f]/.test(url)) {
+    throw new Error(`Git URL cannot contain whitespace or control characters: ${raw}`)
+  }
+  if (/:\/\/-/.test(url) || /@-/.test(url)) {
+    throw new Error(`Git URL host cannot start with '-': ${raw}`)
+  }
+  return url
+}
+
 export function nameFromUrl(url: string): string {
   const last = url.replace(/[\\/]+$/, "").split(/[\\/:]/).pop() ?? ""
   return last.replace(/\.git$/, "")
@@ -112,6 +131,17 @@ async function walk(dir: string, visit: (file: string, entry: import("fs").Diren
     await visit(file, entry)
     if (entry.isDirectory()) await walk(file, visit)
   }
+}
+
+async function dirSize(dir: string): Promise<number> {
+  let total = 0
+  await walk(dir, async (file, entry) => {
+    if (entry.isFile()) {
+      const s = await fs.stat(file).catch(() => undefined)
+      if (s) total += s.size
+    }
+  })
+  return total
 }
 
 async function exists(file: string): Promise<boolean> {
@@ -454,6 +484,9 @@ async function installFromDirectory(input: {
       for (const entry of entries) {
         if (!entry.isDirectory()) continue
         const subSrc = path.join(skillsSourceDir, entry.name)
+        const srcSkillMd = path.join(subSrc, "SKILL.md")
+        const stat = await fs.lstat(srcSkillMd).catch(() => undefined)
+        if (!stat || !stat.isFile() || stat.isSymbolicLink()) continue
         const subDest = path.join(destSkills, entry.name)
         await fs.cp(subSrc, subDest, { recursive: true })
         // Check for SKILL.md
@@ -464,7 +497,9 @@ async function installFromDirectory(input: {
           let skillName = entry.name
           if (parsed && typeof parsed.data.name === "string" && parsed.data.name.trim()) {
             skillName = parsed.data.name.trim()
-          } else {
+          }
+          if (!NAME.test(skillName)) continue
+          if (!parsed || !parsed.data.name) {
             // Inject name if missing
             const updated = matter.stringify(parsed ? parsed.content : content, {
               ...(parsed ? parsed.data : {}),
@@ -478,21 +513,24 @@ async function installFromDirectory(input: {
     } else {
       // Check for single root SKILL.md
       const rootSkill = path.join(dir, "SKILL.md")
-      if (await exists(rootSkill)) {
-        const destSkills = path.join(stage, "skills", name)
-        await fs.mkdir(destSkills, { recursive: true })
-        await fs.cp(rootSkill, path.join(destSkills, "SKILL.md"))
+      const stat = await fs.lstat(rootSkill).catch(() => undefined)
+      if (stat && stat.isFile() && !stat.isSymbolicLink()) {
         const content = await fs.readFile(rootSkill, "utf8").catch(() => "")
         const parsed = ConfigMarkdownCore.parseOption(content)
         const skillName = (parsed && typeof parsed.data.name === "string" && parsed.data.name.trim()) || name
-        if (!parsed || !parsed.data.name) {
-          const updated = matter.stringify(parsed ? parsed.content : content, {
-            ...(parsed ? parsed.data : {}),
-            name: skillName,
-          })
-          await fs.writeFile(path.join(destSkills, "SKILL.md"), updated)
+        if (NAME.test(skillName)) {
+          const destSkills = path.join(stage, "skills", name)
+          await fs.mkdir(destSkills, { recursive: true })
+          await fs.cp(rootSkill, path.join(destSkills, "SKILL.md"))
+          if (!parsed || !parsed.data.name) {
+            const updated = matter.stringify(parsed ? parsed.content : content, {
+              ...(parsed ? parsed.data : {}),
+              name: skillName,
+            })
+            await fs.writeFile(path.join(destSkills, "SKILL.md"), updated)
+          }
+          installedSkills.push(skillName)
         }
-        installedSkills.push(skillName)
       }
     }
 
@@ -516,6 +554,8 @@ async function installFromDirectory(input: {
       const entries = await fs.readdir(cmdSourceDir, { withFileTypes: true }).catch(() => [])
       for (const entry of entries) {
         if (!entry.isFile() || !entry.name.endsWith(".md")) continue
+        const cmdName = entry.name.replace(/\.md$/, "")
+        if (!NAME.test(cmdName)) continue
         const fileSrc = path.join(cmdSourceDir, entry.name)
         const text = await fs.readFile(fileSrc, "utf8").catch(() => "")
         const parsed = ConfigMarkdownCore.parse(text)
@@ -523,7 +563,6 @@ async function installFromDirectory(input: {
         for (const [k, v] of Object.entries(parsed.data)) {
           if (KNOWN_COMMAND_KEYS.has(k)) data[k] = v
         }
-        const cmdName = entry.name.replace(/\.md$/, "")
         const destFile = path.join(destCmd, entry.name)
         const sanitized = matter.stringify(parsed.content.trim(), data)
         await fs.writeFile(destFile, sanitized)
@@ -552,6 +591,8 @@ async function installFromDirectory(input: {
       const entries = await fs.readdir(agentSourceDir, { withFileTypes: true }).catch(() => [])
       for (const entry of entries) {
         if (!entry.isFile() || !entry.name.endsWith(".md")) continue
+        const agentName = entry.name.replace(/\.md$/, "")
+        if (!NAME.test(agentName)) continue
         const fileSrc = path.join(agentSourceDir, entry.name)
         const text = await fs.readFile(fileSrc, "utf8").catch(() => "")
         const parsed = ConfigMarkdownCore.parse(text)
@@ -567,7 +608,6 @@ async function installFromDirectory(input: {
         if (data.mode === undefined) {
           data.mode = "subagent"
         }
-        const agentName = entry.name.replace(/\.md$/, "")
         if (dropped.length > 0) {
           droppedFields[agentName] = dropped
         }
@@ -612,10 +652,7 @@ export async function add(input: {
   plugin?: string
   name?: string
 }): Promise<AddResult> {
-  const rawUrl = input.url.trim()
-  if (!rawUrl || rawUrl.startsWith("-")) {
-    throw new Error(`Not a git URL: ${input.url}`)
-  }
+  const rawUrl = validateGitUrl(input.url)
 
   const tempRoot = path.join(Global.Path.config, ".plugin-temp")
   await fs.mkdir(tempRoot, { recursive: true })
@@ -636,9 +673,14 @@ export async function add(input: {
     await walk(clone, async (file, entry) => {
       if (entry.isSymbolicLink()) {
         symlinksRemoved.add(path.resolve(file))
-        await fs.rm(file, { force: true })
+        await fs.rm(file, { force: true, recursive: true })
       }
     })
+
+    const size = await dirSize(clone)
+    if (size > MAX_REPO_SIZE) {
+      throw new Error("Repository is too large (max 50 MB)")
+    }
 
     // Check if this repository is a marketplace
     const marketplace = await parseMarketplace(clone)

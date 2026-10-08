@@ -320,4 +320,51 @@ describe("Claude Code plugins and marketplaces", () => {
       }),
     120_000,
   )
+
+  cliIt.live(
+    "refuses hostile URLs, file:// protocol, names like .., and symlinked SKILL.md in plugin add",
+    ({ home, opencode }) =>
+      Effect.gen(function* () {
+        const secret = path.join(home, "secret.txt")
+        fs.writeFileSync(secret, "sensitive content")
+
+        // 1. Refuse file:// URLs
+        const fileRes = yield* opencode.spawn(["plugin", "add", `file://${secret}`, "--name", "fileplug"], { cwd: home })
+        expect(fileRes.exitCode).not.toBe(0)
+        expect(fileRes.stderr + fileRes.stdout).toMatch(/file:\/\//i)
+
+        // 2. Refuse URL with embedded options/whitespace
+        const spaceRes = yield* opencode.spawn(["plugin", "add", "https://github.com/foo/bar.git --upload-pack=calc", "--name", "spacer"], { cwd: home })
+        expect(spaceRes.exitCode).not.toBe(0)
+
+        // 3. Refuse URL with option-like ssh host
+        const sshRes = yield* opencode.spawn(["plugin", "add", "ssh://-oProxyCommand=calc/foo", "--name", "sshtest"], { cwd: home })
+        expect(sshRes.exitCode).not.toBe(0)
+
+        // 4. Refuse names like ".." or path traversal
+        const validRepo = bareRepo(home, "valid-plugin", {
+          "commands/hello.md": "---\ndescription: hello\n---\nHello!",
+        })
+        const dotDotName = yield* opencode.spawn(["plugin", "add", validRepo, "--name", ".."], { cwd: home })
+        expect(dotDotName.exitCode).not.toBe(0)
+        expect(fs.existsSync(path.join(home, ".config/yukioshi/plugins/valid-plugin"))).toBe(false)
+
+        const travName = yield* opencode.spawn(["plugin", "add", validRepo, "--name", "../escape"], { cwd: home })
+        expect(travName.exitCode).not.toBe(0)
+        expect(fs.existsSync(path.join(home, ".config/yukioshi/escape"))).toBe(false)
+        expect(fs.existsSync(path.join(home, ".config/yukioshi/plugins/escape"))).toBe(false)
+
+        // 5. Refuse plugin where SKILL.md is a symlink
+        const symlinkSkillRepo = bareRepo(
+          home,
+          "symlink-skill-plugin",
+          {},
+          { "skills/sym-skill/SKILL.md": secret },
+        )
+        const symResult = yield* opencode.spawn(["plugin", "add", symlinkSkillRepo, "--name", "symplug"], { cwd: home })
+        expect(symResult.exitCode).not.toBe(0)
+        expect(fs.existsSync(path.join(home, ".config/yukioshi/plugins/symplug"))).toBe(false)
+      }),
+    90_000,
+  )
 })

@@ -49,25 +49,58 @@ async function walk(dir: string, visit: (file: string, entry: import("fs").Diren
   }
 }
 
+const MAX_REPO_SIZE = 50 * 1024 * 1024 // 50 MB
+
+export function validateGitUrl(raw: string): string {
+  const url = raw.trim()
+  if (!url || url.startsWith("-")) {
+    throw new Error(`Not a git URL: ${raw}`)
+  }
+  if (/^file:(?:\/\/)?/i.test(url)) {
+    throw new Error(`Git URLs cannot use the file:// protocol: ${raw}`)
+  }
+  if (/[\s\r\n\x00-\x1f]/.test(url)) {
+    throw new Error(`Git URL cannot contain whitespace or control characters: ${raw}`)
+  }
+  if (/:\/\/-/.test(url) || /@-/.test(url)) {
+    throw new Error(`Git URL host cannot start with '-': ${raw}`)
+  }
+  return url
+}
+
+async function dirSize(dir: string): Promise<number> {
+  let total = 0
+  await walk(dir, async (file, entry) => {
+    if (entry.isFile()) {
+      const s = await fs.stat(file).catch(() => undefined)
+      if (s) total += s.size
+    }
+  })
+  return total
+}
+
 async function skillNames(dir: string) {
   const names: string[] = []
   const realDir = await fs.realpath(dir).catch(() => dir)
   await walk(dir, async (file, entry) => {
-    if (!entry.isFile() || entry.name !== "SKILL.md") return
+    if (entry.isSymbolicLink() || !entry.isFile() || entry.name !== "SKILL.md") return
+    const lstat = await fs.lstat(file).catch(() => undefined)
+    if (!lstat || lstat.isSymbolicLink() || !lstat.isFile()) return
     const realFile = await fs.realpath(file).catch(() => undefined)
     if (!realFile || path.relative(realDir, realFile).startsWith("..")) return
     const text = await fs.readFile(file, "utf8")
     const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)
     const declared = match ? /^name:\s*["']?([^"'\r\n]+?)["']?\s*$/m.exec(match[1])?.[1] : undefined
-    if (declared && (declared.includes("/") || declared.includes("\\") || declared.includes(".."))) return
-    names.push(declared ?? path.basename(path.dirname(file)))
+    if (declared && (declared.includes("/") || declared.includes("\\") || declared.includes("..") || !NAME.test(declared))) return
+    const fallback = path.basename(path.dirname(file))
+    if (!NAME.test(fallback)) return
+    names.push(declared ?? fallback)
   })
   return names
 }
 
 export async function add(input: { url: string; name?: string }): Promise<Installed> {
-  const url = input.url.trim()
-  if (!url || url.startsWith("-")) throw new Error(`Not a git URL: ${input.url}`)
+  const url = validateGitUrl(input.url)
   const name = input.name ?? nameFromUrl(url)
   if (!NAME.test(name)) throw new Error(`Invalid skill name "${name}"; use letters, digits, ".", "_" or "-" (pass --name)`)
 
@@ -88,8 +121,11 @@ export async function add(input: { url: string; name?: string }): Promise<Instal
 
     await fs.rm(path.join(clone, ".git"), { recursive: true, force: true })
     await walk(clone, async (file, entry) => {
-      if (entry.isSymbolicLink()) await fs.rm(file, { force: true })
+      if (entry.isSymbolicLink()) await fs.rm(file, { force: true, recursive: true })
     })
+
+    const size = await dirSize(clone)
+    if (size > MAX_REPO_SIZE) throw new Error(`Repository is too large (max 50 MB)`)
 
     const found = await skillNames(clone)
     if (found.length === 0) throw new Error("This repository has no SKILL.md, so there is nothing to install")
@@ -99,7 +135,7 @@ export async function add(input: { url: string; name?: string }): Promise<Instal
     await fs.rename(clone, target)
     return { ...meta, directory: target }
   } finally {
-    await fs.rm(temp, { recursive: true, force: true })
+    await fs.rm(temp, { recursive: true, force: true }).catch(() => {})
   }
 }
 

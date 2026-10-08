@@ -115,4 +115,50 @@ describe("skill add/list/remove", () => {
       }),
     90_000,
   )
+
+  cliIt.live(
+    "refuses hostile URLs, file:// protocol, names like .., and symlinked SKILL.md",
+    ({ home, opencode }) =>
+      Effect.gen(function* () {
+        const secret = path.join(home, "secret.txt")
+        fs.writeFileSync(secret, "sensitive content")
+
+        // 1. Refuse file:// URLs
+        const fileRes = yield* opencode.spawn(["skill", "add", `file://${secret}`, "--name", "filetest"], { cwd: home })
+        expect(fileRes.exitCode).not.toBe(0)
+        expect(fileRes.stderr + fileRes.stdout).toMatch(/file:\/\//i)
+
+        // 2. Refuse URL with embedded options/whitespace
+        const spaceRes = yield* opencode.spawn(["skill", "add", "https://github.com/foo/bar.git --upload-pack=calc", "--name", "spacer"], { cwd: home })
+        expect(spaceRes.exitCode).not.toBe(0)
+
+        // 3. Refuse URL with option-like ssh host
+        const sshRes = yield* opencode.spawn(["skill", "add", "ssh://-oProxyCommand=calc/foo", "--name", "sshtest"], { cwd: home })
+        expect(sshRes.exitCode).not.toBe(0)
+
+        // 4. Refuse names like ".." or path traversal
+        const validRepo = bareRepo(home, "valid-skills", { "SKILL.md": skillMd("valid-skill") })
+        const dotDotName = yield* opencode.spawn(["skill", "add", validRepo, "--name", ".."], { cwd: home })
+        expect(dotDotName.exitCode).not.toBe(0)
+        expect(fs.existsSync(path.join(home, ".config/yukioshi/skills/valid-skills"))).toBe(false)
+        expect(fs.existsSync(path.join(home, ".config/yukioshi/skills/valid-skill"))).toBe(false)
+
+        const travName = yield* opencode.spawn(["skill", "add", validRepo, "--name", "../escape"], { cwd: home })
+        expect(travName.exitCode).not.toBe(0)
+        expect(fs.existsSync(path.join(home, ".config/yukioshi/escape"))).toBe(false)
+        expect(fs.existsSync(path.join(home, ".config/yukioshi/skills/escape"))).toBe(false)
+
+        // 5. Refuse repo where SKILL.md is a symlink
+        const symlinkSkillRepo = bareRepo(
+          home,
+          "symlink-skill-repo",
+          {},
+          { "SKILL.md": secret },
+        )
+        const symResult = yield* opencode.spawn(["skill", "add", symlinkSkillRepo, "--name", "symskill"], { cwd: home })
+        expect(symResult.exitCode).not.toBe(0)
+        expect(fs.existsSync(path.join(home, ".config/yukioshi/skills/symskill"))).toBe(false)
+      }),
+    90_000,
+  )
 })
