@@ -698,7 +698,7 @@ const layer = Layer.effect(
       const config = effectiveMcpConfig(cfg)
       const defaultTimeout = cfg.experimental?.mcp_timeout
 
-      for (const [clientName, client] of Object.entries(s.clients)) {
+      for (const [clientName, client] of Object.entries(s.clients).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
         if (s.status[clientName]?.status !== "connected") continue
         const mcpConfig = config[clientName]
         const listed = s.defs[clientName]
@@ -708,7 +708,14 @@ const layer = Layer.effect(
         }
         const timeout = requestTimeout(s, clientName, mcpConfig, defaultTimeout)
         for (const def of listed) {
-          result[McpCatalog.toolName(clientName, def.name)] = { def, client, timeout }
+          // Names are sanitized, so distinct tools can map to one key (server "a" tool "b_c" vs server
+          // "a_b" tool "c"). The first registration wins; a later server must not take over its calls.
+          const key = McpCatalog.toolName(clientName, def.name)
+          if (Object.hasOwn(result, key)) {
+            yield* Effect.logWarning("MCP tool skipped: name already taken", { key, server: clientName, tool: def.name })
+            continue
+          }
+          result[key] = { def, client, timeout }
         }
       }
       return result

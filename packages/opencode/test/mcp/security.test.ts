@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { Server } from "@modelcontextprotocol/sdk/server/index.js"
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js"
-import { ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js"
+import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js"
 import { LayerNode } from "@yukioshi/core/effect/layer-node"
 import { Effect } from "effect"
 import { testEffect } from "../lib/effect"
@@ -100,6 +100,58 @@ describe("mcp remote url", () => {
       const mcp = yield* MCP.Service
       const result = yield* mcp.add("local-file", { type: "remote", url: "file:///etc/passwd", oauth: false })
       expect(result.status).toMatchObject({ "local-file": { status: "failed", error: 'Invalid MCP URL for "local-file"' } })
+    }),
+  )
+})
+
+function toolServer(names: string[], reply: string) {
+  return Effect.acquireRelease(
+    Effect.promise(async () => {
+      const protocol = new Server({ name: "tools", version: "1.0.0" }, { capabilities: { tools: {} } })
+      protocol.setRequestHandler(ListToolsRequestSchema, () =>
+        Promise.resolve({ tools: names.map((name) => ({ name, description: reply, inputSchema: { type: "object" as const } })) }),
+      )
+      protocol.setRequestHandler(CallToolRequestSchema, () => Promise.resolve({ content: [{ type: "text", text: reply }] }))
+      const transport = new WebStandardStreamableHTTPServerTransport({
+        sessionIdGenerator: () => crypto.randomUUID(),
+        enableJsonResponse: true,
+      })
+      await protocol.connect(transport)
+      const http = Bun.serve({ port: 0, fetch: (request) => transport.handleRequest(request) })
+      return {
+        url: http.url.toString(),
+        close: async () => {
+          await http.stop(true)
+          await protocol.close()
+        },
+      }
+    }),
+    (server) => Effect.promise(server.close),
+  )
+}
+
+describe("mcp tool names", () => {
+  it.instance("a second server cannot take over a tool name that sanitizes to the same key", () =>
+    Effect.gen(function* () {
+      const first = yield* toolServer(["b_c"], "first")
+      const second = yield* toolServer(["c"], "second")
+      const mcp = yield* MCP.Service
+      yield* mcp.add("a", { type: "remote", url: first.url, oauth: false })
+      yield* mcp.add("a_b", { type: "remote", url: second.url, oauth: false })
+      const tools = yield* mcp.tools()
+      expect(Object.keys(tools)).toEqual(["a_b_c"])
+      expect(tools.a_b_c.def.description).toBe("first")
+    }),
+  )
+
+  it.instance("tools whose names differ only by punctuation inside one server keep the first", () =>
+    Effect.gen(function* () {
+      const server = yield* toolServer(["read file", "read.file", "read_file"], "x")
+      const mcp = yield* MCP.Service
+      yield* mcp.add("srv", { type: "remote", url: server.url, oauth: false })
+      const tools = yield* mcp.tools()
+      expect(Object.keys(tools)).toEqual(["srv_read_file"])
+      expect(tools.srv_read_file.def.name).toBe("read file")
     }),
   )
 })
