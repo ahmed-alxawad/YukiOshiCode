@@ -16,7 +16,7 @@ import { Config } from "@/config/config"
 import { InstanceState } from "@/effect/instance-state"
 import type { TaskPromptOps } from "@/tool/task"
 import { type Tool as AITool, tool, jsonSchema, type ToolExecutionOptions, asSchema } from "ai"
-import { Effect } from "effect"
+import { Cause, Effect } from "effect"
 import { MessageV2 } from "./message-v2"
 import { Session } from "./session"
 import { SessionProcessor } from "./processor"
@@ -521,6 +521,19 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
             return yield* withTimeout(
               key,
               Effect.promise(() => execute(args, opts)),
+            ).pipe(
+              // A failing server controls the error text; it reaches the model and the session history.
+              Effect.catchCause((cause) =>
+                Cause.hasInterruptsOnly(cause)
+                  ? Effect.failCause(cause)
+                  : Effect.gen(function* () {
+                      const error = Cause.squash(cause)
+                      const redactCfg = (yield* config.get()).redact
+                      const text = Redact.mask(error instanceof Error ? error.message : String(error), redactCfg)
+                      const truncated = yield* truncate.output(text, {}, input.agent)
+                      return yield* Effect.die(new Error(truncated.content))
+                    }),
+              ),
             )
           }).pipe(
             Effect.withSpan("Tool.execute", {
@@ -576,14 +589,15 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
             }
           }
 
-          const truncated = yield* truncate.output(textParts.join("\n\n"), {}, input.agent)
+          // Mask before truncating: the full text of a truncated result is written to a file the model can read.
+          const redactCfg = (yield* config.get()).redact
+          const truncated = yield* truncate.output(Redact.mask(textParts.join("\n\n"), redactCfg), {}, input.agent)
           const metadata = {
             ...result.metadata,
             truncated: truncated.truncated,
             ...(truncated.truncated && { outputPath: truncated.outputPath }),
           }
 
-          const redactCfg = (yield* config.get()).redact
           const rawMcpOutput = withRepeatNote(key, args, { output: truncated.content }).output
           const output = {
             title: "",
