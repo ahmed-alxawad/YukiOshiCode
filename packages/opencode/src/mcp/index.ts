@@ -34,6 +34,7 @@ import { CrossSpawnSpawner } from "@yukioshi/core/cross-spawn-spawner"
 import { McpCatalog } from "./catalog"
 import { McpEvent } from "@yukioshi/schema/mcp-event"
 import { McpBrowser } from "./browser"
+import { McpGuard } from "./guard"
 
 const DEFAULT_TIMEOUT = 30_000
 const CLIENT_OPTIONS = {
@@ -272,6 +273,7 @@ const layer = Layer.effect(
           transport: new StreamableHTTPClientTransport(url, {
             authProvider,
             requestInit: mcp.headers ? { headers: mcp.headers } : undefined,
+            fetch: McpGuard.sameOriginFetch(),
           }),
         },
         {
@@ -279,6 +281,7 @@ const layer = Layer.effect(
           transport: new SSEClientTransport(url, {
             authProvider,
             requestInit: mcp.headers ? { headers: mcp.headers } : undefined,
+            fetch: McpGuard.sameOriginFetch(),
           }),
         },
       ]
@@ -867,6 +870,7 @@ const layer = Layer.effect(
       const transport = new StreamableHTTPClientTransport(url, {
         authProvider,
         requestInit: mcpConfig.headers ? { headers: mcpConfig.headers } : undefined,
+        fetch: McpGuard.sameOriginFetch(),
       })
       const directory = yield* InstanceState.directory
 
