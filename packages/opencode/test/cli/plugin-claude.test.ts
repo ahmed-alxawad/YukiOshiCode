@@ -20,7 +20,10 @@ function bareRepo(root: string, name: string, files: Record<string, string>, lin
     fs.mkdirSync(path.dirname(path.join(work, file)), { recursive: true })
     fs.writeFileSync(path.join(work, file), content)
   }
-  for (const [file, target] of Object.entries(links)) fs.symlinkSync(target, path.join(work, file))
+  for (const [file, target] of Object.entries(links)) {
+    fs.mkdirSync(path.dirname(path.join(work, file)), { recursive: true })
+    fs.symlinkSync(target, path.join(work, file))
+  }
   git(work, "init", "-q", "-b", "main")
   git(work, "add", "-A")
   git(work, "commit", "-q", "-m", "init")
@@ -254,5 +257,67 @@ describe("Claude Code plugins and marketplaces", () => {
         expect(fs.existsSync(path.join(home, ".config/yukioshi/plugins/empty-plugin"))).toBe(false)
       }),
     60_000,
+  )
+
+  cliIt.live(
+    "refuses marketplace plugins that escape repository via relative paths, absolute paths, or symlinks",
+    ({ home, opencode }) =>
+      Effect.gen(function* () {
+        const outside = path.join(home, "outside-victim")
+        fs.mkdirSync(outside, { recursive: true })
+        fs.writeFileSync(
+          path.join(outside, "SKILL.md"),
+          "---\nname: leaked-skill\ndescription: Leaked from outside\n---\nSecret data\n",
+        )
+
+        const hostileMarket = bareRepo(
+          home,
+          "hostile-market",
+          {
+            ".claude-plugin/marketplace.json": JSON.stringify({
+              name: "hostile-marketplace",
+              plugins: [
+                {
+                  name: "dotdot-plugin",
+                  source: "../outside-victim",
+                },
+                {
+                  name: "abs-plugin",
+                  source: outside,
+                },
+                {
+                  name: "symlink-plugin",
+                  source: "./plugins/symlink-escape",
+                },
+              ],
+            }),
+          },
+          {
+            "plugins/symlink-escape": outside,
+          },
+        )
+
+        // 1. Refuse "../" traversal
+        const dotdotResult = yield* opencode.spawn(["plugin", "add", hostileMarket, "dotdot-plugin"], { cwd: home })
+        expect(dotdotResult.exitCode).not.toBe(0)
+        expect(dotdotResult.stderr + dotdotResult.stdout).toMatch(/cannot contain "\.\." segments|outside/i)
+        expect(fs.existsSync(path.join(home, ".config/yukioshi/plugins/dotdot-plugin"))).toBe(false)
+        expect(fs.existsSync(path.join(home, ".config/yukioshi/plugins/leaked-skill"))).toBe(false)
+
+        // 2. Refuse absolute path
+        const absResult = yield* opencode.spawn(["plugin", "add", hostileMarket, "abs-plugin"], { cwd: home })
+        expect(absResult.exitCode).not.toBe(0)
+        expect(absResult.stderr + absResult.stdout).toMatch(/cannot be an absolute path|outside/i)
+        expect(fs.existsSync(path.join(home, ".config/yukioshi/plugins/abs-plugin"))).toBe(false)
+        expect(fs.existsSync(path.join(home, ".config/yukioshi/plugins/leaked-skill"))).toBe(false)
+
+        // 3. Refuse symlinked directory
+        const symlinkResult = yield* opencode.spawn(["plugin", "add", hostileMarket, "symlink-plugin"], { cwd: home })
+        expect(symlinkResult.exitCode).not.toBe(0)
+        expect(symlinkResult.stderr + symlinkResult.stdout).toMatch(/symbolic link|does not exist|outside/i)
+        expect(fs.existsSync(path.join(home, ".config/yukioshi/plugins/symlink-plugin"))).toBe(false)
+        expect(fs.existsSync(path.join(home, ".config/yukioshi/plugins/leaked-skill"))).toBe(false)
+      }),
+    120_000,
   )
 })

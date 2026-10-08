@@ -51,11 +51,15 @@ async function walk(dir: string, visit: (file: string, entry: import("fs").Diren
 
 async function skillNames(dir: string) {
   const names: string[] = []
+  const realDir = await fs.realpath(dir).catch(() => dir)
   await walk(dir, async (file, entry) => {
     if (!entry.isFile() || entry.name !== "SKILL.md") return
+    const realFile = await fs.realpath(file).catch(() => undefined)
+    if (!realFile || path.relative(realDir, realFile).startsWith("..")) return
     const text = await fs.readFile(file, "utf8")
     const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)
     const declared = match ? /^name:\s*["']?([^"'\r\n]+?)["']?\s*$/m.exec(match[1])?.[1] : undefined
+    if (declared && (declared.includes("/") || declared.includes("\\") || declared.includes(".."))) return
     names.push(declared ?? path.basename(path.dirname(file)))
   })
   return names

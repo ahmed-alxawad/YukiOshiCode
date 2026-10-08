@@ -175,6 +175,131 @@ function extractMcpFromJson(data: unknown): SkippedProgram[] {
   return results
 }
 
+export async function assertInsideDirectory(rootDir: string, candidate: string, label = "Path"): Promise<string> {
+  const trimmed = candidate.trim()
+  if (!trimmed) {
+    throw new Error(`${label} cannot be empty`)
+  }
+
+  // 1. Refuse absolute paths (POSIX and Windows drive / UNC)
+  if (path.isAbsolute(trimmed) || trimmed.startsWith("/") || trimmed.startsWith("\\") || /^[a-zA-Z]:[\\/]/.test(trimmed)) {
+    throw new Error(`${label} "${candidate}" cannot be an absolute path; must reside inside repository`)
+  }
+
+  // 2. Refuse ".." path segments
+  const segments = trimmed.split(/[\\/]/)
+  if (segments.includes("..")) {
+    throw new Error(`${label} "${candidate}" cannot contain ".." segments; must reside inside repository`)
+  }
+
+  // 3. Resolve candidate against root directory
+  const resolved = path.resolve(rootDir, trimmed)
+
+  // 4. Compare with path.relative
+  const rel = path.relative(rootDir, resolved)
+  if (rel.startsWith("..") || path.isAbsolute(rel)) {
+    throw new Error(`${label} "${candidate}" resolves outside repository`)
+  }
+
+  // 5. Check if it exists
+  const stat = await fs.lstat(resolved).catch(() => undefined)
+  if (!stat) {
+    throw new Error(`${label} "${candidate}" does not exist in repository`)
+  }
+
+  // 6. Refuse symlinks directly
+  if (stat.isSymbolicLink()) {
+    throw new Error(`${label} "${candidate}" is a symbolic link; symlinks are not allowed`)
+  }
+
+  // 7. Check fs.realpath on both sides to guard against any symlink escapes in parent segments
+  const realRoot = await fs.realpath(rootDir)
+  const realTarget = await fs.realpath(resolved)
+  const realRel = path.relative(realRoot, realTarget)
+  if (realRel.startsWith("..") || path.isAbsolute(realRel)) {
+    throw new Error(`${label} "${candidate}" resolves outside repository via symlink`)
+  }
+
+  return resolved
+}
+
+async function resolveInsideClone(opts: {
+  clone: string
+  candidate: string
+  pluginName: string
+  symlinksRemoved: Set<string>
+}): Promise<string> {
+  const { clone, candidate, pluginName, symlinksRemoved } = opts
+  const trimmed = candidate.trim()
+
+  // 1. Refuse absolute paths (POSIX and Windows drive / UNC)
+  if (
+    path.isAbsolute(trimmed) ||
+    trimmed.startsWith("/") ||
+    trimmed.startsWith("\\") ||
+    /^[a-zA-Z]:[\\/]/.test(trimmed)
+  ) {
+    throw new Error(
+      `Plugin source "${candidate}" for "${pluginName}" cannot be an absolute path; marketplace plugins must reside inside the repository`,
+    )
+  }
+
+  // 2. Refuse ".." segments
+  const segments = trimmed.split(/[\\/]/)
+  if (segments.includes("..")) {
+    throw new Error(
+      `Plugin source "${candidate}" for "${pluginName}" cannot contain ".." segments; marketplace plugins must reside inside the repository`,
+    )
+  }
+
+  // 3. Resolve path against clone
+  const resolved = path.resolve(clone, trimmed)
+
+  // 4. Compare with path.relative
+  const rel = path.relative(clone, resolved)
+  if (rel.startsWith("..") || path.isAbsolute(rel)) {
+    throw new Error(
+      `Plugin source "${candidate}" for "${pluginName}" resolves outside the marketplace repository clone`,
+    )
+  }
+
+  // 5. Check if it was a removed symlink or inside one
+  for (const sym of symlinksRemoved) {
+    if (resolved === sym || resolved.startsWith(sym + path.sep)) {
+      throw new Error(
+        `Plugin source "${candidate}" for "${pluginName}" is a symbolic link; symlinks are not allowed`,
+      )
+    }
+  }
+
+  // 6. Check if it exists on disk
+  const stat = await fs.lstat(resolved).catch(() => undefined)
+  if (!stat) {
+    throw new Error(
+      `Plugin directory "${candidate}" for "${pluginName}" does not exist in marketplace repository`,
+    )
+  }
+
+  // 7. Refuse symbolic link
+  if (stat.isSymbolicLink()) {
+    throw new Error(
+      `Plugin source "${candidate}" for "${pluginName}" is a symbolic link; symlinks are not allowed`,
+    )
+  }
+
+  // 8. Check fs.realpath on both sides to guard against symlink escapes
+  const realClone = await fs.realpath(clone)
+  const realTarget = await fs.realpath(resolved)
+  const realRel = path.relative(realClone, realTarget)
+  if (realRel.startsWith("..") || path.isAbsolute(realRel)) {
+    throw new Error(
+      `Plugin source "${candidate}" for "${pluginName}" resolves outside the marketplace repository clone via symlink`,
+    )
+  }
+
+  return resolved
+}
+
 async function findHooks(dir: string, manifest?: Record<string, unknown>): Promise<SkippedProgram[]> {
   const list: SkippedProgram[] = []
   const candidates = [
@@ -506,9 +631,13 @@ export async function add(input: {
       throw new Error(`git clone failed: ${result.err.trim() || `exit ${result.code}`}`)
     }
 
+    const symlinksRemoved = new Set<string>()
     await fs.rm(path.join(clone, ".git"), { recursive: true, force: true })
     await walk(clone, async (file, entry) => {
-      if (entry.isSymbolicLink()) await fs.rm(file, { force: true })
+      if (entry.isSymbolicLink()) {
+        symlinksRemoved.add(path.resolve(file))
+        await fs.rm(file, { force: true })
+      }
     })
 
     // Check if this repository is a marketplace
@@ -535,20 +664,53 @@ export async function add(input: {
       }
 
       let source = match.source
+      let isExplicitLocalPath = false
+      let isExplicitExternalUrl = false
+
       if (typeof source === "object" && source !== null) {
-        source = source.url ?? source.path ?? ""
-      }
-      if (!source) {
-        source = `./plugins/${match.name}`
+        if (typeof source.path === "string" && source.path.trim()) {
+          source = source.path.trim()
+          isExplicitLocalPath = true
+        } else if (typeof source.url === "string" && source.url.trim()) {
+          source = source.url.trim()
+          isExplicitExternalUrl = true
+        } else {
+          source = ""
+        }
+      } else if (typeof source === "string") {
+        source = source.trim()
+      } else {
+        source = ""
       }
 
-      // Check if source is a local relative directory inside this marketplace repo
-      const isRelative = source.startsWith("./") || source.startsWith("../") || (!source.includes("://") && !source.endsWith(".git"))
-      if (isRelative) {
-        const localPluginDir = path.resolve(clone, source)
-        if (!(await exists(localPluginDir))) {
-          throw new Error(`Plugin directory "${source}" for "${match.name}" does not exist in marketplace repository`)
-        }
+      if (!source) {
+        source = `./plugins/${match.name}`
+        isExplicitLocalPath = true
+      }
+
+      if (source.startsWith("file:") || source.startsWith("file://")) {
+        throw new Error(
+          `Marketplace plugin source "${source}" for "${match.name}" cannot use the file:// protocol`,
+        )
+      }
+
+      const isExternalGit =
+        !isExplicitLocalPath &&
+        (isExplicitExternalUrl ||
+          source.startsWith("https://") ||
+          source.startsWith("http://") ||
+          source.startsWith("git://") ||
+          source.startsWith("ssh://") ||
+          source.startsWith("git@") ||
+          source.endsWith(".git"))
+
+      if (!isExternalGit) {
+        const localPluginDir = await resolveInsideClone({
+          clone,
+          candidate: source,
+          pluginName: match.name,
+          symlinksRemoved,
+        })
         const installed = await installFromDirectory({
           dir: localPluginDir,
           name: input.name ?? match.name,
