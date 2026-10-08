@@ -160,6 +160,62 @@ function protectedPaths(profile: Profile, allow: ReadonlyArray<PathRule>) {
   return [...found].sort((a, b) => a.length - b.length)
 }
 
+// Unix sockets reach the host no matter which network namespace the command runs in, because they
+// are addressed through the filesystem. A command that can connect to the session bus, the systemd
+// user manager, the Docker socket, an SSH agent or tmux can have the host run anything outside the
+// sandbox, and a host resolver socket is a way out when the network is denied. These are hidden.
+const runDirectories = ["/run/user", "/run/dbus", "/run/podman", "/run/containerd", "/run/libvirt", "/run/nscd"]
+const runSockets = ["/run/docker.sock", "/run/containerd/containerd.sock", "/run/snapd.socket", "/run/snapd-snap.socket"]
+const tmpDirectories = /^(\.X11-unix|\.ICE-unix|ssh-.*|tmux-.*|dbus-.*|gpg-.*|\.dbus.*)$/
+
+function isDirectory(target: string) {
+  try {
+    return statSync(target).isDirectory()
+  } catch {
+    return false
+  }
+}
+
+function isSocket(target: string) {
+  try {
+    return statSync(target).isSocket()
+  } catch {
+    return false
+  }
+}
+
+function overlaps(allow: ReadonlyArray<PathRule>, target: string) {
+  return allow.some((rule) => beneath(rule.path, target) || beneath(target, rule.path))
+}
+
+export function hostSocketMasks(
+  allow: ReadonlyArray<PathRule>,
+  network: Profile["network"]["mode"],
+  environment: Readonly<Record<string, string | undefined>> = {},
+  tmp = "/tmp",
+) {
+  const dirs: Array<string> = []
+  const files: Array<string> = []
+  const hide = network !== "allow" && isDirectory("/run") && !overlaps(allow, "/run")
+  if (hide) dirs.push("/run")
+  else {
+    for (const dir of runDirectories) if (isDirectory(dir) && !overlaps(allow, dir)) dirs.push(dir)
+    for (const file of runSockets) if (isSocket(file) && !overlaps(allow, file)) files.push(file)
+  }
+  try {
+    for (const entry of readdirSync(tmp, { withFileTypes: true })) {
+      const target = path.join(tmp, entry.name)
+      if (overlaps(allow, target)) continue
+      if (entry.isDirectory() && tmpDirectories.test(entry.name)) dirs.push(target)
+      else if (entry.isSocket()) files.push(target)
+    }
+  } catch {}
+  const agent = environment.SSH_AUTH_SOCK
+  if (agent && path.isAbsolute(agent) && isSocket(agent) && !overlaps(allow, agent)) files.push(agent)
+  const covered = (target: string) => dirs.some((dir) => dir !== target && beneath(dir, target))
+  return { dirs: dirs.filter((dir) => !covered(dir)), files: [...new Set(files)].filter((file) => !covered(file)) }
+}
+
 export function generate(
   profile: Profile,
   launch: Launch,
@@ -194,6 +250,9 @@ export function generate(
 
   for (const rule of allow) args.push("--bind", rule.path, rule.path)
   for (const target of protectedPaths(profile, allow)) args.push("--ro-bind", target, target)
+  const masks = hostSocketMasks(allow, profile.network.mode, launch.environment)
+  for (const dir of masks.dirs) args.push("--tmpfs", dir)
+  for (const file of masks.files) args.push("--ro-bind", "/dev/null", file)
   if (proxy?.socket) args.push("--ro-bind", proxy.socket, proxy.socket)
   args.push("--proc", "/proc")
   if (launch.cwd) args.push("--chdir", launch.cwd)
