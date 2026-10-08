@@ -422,11 +422,11 @@ describe("delegate: ACP client execution with mock agent", () => {
   })
 
   test("assertInCwd confines file paths to cwd", () => {
-    const cwd = "/workspace/project"
-    expect(assertInCwd("src/index.ts", cwd)).toBe("/workspace/project/src/index.ts")
-    expect(assertInCwd("/workspace/project/README.md", cwd)).toBe("/workspace/project/README.md")
+    const cwd = path.resolve("/workspace/project")
+    expect(assertInCwd("src/index.ts", cwd)).toBe(path.join(cwd, "src/index.ts"))
+    expect(assertInCwd(path.join(cwd, "README.md"), cwd)).toBe(path.join(cwd, "README.md"))
     expect(() => assertInCwd("../evil.txt", cwd)).toThrow("resolves outside project directory")
-    expect(() => assertInCwd("/etc/passwd", cwd)).toThrow("resolves outside project directory")
+    expect(() => assertInCwd(path.resolve("/etc/passwd"), cwd)).toThrow("resolves outside project directory")
     expect(() => assertInCwd("../../.bashrc", cwd)).toThrow("resolves outside project directory")
   })
 })

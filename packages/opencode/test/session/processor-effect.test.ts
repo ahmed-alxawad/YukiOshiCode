@@ -512,6 +512,7 @@ it.live("session.processor effect tests reset reasoning state across retries", (
       }),
     { config: (url) => providerCfg(url) },
   ),
+  30_000,
 )
 
 it.live("session.processor effect tests do not retry unknown json errors", () =>

@@ -7,7 +7,12 @@ import { reply } from "../lib/llm-server"
 import { config, globalConfig, runtimeEnv } from "./helpers"
 
 // Each hook appends the JSON it received on stdin as one line of the named file.
-const record = (file: string) => ({ command: `cat >> "${file}"; echo >> "${file}"` })
+const record = (file: string) => ({
+  command:
+    process.platform === "win32"
+      ? `bun -e "const fs = require('fs'); const t = await Bun.stdin.text(); if (t) fs.appendFileSync(process.argv[1], t.trim() + '\\n')"` + ` "${file}"`
+      : `cat >> "${file}"; echo >> "${file}"`,
+})
 const lines = (file: string) =>
   fs.existsSync(file)
     ? fs

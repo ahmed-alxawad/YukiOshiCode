@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test"
+import path from "path"
 import {
   slugify,
   extractHeadings,
@@ -75,15 +76,16 @@ describe("check-docs", () => {
   })
 
   describe("link checker", () => {
+    const docPath = (p: string) => path.resolve("/workspace/docs", p)
     const mockFiles: Record<string, string> = {
-      "/workspace/docs/features.md": [
+      [docPath("features.md")]: [
         "# Features",
         "## Modes",
         "Content about modes.",
         "## Subagents",
         "Content about subagents.",
       ].join("\n"),
-      "/workspace/docs/commands.md": [
+      [docPath("commands.md")]: [
         "# Commands",
         "## Exit Codes",
         "Content about exit codes.",
@@ -96,7 +98,7 @@ describe("check-docs", () => {
     it("reports broken relative file link", () => {
       const testDoc = "See [missing](nonexistent.md) file."
       const broken = checkFileLinks(
-        "/workspace/docs/guide.md",
+        docPath("guide.md"),
         testDoc,
         new Map(),
         readFile,
@@ -112,7 +114,7 @@ describe("check-docs", () => {
     it("reports broken anchor link in existing file", () => {
       const testDoc = "See [invalid anchor](features.md#does-not-exist)."
       const broken = checkFileLinks(
-        "/workspace/docs/guide.md",
+        docPath("guide.md"),
         testDoc,
         new Map(),
         readFile,
@@ -135,7 +137,7 @@ describe("check-docs", () => {
       ].join("\n")
 
       const broken = checkFileLinks(
-        "/workspace/docs/guide.md",
+        docPath("guide.md"),
         testDoc,
         new Map(),
         readFile,

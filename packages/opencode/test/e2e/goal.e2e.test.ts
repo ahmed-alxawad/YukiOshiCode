@@ -1,4 +1,5 @@
 import { describe, expect } from "bun:test"
+import path from "node:path"
 import { Effect } from "effect"
 import { cliIt } from "../lib/cli-process"
 import { reply } from "../lib/llm-server"
@@ -26,9 +27,9 @@ describe("goal", () => {
     expect(JSON.stringify(requests[2])).toContain("one verification step remains")
 
     const files = yield* Effect.promise(() => Array.fromAsync(new Bun.Glob("**/*.json").scan({ cwd: `${home}-state` })))
-    const goalFile = files.find((file) => file.includes("goals/"))
+    const goalFile = files.find((file) => file.replace(/\\/g, "/").includes("goals/"))
     expect(goalFile).toBeDefined()
-    const goal = JSON.parse(yield* Effect.promise(() => Bun.file(`${home}-state/${goalFile}`).text())) as Record<string, unknown>
+    const goal = JSON.parse(yield* Effect.promise(() => Bun.file(path.join(`${home}-state`, goalFile!)).text())) as Record<string, unknown>
     expect(goal).toMatchObject({ status: "done", rounds: 1, note: "the goal is complete" })
   }), 60_000)
 

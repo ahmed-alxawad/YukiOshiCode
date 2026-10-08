@@ -565,7 +565,16 @@ it.instance("UserPromptSubmit hook blocks the message and the model is never cal
   Effect.gen(function* () {
     const { llm } = yield* useServerConfig((url) => ({
       ...providerCfg(url),
-      hooks: { userPromptSubmit: [{ command: `cat > /dev/null; echo -n '{"decision":"block","reason":"nope"}'` }] },
+      hooks: {
+        userPromptSubmit: [
+          {
+            command:
+              process.platform === "win32"
+                ? `bun -e "process.stdout.write(JSON.stringify({decision:'block',reason:'nope'}))"`
+                : `cat > /dev/null; echo -n '{"decision":"block","reason":"nope"}'`,
+          },
+        ],
+      },
     }))
     const prompt = yield* SessionPrompt.Service
     const sessions = yield* Session.Service
@@ -592,7 +601,16 @@ it.instance("SessionStart hook runs once on the first message, not on later ones
     fs.rmSync(marker, { force: true })
     const { llm } = yield* useServerConfig((url) => ({
       ...providerCfg(url),
-      hooks: { sessionStart: [{ command: `cat >> "${marker}"; echo >> "${marker}"` }] },
+      hooks: {
+        sessionStart: [
+          {
+            command:
+              process.platform === "win32"
+                ? `bun -e "const fs = require('fs'); const t = await Bun.stdin.text(); if (t) fs.appendFileSync(process.argv[1], t.trim() + '\\n')"` + ` "${marker}"`
+                : `cat >> "${marker}"; echo >> "${marker}"`,
+          },
+        ],
+      },
     }))
     const prompt = yield* SessionPrompt.Service
     const sessions = yield* Session.Service

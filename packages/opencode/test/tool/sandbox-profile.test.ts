@@ -3,7 +3,9 @@ import path from "path"
 import { Path as GlobalPath } from "@yukioshi/core/global"
 import { sandboxProfile } from "../../src/tool/sandbox-profile"
 
-const instance = { directory: "/work/repo/pkg", worktree: "/work/repo" } as Parameters<typeof sandboxProfile>[0]
+const worktree = path.resolve("/work/repo")
+const directory = path.resolve("/work/repo/pkg")
+const instance = { directory, worktree } as Parameters<typeof sandboxProfile>[0]
 const writable = (writablePaths: string[]) =>
   sandboxProfile(instance, { enabled: true, writablePaths }).filesystem.allowWrite.map((rule) => rule.path)
 
@@ -14,10 +16,11 @@ describe("sandboxProfile writablePaths", () => {
   })
 
   test("resolves relative entries against the project root, not the process directory", () => {
-    expect(writable(["build/out"])).toContain(path.join("/work/repo", "build/out"))
+    expect(writable(["build/out"])).toContain(path.resolve(worktree, "build/out"))
   })
 
   test("keeps absolute entries unchanged", () => {
-    expect(writable(["/opt/cache"])).toContain("/opt/cache")
+    const abs = path.resolve("/opt/cache")
+    expect(writable([abs])).toContain(abs)
   })
 })

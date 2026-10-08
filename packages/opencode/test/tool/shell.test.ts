@@ -221,6 +221,7 @@ describe("tool.shell", () => {
 
   it.live("confines the command to the workspace when sandbox.enabled is true", () =>
     Effect.gen(function* () {
+      if (process.platform !== "linux") return // bubblewrap sandbox is Linux-only
       const tmp = yield* tmpdirScoped({ config: { sandbox: { enabled: true, network: "deny" } } })
       yield* runIn(
         tmp,

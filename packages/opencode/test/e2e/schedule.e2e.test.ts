@@ -12,6 +12,7 @@ describe("scheduled tasks e2e", () => {
     "schedule add, list, run creates session and log, logs view, and remove cleans up",
     ({ home, llm, opencode }) =>
       Effect.gen(function* () {
+        if (process.platform === "win32") return // crontab file verification is Unix-only; Windows uses schtasks
         const fakeCrontab = path.join(home, "fake-crontab")
         const env = {
           ...runtimeEnv(home),

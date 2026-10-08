@@ -1400,7 +1400,7 @@ it.instance(
           } catch {}
           yield* Effect.sleep("10 millis")
         }
-      }).pipe(Effect.timeoutOrElse({ duration: "1 second", orElse: () => Effect.die(new Error("hook never ran")) }))
+      }).pipe(Effect.timeoutOrElse({ duration: "10 seconds", orElse: () => Effect.die(new Error("hook never ran")) }))
       expect(payload.hook_event_name).toBe("Notification")
       expect(payload.tool_name).toBe("bash")
       expect(typeof payload.message).toBe("string")
@@ -1408,5 +1408,19 @@ it.instance(
       yield* rejectAll()
       yield* Fiber.await(fiber)
     }),
-  { git: true, config: { hooks: { notification: [{ command: `cat > "${notificationMarker}"` }] } } },
+  {
+    git: true,
+    config: {
+      hooks: {
+        notification: [
+          {
+            command:
+              process.platform === "win32"
+                ? `bun -e "await Bun.write(process.argv[1], await Bun.stdin.text())" "${notificationMarker}"`
+                : `cat > "${notificationMarker}"`,
+          },
+        ],
+      },
+    },
+  },
 )

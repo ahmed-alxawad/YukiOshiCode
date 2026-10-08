@@ -44,7 +44,7 @@ describe("Hooks.Service", () => {
       Effect.gen(function* () {
         const hooks = yield* Hooks.Service
         const cfg: ConfigHooksV1.Info = {
-          preToolUse: [{ matcher: "*", command: "echo 'no deletes allowed' >&2; exit 2" }],
+          preToolUse: [{ matcher: "*", command: 'bun -e "process.stderr.write(\'no deletes allowed\'); process.exit(2)"' }],
         }
         const result = yield* hooks.run({ hooks: cfg, event: "PreToolUse", payload: {}, cwd, toolName: "bash" })
         expect(result.blocked).toBe("no deletes allowed")

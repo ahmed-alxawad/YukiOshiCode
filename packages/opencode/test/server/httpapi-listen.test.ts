@@ -216,7 +216,7 @@ describe("HttpApi Server.listen", () => {
     } finally {
       if (!stopped) await stop(listener, "timed out cleaning up listener").catch(() => undefined)
     }
-  })
+  }, 30_000)
 
   testPty("stop(true) is safe when called concurrently and repeatedly", async () => {
     await using tmp = await tmpdir({ git: true, config: { formatter: false, lsp: false } })

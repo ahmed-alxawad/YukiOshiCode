@@ -129,7 +129,13 @@ describe("subagents", () => {
         // A relative path: the copy only lands in alpha's worktree if the subagent really runs there.
         yield* llm.pushMatch(
           fromSubagent("SUB-ALPHA"),
-          reply().tool("bash", { command: "cat base.txt > seen.txt", description: "copy the base file" }),
+          reply().tool("bash", {
+            command:
+              process.platform === "win32"
+                ? `bun -e "await Bun.write('seen.txt', await Bun.file('base.txt').text())"`
+                : "cat base.txt > seen.txt",
+            description: "copy the base file",
+          }),
           reply().text("alpha copied it").stop(),
         )
         yield* llm.pushMatch(fromSubagent("SUB-BETA"), reply().text("beta changed nothing").stop())
