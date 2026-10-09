@@ -143,4 +143,46 @@ describe("scheduled tasks security checks", () => {
     await fs.rm(tempDir, { recursive: true, force: true })
     await fs.rm(logDir, { recursive: true, force: true })
   })
+
+  it("refuses a job log folder that is a symlink to somewhere else", async () => {
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), "yk-sec-outside-"))
+    const jobId = `dirlink-${Date.now()}`
+    const logDir = getJobLogsDir(jobId)
+    await fs.mkdir(path.dirname(logDir), { recursive: true })
+    await fs.symlink(outside, logDir)
+
+    await expect(writeRunLog(jobId, "data", Date.now())).rejects.toThrow("symbolic link")
+    await expect(acquireJobLock(jobId)).rejects.toThrow("symbolic link")
+    expect(await fs.readdir(outside)).toEqual([])
+
+    await fs.rm(logDir, { force: true })
+    await fs.rm(outside, { recursive: true, force: true })
+  })
+
+  it("does not read a planted lock symlink as a live lock", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "yk-sec-lock-"))
+    const target = path.join(tempDir, "pid.json")
+    // A live pid: if the symlink were followed, the lock would look held.
+    await fs.writeFile(target, JSON.stringify({ pid: process.pid, time: Date.now() }), "utf8")
+    const jobId = `locklink-${Date.now()}`
+    const logDir = getJobLogsDir(jobId)
+    await fs.mkdir(logDir, { recursive: true })
+    await fs.symlink(target, path.join(logDir, "lock"))
+
+    const lock = await acquireJobLock(jobId)
+    expect(lock).not.toBeNull()
+    await lock!.release()
+
+    await fs.rm(logDir, { recursive: true, force: true })
+    await fs.rm(tempDir, { recursive: true, force: true })
+  })
+
+  it("lets only one of two simultaneous runs take the lock", async () => {
+    const jobId = `race-${Date.now()}`
+    const results = await Promise.all([acquireJobLock(jobId), acquireJobLock(jobId)])
+    const held = results.filter((r) => r !== null)
+    expect(held.length).toBe(1)
+    await held[0]!.release()
+    await fs.rm(getJobLogsDir(jobId), { recursive: true, force: true })
+  })
 })
