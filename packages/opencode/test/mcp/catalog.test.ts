@@ -108,6 +108,7 @@ test("preserves output schema validation across paginated tool discovery", async
 
 describe("McpCatalog.convertTool total timeout", () => {
   test("a tool that reports progress forever is cut off", async () => {
+    const timers: ReturnType<typeof setInterval>[] = []
     const server = new Server({ name: "slow", version: "1.0.0" }, { capabilities: { tools: {} } })
     server.setRequestHandler(ListToolsRequestSchema, () => Promise.resolve({ tools: [mcpTool()] }))
     server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
@@ -116,6 +117,7 @@ describe("McpCatalog.convertTool total timeout", () => {
         if (token === undefined) return
         void server.notification({ method: "notifications/progress", params: { progressToken: token, progress: Date.now() } })
       }, 20)
+      timers.push(timer)
       await new Promise((resolve) => extra.signal.addEventListener("abort", resolve))
       clearInterval(timer)
       return { content: [] }
@@ -123,10 +125,21 @@ describe("McpCatalog.convertTool total timeout", () => {
     const client = new Client({ name: "test", version: "1.0.0" })
     const [a, b] = InMemoryTransport.createLinkedPair()
     await Promise.all([server.connect(a), client.connect(b)])
+    // Tiny caps (200 ms idle timeout, 400 ms total) keep the real 30 minute default out of the test.
     const converted = McpCatalog.convertTool(mcpTool(), client, 200, 400)
     const started = Date.now()
-    await expect(converted.execute?.({}, options)).rejects.toThrow(/timeout|timed out/i)
-    expect(Date.now() - started).toBeLessThan(3000)
-    await client.close()
-  })
+    // Without the cap the call never settles, so bound the wait and always clean up the progress timer.
+    let guard: ReturnType<typeof setTimeout> | undefined
+    const stuck = new Promise<never>((_, reject) => {
+      guard = setTimeout(() => reject(new Error("tool call was never cut off")), 3000)
+    })
+    try {
+      await expect(Promise.race([converted.execute?.({}, options), stuck])).rejects.toThrow(/timeout|timed out/i)
+      expect(Date.now() - started).toBeLessThan(3000)
+    } finally {
+      clearTimeout(guard)
+      timers.forEach(clearInterval)
+      await Promise.all([client.close(), server.close()])
+    }
+  }, 5000)
 })
