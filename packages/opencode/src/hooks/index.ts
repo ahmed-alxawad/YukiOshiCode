@@ -138,7 +138,8 @@ function spawnHook(input: {
       env: { ...hiddenEnv(), YUKIOSHI_PROJECT_DIR: input.cwd, YUKIOSHI_HOOK_EVENT: input.event },
       extendEnv: true,
       stdin: Stream.succeed(new TextEncoder().encode(input.stdin)),
-      detached: false,
+      // Leave `detached` at the spawner default (own process group on POSIX) so kill() takes down
+      // the whole group (negative pid; taskkill /T on Windows), not just the shell.
     })
 
     const abort = input.signal
