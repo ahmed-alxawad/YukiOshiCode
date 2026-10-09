@@ -17,6 +17,20 @@ import { FSUtil } from "@yukioshi/core/fs-util"
 import { AppProcess } from "@yukioshi/core/process"
 import { InstanceState } from "@/effect/instance-state"
 import { WorktreeEvent } from "@yukioshi/schema/worktree-event"
+import { realpath as nodeRealpath } from "node:fs"
+import { Shell } from "@yukioshi/core/shell"
+
+/** Resolve a path to its on-disk spelling (symlinks and casing); returns the input if it cannot be resolved. */
+export function nativeRealPath(input: string): Promise<string> {
+  return new Promise((resolve) => {
+    nodeRealpath.native(input, (err, resolved) => resolve(err || !resolved ? input : resolved))
+  })
+}
+
+/** Build the shell and args used to run a worktree start command. */
+export function startCommandInvocation(cmd: string, directory: string, shell = Shell.preferred()) {
+  return { shell, args: Shell.args(shell, cmd, directory) }
+}
 
 export const Event = WorktreeEvent
 
@@ -310,7 +324,10 @@ const layer: Layer.Layer<
     const canonical = Effect.fnUntraced(function* (input: string) {
       const abs = pathSvc.resolve(input)
       const real = yield* fs.realPath(abs).pipe(Effect.catch(() => Effect.succeed(abs)))
-      const normalized = pathSvc.normalize(real)
+      // fs.realpath keeps the caller's casing; the native variant returns the on-disk casing,
+      // which makes comparisons correct on case-insensitive volumes (macOS) without lowercasing.
+      const onDisk = yield* Effect.promise(() => nativeRealPath(real))
+      const normalized = pathSvc.normalize(onDisk)
       return process.platform === "win32" ? normalized.toLowerCase() : normalized
     })
 
@@ -489,9 +506,9 @@ const layer: Layer.Layer<
 
     const runStartCommand = Effect.fnUntraced(
       function* (directory: string, cmd: string) {
-        const [shell, args] = process.platform === "win32" ? ["cmd", ["/c", cmd]] : ["bash", ["-lc", cmd]]
+        const { shell, args } = startCommandInvocation(cmd, directory)
         const result = yield* appProcess.run(
-          ChildProcess.make(shell, args as string[], { cwd: directory, extendEnv: true, stdin: "ignore" }),
+          ChildProcess.make(shell, args, { cwd: directory, extendEnv: true, stdin: "ignore" }),
         )
         return { code: result.exitCode, stderr: result.stderr.toString("utf8") }
       },
