@@ -16,7 +16,7 @@ export interface RedactionResult {
 }
 
 const QUICK_HINT =
-  /(?:gh[posur]_|github_pat_|A[KS]IA|AWS_SECRET|aws_secret|sk-|AIza|xox|_live_|-----BEGIN|eyJ|password|passwd|secret|token|:\/\/)/i
+  /(?:gh[posur]_|github_pat_|A[KS]IA|AWS_SECRET|aws_secret|sk-|AIza|xox|_live_|-----BEGIN|eyJ|password|passwd|secret|token|api[_-]?key|credential|:\/\/)/i
 
 const PLACEHOLDER_PREFIX = "[REDACTED:"
 const PLACEHOLDER_REGEX = /\[REDACTED:([a-zA-Z0-9_-]+)\]/g
@@ -25,6 +25,14 @@ interface PatternRule {
   kind: string | ((keyMatch: string) => string)
   regex: RegExp
   extractValue?: (match: RegExpExecArray) => { value: string; fullMatch: string; prefix?: string; suffix?: string }
+}
+
+function secretKind(keyStr: string): string {
+  const lower = keyStr.toLowerCase()
+  if (lower.includes("password") || lower.includes("passwd")) return "password"
+  if (lower.includes("secret")) return "secret"
+  if (lower.includes("token")) return "token"
+  return "env-secret"
 }
 
 const RULES: PatternRule[] = [
@@ -103,13 +111,31 @@ const RULES: PatternRule[] = [
       return "env-secret"
     },
     regex:
-      /(?<=^|[\r\n])([ \t]*(?:export[ \t]+)?([A-Za-z0-9_]*(?:password|passwd|secret|token)[A-Za-z0-9_]*)\s*[:=]\s*["']?)(?![\[]REDACTED:)([^#\r\n"'\s]{4,})(["']?)/gi,
+      /(?<=^|[\r\n])([ \t]*(?:export[ \t]+)?([A-Za-z0-9_]{0,60}(?:password|passwd|secret|token|api[_-]?key|credential)[A-Za-z0-9_]{0,60})\s*[:=]\s*["']?)(?![\[]REDACTED:)([^#\r\n"'\s]{4,})(["']?)/gi,
     extractValue: (m) => ({
       value: m[3]!,
       fullMatch: m[0]!,
       prefix: m[1]!,
       suffix: m[4]!,
     }),
+  },
+  // Env-style assignments that are not at the start of a line (`export X=...`, `FOO=1 TOKEN=...`
+  // inside a command line), including quoted values. Requires `=` so prose is left alone.
+  {
+    kind: (keyStr: string) => secretKind(keyStr),
+    regex:
+      /(?<![A-Za-z0-9_.-])(([A-Za-z0-9_]{0,60}(?:password|passwd|secret|token|api[_-]?key|credential)[A-Za-z0-9_]{0,60})[ \t]*=[ \t]*)(?:"(?![$]|\[REDACTED:)([^"\r\n]{4,})"|'(?![$]|\[REDACTED:)([^'\r\n]{4,})'|(?![$"'`]|\[REDACTED:)([^\s"'`#;&|<>]{4,}))/gi,
+    extractValue: (m) => {
+      const quote = m[3] !== undefined ? '"' : m[4] !== undefined ? "'" : ""
+      return { value: (m[3] ?? m[4] ?? m[5])!, fullMatch: m[0]!, prefix: m[1]! + quote, suffix: quote }
+    },
+  },
+  // CLI flags carrying a secret: --token=abc, --password abc, --api-key "abc"
+  {
+    kind: (keyStr: string) => secretKind(keyStr),
+    regex:
+      /(?<![A-Za-z0-9_-])(--([a-z0-9-]{0,40}(?:password|passwd|secret|token|api-?key|credential)[a-z0-9-]{0,40})(?:=|[ \t]+)["']?)(?![$-]|\[REDACTED:)([^\s"'`#;&|<>]{4,})(["']?)/gi,
+    extractValue: (m) => ({ value: m[3]!, fullMatch: m[0]!, prefix: m[1]!, suffix: m[4]! }),
   },
 ]
 
