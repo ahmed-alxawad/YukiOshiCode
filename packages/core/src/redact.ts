@@ -79,7 +79,8 @@ const RULES: PatternRule[] = [
   // Private key blocks
   {
     kind: "private-key",
-    regex: /(-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----)/g,
+    // A block with no END line (truncated output) is masked through the end of the input.
+    regex: /(-----BEGIN [A-Z0-9 ]{0,40}PRIVATE KEY-----(?:[\s\S]*?-----END [A-Z0-9 ]{0,40}PRIVATE KEY-----|[\s\S]*))/g,
   },
   // Credentials embedded in URLs (scheme://user:password@host): mask the password only
   {
