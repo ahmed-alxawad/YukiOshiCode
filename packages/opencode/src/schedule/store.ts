@@ -286,7 +286,18 @@ export async function acquireJobLock(jobId: string, timeoutMs: number = 0): Prom
     const payload = JSON.stringify({ pid: process.pid, time: Date.now(), start: processStartTime(process.pid) })
     await handle.writeFile(payload, "utf8")
     await handle.close()
-    await fs.link(tmpLock, lockFile)
+    try {
+      await fs.link(tmpLock, lockFile)
+    } catch (err: any) {
+      if (!["EPERM", "ENOTSUP", "ENOSYS", "EOPNOTSUPP"].includes(err.code)) throw err
+      // Filesystem without hard links: create the lock exclusively in place and write the pid right away.
+      const direct = await fs.open(lockFile, "wx")
+      try {
+        await direct.writeFile(payload, "utf8")
+      } finally {
+        await direct.close()
+      }
+    }
   } catch (err: any) {
     if (err.code === "EEXIST") {
       return null
