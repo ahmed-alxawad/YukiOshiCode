@@ -79,7 +79,7 @@ const RULES: PatternRule[] = [
   // Private key blocks
   {
     kind: "private-key",
-    regex: /(-----BEGIN [A-Z0-9 ]+PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]+PRIVATE KEY-----)/g,
+    regex: /(-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----)/g,
   },
   // JWT tokens
   {
@@ -96,7 +96,7 @@ const RULES: PatternRule[] = [
       return "env-secret"
     },
     regex:
-      /(?<=^|[\r\n])(\s*(?:export\s+)?([A-Za-z0-9_]*(?:password|passwd|secret|token)[A-Za-z0-9_]*)\s*[:=]\s*["']?)(?![\[]REDACTED:)([^#\r\n"'\s]{4,})(["']?)/gi,
+      /(?<=^|[\r\n])([ \t]*(?:export[ \t]+)?([A-Za-z0-9_]*(?:password|passwd|secret|token)[A-Za-z0-9_]*)\s*[:=]\s*["']?)(?![\[]REDACTED:)([^#\r\n"'\s]{4,})(["']?)/gi,
     extractValue: (m) => ({
       value: m[3]!,
       fullMatch: m[0]!,
