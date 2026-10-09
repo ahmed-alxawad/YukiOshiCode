@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import {
   deliverWebhook,
   enqueueWebhook,
+  sessionErrorMessage,
   webhookBody,
   webhookSignature,
   webhookText,
@@ -204,5 +205,20 @@ describe("webhooks", () => {
     await expect(
       deliverWebhook({ url: "http://127.0.0.1:1/hook" }, hugePayload, { timeoutMs: 100 }),
     ).rejects.toThrow("Webhook body exceeds maximum size")
+  })
+
+  test("sessionErrorMessage caps error text at 4096 characters and extracts messages", () => {
+    expect(sessionErrorMessage(null)).toBe("session error")
+    expect(sessionErrorMessage(undefined)).toBe("session error")
+    expect(sessionErrorMessage("simple string")).toBe("session error")
+    expect(sessionErrorMessage({})).toBe("session error")
+    expect(sessionErrorMessage({ message: "regular error" })).toBe("regular error")
+    expect(sessionErrorMessage({ data: { message: "nested data error" } })).toBe("nested data error")
+    expect(sessionErrorMessage({ name: "NamedError" })).toBe("NamedError")
+
+    const longError = "E".repeat(5000)
+    const capped = sessionErrorMessage({ message: longError })
+    expect(capped.length).toBe(4096)
+    expect(capped).toBe("E".repeat(4096))
   })
 })

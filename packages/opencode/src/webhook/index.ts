@@ -203,7 +203,7 @@ function sessionInfo(sessionID: string) {
   return { id: sessionID, title: "YukiOshi session" }
 }
 
-function sessionErrorMessage(error: unknown) {
+export function sessionErrorMessage(error: unknown) {
   if (!error || typeof error !== "object") return "session error"
   const value = error as { name?: unknown; message?: unknown; data?: unknown }
   let msg = "session error"
