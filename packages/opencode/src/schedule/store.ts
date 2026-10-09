@@ -238,17 +238,23 @@ export async function acquireJobLock(jobId: string): Promise<JobLock | null> {
     }
   }
 
-  // Create lock file exclusively
+  // Create the lock exclusively. The content is written to a temporary file first and then hard-linked into
+  // place: link fails with EEXIST if the lock exists, and the lock is never visible empty, which a second
+  // run would otherwise read as a corrupt (stale) lock, delete, and replace.
+  const tmpLock = path.join(dir, `lock.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`)
   try {
-    const handle = await fs.open(lockFile, "wx")
+    const handle = await fs.open(tmpLock, "wx")
     const payload = JSON.stringify({ pid: process.pid, time: Date.now() })
     await handle.writeFile(payload, "utf8")
     await handle.close()
+    await fs.link(tmpLock, lockFile)
   } catch (err: any) {
     if (err.code === "EEXIST") {
       return null
     }
     throw err
+  } finally {
+    await fs.unlink(tmpLock).catch(() => {})
   }
 
   let released = false
