@@ -107,7 +107,7 @@ Keep API keys out of checked-in config files: use `{env:…}` or
 | `hooks`                | your commands at fixed points in the agent's work                   | [Hooks](hooks.md)                           |
 | `skills`               | extra skill folders (`paths`), skill indexes (`urls`), and skills YukiOshi writes itself (`learn`, off by default) | [Skills](skills.md)                         |
 | `memory`, `indexing`, `code_graph` | optional features (`memory.max_chars` caps memory, default 4000) | [Features](features.md)                     |
-| `mcp`                  | MCP servers (`local` command or `remote` URL)                       |                                             |
+| `mcp`                  | MCP servers (`local` command or `remote` `http`/`https` URL)        | [MCP servers](permissions-and-safety.md#mcp-servers) |
 | `agent`                | custom agents and per-agent models, prompts, and permissions        |                                             |
 | `instructions`         | extra instruction files                                             |                                             |
 | `lsp`, `formatter`     | language servers (off unless `lsp` is `true` or an object) and formatters |                                             |
@@ -204,7 +204,7 @@ turn continues:
 }
 ```
 
-MCP tools are named `<server>_<tool>`. A single number applies to every tool. `"*"` covers every tool not named, except
+MCP tools are named `<server>_<tool>`. A tool that reports progress is stopped after 30 minutes whatever its limit (see [MCP servers](permissions-and-safety.md#mcp-servers)). A single number applies to every tool. `"*"` covers every tool not named, except
 `bash` (it has its own `timeout`), `task`, `task_parallel`, `question`, and
 `plan_exit`, which wait on a command, a subagent, or you; name one of them to
 limit it anyway. `0` turns a limit off.
@@ -240,4 +240,4 @@ When search mode is active, the model receives a `tool_search` tool listing avai
 | `YUKIOSHI_SKIP_VERIFY`                | turn post-turn verification off                           |
 | `YUKIOSHI_EXPERIMENTAL_PARALLEL_TASKS` | enable the `task_parallel` tool (same as `subagents.parallel`) |
 | `YUKIOSHI_EXPERIMENTAL_BACKGROUND_SUBAGENTS` | enable background subagents (same as `subagents.background`) |
-| `YUKIOSHI_SERVER_PASSWORD`, `YUKIOSHI_SERVER_USERNAME` | protect `yukioshi serve` with a password |
+| `YUKIOSHI_SERVER_PASSWORD`, `YUKIOSHI_SERVER_USERNAME` | protect `yukioshi serve` with a password ([details](permissions-and-safety.md#the-headless-server)) |

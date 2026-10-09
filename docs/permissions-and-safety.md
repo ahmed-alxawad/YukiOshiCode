@@ -169,6 +169,35 @@ What the sandbox does not do:
 - There is no memory or process limit; a command ends at its timeout (two
   minutes by default).
 
+## MCP servers
+
+You configure MCP servers, but what they return is not trusted. YukiOshi
+applies these checks:
+
+- A remote server URL must start with `http://` or `https://`. Other schemes
+  (such as `file:`) are refused and the server is reported as failed. A
+  non-local `http://` URL is allowed but logged as a warning, because headers
+  and tokens go out unencrypted. `localhost`, `*.localhost`, `127.x.x.x`, and
+  `::1` do not trigger the warning.
+- A remote server cannot send your configured headers elsewhere. YukiOshi
+  follows its redirects (up to five) only within the original origin and
+  refuses a redirect to a different origin.
+- A tool is named `<server>_<tool>`. A tool whose name matches a built-in tool
+  (a server `apply` with a tool `patch` would match `apply_patch`) or
+  `tool_search` is skipped and logged. If two tools get the same name after
+  sanitizing, the server that sorts first by name keeps it and the later tool
+  is skipped.
+- A tool call that keeps reporting progress is stopped after 30 minutes. The
+  per-call timeout otherwise restarts on each progress message.
+- Tool results and error messages are masked as described under
+  [secret redaction](#secret-redaction) before they are shortened, saved, or
+  shown to the model. The full text that is written to a file when a long
+  result is cut off is masked too.
+- A server's instructions are put in the system prompt inside
+  `<mcp_instructions>` and `<server>` elements. Text in them that looks like an
+  opening or closing `<server` or `<mcp_instructions` tag is altered, so the
+  server cannot close the wrapper and continue as prompt text.
+
 ## Hard blocks
 
 These are refused in every mode and cannot be overridden by any rule. They are
@@ -210,6 +239,11 @@ arguments. Where no keychain is available (for example on a server without a
 desktop session), YukiOshi falls back to a file only your user can read. Set
 `YUKIOSHI_DISABLE_KEYCHAIN=1` to always use that file.
 
+On Linux and macOS the data directory (session database, logs, and credential
+files) is created with owner-only permissions (`0700`), and YukiOshi sets that
+mode on an existing directory at start-up. Credential files are created with
+mode `0600` from the start, so they are never readable by others, even briefly.
+
 ## Secret redaction
 
 YukiOshi masks unmistakable secrets before anything is sent to the model provider. Redaction is on by default (`redact: { enabled: true }`).
@@ -231,6 +265,18 @@ Normal code identifiers (such as `sk-` inside an unrelated word or Stripe test k
 - **User prompts**: secrets pasted or typed into prompts are masked before leaving the machine for the model; your local message history remains intact, and a notification warns that secrets were masked.
 - **Persistent memory and skills**: secrets are masked before `memory_save` or `skill_save` writes them to disk.
 - **File editing**: when the agent edits a file containing a secret, `edit` resolves the placeholders back to real secrets, ensuring `[REDACTED:...]` is never written back to your files.
+
+### Provider keys
+
+YukiOshi also remembers the API keys of the providers it uses (at least 8
+characters). Where it scrubs text, those exact values are replaced with
+`[REDACTED:provider-key]`, even when a key matches none of the formats above,
+such as a key for a custom gateway. Any `Bearer <token>` of 16 or more
+characters becomes `Bearer [REDACTED:bearer-token]`. A provider can echo the
+`Authorization` header back in an error, so this applies to:
+- the log files;
+- errors stored with a session, and so also in exports and printed output;
+- audit log entries and webhook details.
 
 ### Configuration
 
@@ -267,7 +313,7 @@ answer to `<state>/audit/<date>.jsonl` (`~/.local/state/yukioshi/audit/<date>.js
 
 - A tool call is recorded with the part of its input that says what it did
   (the command, file, URL, or search pattern), shortened to 500 characters.
-- Secrets in what is recorded are masked, as for [redaction](#secret-redaction).
+- Secrets in what is recorded are masked, as for [redaction](#secret-redaction), including your provider keys.
 - Only the global config counts: a project's own config cannot turn the log on
   or off.
 - Nothing is sent anywhere. On Linux and macOS the audit directory and log files
@@ -275,6 +321,28 @@ answer to `<state>/audit/<date>.jsonl` (`~/.local/state/yukioshi/audit/<date>.js
   you; on Windows the files inherit the permissions of the user's profile folder
   (`%LOCALAPPDATA%`). YukiOshi keeps them until you delete them; `yukioshi uninstall`
   removes them along with other state files.
+
+## The headless server
+
+`yukioshi serve` takes a password from `YUKIOSHI_SERVER_PASSWORD` (and a user
+name from `YUKIOSHI_SERVER_USERNAME`). Set one if anyone else can reach the
+port.
+
+- The user name and password are compared in constant time. Both are always
+  checked, so a wrong user name cannot be told apart from a wrong password by
+  timing.
+- When no password is set and the server is bound to a loopback address
+  (`localhost`, `127.x.x.x`, or `::1`), a request whose `Host` header is not a
+  `localhost` name, an IP address, or a host from `--cors` is refused with 403.
+  This stops a web page on a hostile domain that resolves to `127.0.0.1` (DNS
+  rebinding) from using the server. With a password set this check is off, so a
+  reverse proxy that rewrites `Host` keeps working.
+- A request other than `GET`, `HEAD`, or `OPTIONS` that carries an `Origin`
+  header from a disallowed origin is refused with 403, with or without a
+  password. Allowed origins are the server's own host, `localhost` and
+  `127.0.0.1` on any port, YukiOshi's desktop app, `yukioshi.com` and
+  `opencode.ai` sites, and anything you pass with `--cors`. Clients that send
+  no `Origin` header, such as the CLI, the SDK, or `curl`, are not affected.
 
 ## Triggers and unattended runs
 

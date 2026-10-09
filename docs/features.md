@@ -120,7 +120,7 @@ approves them all, or `--review`, which has a small model approve or refuse
 each action that is not low-risk (see
 [review mode](permissions-and-safety.md#review-mode)).
 
-Each execution runs like `yukioshi run` in the job's directory, creates a normal session titled `Scheduled: <name>`, writes a persistent log to `<state>/schedule/<id>/<timestamp>.log` (retaining the last 50 logs per job), and enforces concurrency locks so multiple copies of the same job never run simultaneously. Spending limits (`budget`) are strictly respected: if a budget limit is reached, the run is logged as `skipped: budget`.
+Each execution runs like `yukioshi run` in the job's directory, creates a normal session titled `Scheduled: <name>`, writes a persistent log to `<state>/schedule/<id>/<timestamp>.log` (retaining the last 50 logs per job), and enforces a lock per job so two copies of the same job never run at the same time, even when started at the same moment. A second copy is logged as `skipped: already running`. Spending limits (`budget`) are strictly respected: if a budget limit is reached, the run is logged as `skipped: budget`.
 
 ```bash
 # Add a scheduled task (standard 5-field cron)
@@ -240,6 +240,12 @@ real commit on `refs/yukioshi/checkpoints/<session>`. The user's branch, HEAD,
 index, and working tree are not changed while a checkpoint is created. Use
 `yukioshi checkpoint list`, `show`, `restore`, or `prune`; `/checkpoints` opens
 the same list in the TUI. Checkpoints work only inside a Git repository.
+
+Checkpoint commands never run the repository's Git hooks or `fsmonitor`
+command, whatever the repository configures. The turn number counts only the
+checkpoints of that session, not commits already on your branch. Repositories
+with very large Git output (tens of thousands of files) are handled: output is
+no longer cut off at 1 MB.
 
 ## Files changed summary
 
@@ -515,7 +521,9 @@ To protect your system, YukiOshi installs only non-executable parts of a Claude 
 ## Also included
 
 - **MCP servers**: connect tools over the Model Context Protocol (`mcp` in
-  config, `yukioshi mcp` to manage them and their sign-in).
+  config, `yukioshi mcp` to manage them and their sign-in). Remote URLs must
+  be `http` or `https`; see [MCP servers](permissions-and-safety.md#mcp-servers)
+  for the other checks.
 - **Custom agents**: agents with their own prompt, model, and permissions
   (`agent` in config, or Markdown files in `.yukioshi/agent/`;
   `yukioshi agent create` writes one for you). Switch agents with `tab`.
@@ -534,7 +542,8 @@ To protect your system, YukiOshi installs only non-executable parts of a Claude 
   project's sessions unless asked to look across all projects.
 - **Headless server**: `yukioshi serve` runs YukiOshi without the terminal UI;
   `yukioshi attach <url>` connects a terminal UI to it, and `yukioshi run
-  --attach <url>` sends it a prompt. Protect it with `YUKIOSHI_SERVER_PASSWORD`.
+  --attach <url>` sends it a prompt. Protect it with `YUKIOSHI_SERVER_PASSWORD`; see
+  [the headless server](permissions-and-safety.md#the-headless-server).
 - **GitHub**: `yukioshi pr <number>` checks out a pull request and opens a
   session on it. To run YukiOshi in GitHub Actions, call `yukioshi run` from
   your own workflow; see [GitHub Actions](#github-actions).
