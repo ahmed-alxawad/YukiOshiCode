@@ -1,5 +1,5 @@
 import { Context, Effect, PlatformError } from "effect"
-import { canonicalize, canonicalizeEntry, matches, normalize } from "./path"
+import { canonicalize, canonicalizeEntry, hasDeniedName, matches, normalize } from "./path"
 import type { Profile } from "./profile"
 import { withProxy } from "./proxy"
 
@@ -46,14 +46,9 @@ function assertTarget(
     const profile = yield* current
     if (!profile) return
     const target = yield* resolve(path)
-    const names =
-      process.platform === "win32"
-        ? profile.filesystem.denyNames.map((name) => name.toLowerCase())
-        : profile.filesystem.denyNames
-    const parts = target.split(/[\\/]/).map((part) => (process.platform === "win32" ? part.toLowerCase() : part))
     if (
       profile.filesystem.denyWrite.some((rule) => matches(rule, target)) ||
-      parts.some((part) => names.includes(part))
+      hasDeniedName(target, profile.filesystem.denyNames)
     ) {
       yield* Effect.fail(denied(path, method))
     }

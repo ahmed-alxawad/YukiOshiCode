@@ -84,8 +84,28 @@ export function normalize(profile: Profile): Effect.Effect<Profile, PlatformErro
   })
 }
 
-export function matches(rule: PathRule, target: string) {
-  const relative = path.relative(rule.path, target)
+export function foldsCase(platform: NodeJS.Platform = process.platform) {
+  return platform === "win32" || platform === "darwin"
+}
+
+export function hasDeniedName(
+  target: string,
+  names: ReadonlyArray<string>,
+  platform: NodeJS.Platform = process.platform,
+) {
+  const fold = foldsCase(platform)
+  const denied = fold ? names.map((name) => name.toLowerCase()) : names
+  return target
+    .split(/[\\/]/)
+    .map((part) => (fold ? part.toLowerCase() : part))
+    .some((part) => denied.includes(part))
+}
+
+export function matches(rule: PathRule, target: string, platform: NodeJS.Platform = process.platform) {
+  const fold = foldsCase(platform)
+  const relative = fold
+    ? path.relative(rule.path.toLowerCase(), target.toLowerCase())
+    : path.relative(rule.path, target)
   if (relative === "") return true
   if (rule.kind === "literal") return false
   return relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)

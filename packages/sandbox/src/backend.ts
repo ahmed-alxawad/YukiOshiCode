@@ -36,8 +36,8 @@ function unavailable(reason: string): Backend {
   }
 }
 
-function select(): Backend {
-  switch (process.platform) {
+export function select(platform: NodeJS.Platform = process.platform): Backend {
+  switch (platform) {
     case "darwin":
       return seatbelt
     case "linux":
