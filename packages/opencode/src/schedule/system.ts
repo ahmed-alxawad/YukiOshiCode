@@ -6,7 +6,7 @@ import os from "os"
 import fs from "fs/promises"
 import { existsSync } from "fs"
 import type { ScheduleJob } from "./store"
-import { cronToSchtasksArgs, schtasksDeleteArgs } from "./windows"
+import { cronToTaskXml, schtasksDeleteArgs } from "./windows"
 
 export const CRON_BLOCK_START = "# BEGIN yukioshi schedule"
 export const CRON_BLOCK_END = "# END yukioshi schedule"
@@ -224,11 +224,21 @@ export async function syncSystemSchedule(jobs: ScheduleJob[]): Promise<void> {
     const binary = getYukioshiBinary()
     for (const job of jobs) {
       if (job.enabled) {
-        const args = cronToSchtasksArgs(job.id, job.cron, binary)
-        const proc = Bun.spawn(["schtasks", ...args], { stdout: "pipe", stderr: "pipe" })
-        const [stderr, exitCode] = await Promise.all([new Response(proc.stderr).text(), proc.exited])
-        if (exitCode !== 0) {
-          throw new Error(`schtasks failed for job ${job.id}: ${stderr.trim()}`)
+        const xml = cronToTaskXml(job.id, job.cron, binary, carriedEnv())
+        const file = path.join(os.tmpdir(), `yukioshi-task-${process.pid}-${job.id}.xml`)
+        // Task Scheduler reads UTF-16 with a byte order mark.
+        await fs.writeFile(file, Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(xml, "utf16le")]))
+        try {
+          const proc = Bun.spawn(["schtasks", "/Create", "/TN", `YukiOshi\\${job.id}`, "/XML", file, "/F"], {
+            stdout: "pipe",
+            stderr: "pipe",
+          })
+          const [stderr, exitCode] = await Promise.all([new Response(proc.stderr).text(), proc.exited])
+          if (exitCode !== 0) {
+            throw new Error(`schtasks failed for job ${job.id}: ${stderr.trim()}`)
+          }
+        } finally {
+          await fs.rm(file, { force: true })
         }
       } else {
         const args = schtasksDeleteArgs(job.id)

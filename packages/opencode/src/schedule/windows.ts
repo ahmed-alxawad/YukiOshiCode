@@ -29,11 +29,35 @@ function parseSingleInt(s: string, min: number, max: number): number | null {
   return n
 }
 
+/** Task Scheduler refuses a /TR command longer than 261 characters. */
+export const MAX_TASK_RUN = 261
+
+/**
+ * The command a task runs. Task Scheduler starts tasks with a bare environment, so carried settings (XDG_*,
+ * YUKIOSHI_CONFIG*) are set through cmd.exe first, the way the cron line carries them.
+ */
+export function taskRunCommand(id: string, binary: string, env: Record<string, string> = {}): string {
+  const run = `"${binary}" schedule run ${id}`
+  const entries = Object.entries(env)
+  if (entries.length === 0) return run
+  const sets = entries.map(([name, value]) => {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) throw new Error(`Invalid environment variable name for schtasks: "${name}"`)
+    if (/[\r\n"%]/.test(value)) throw new Error(`Cannot carry ${name} to Windows Task Scheduler: its value contains a quote, percent sign or line break.`)
+    return `set "${name}=${value}"`
+  })
+  return `cmd.exe /d /s /c "${sets.join(" && ")} && ${run}"`
+}
+
 /**
  * Maps a standard 5-field cron expression to the arguments for `schtasks.exe /Create`.
  * Refuses unsupported expressions with a clear user-facing error message.
  */
-export function cronToSchtasksArgs(id: string, cron: string, binary: string): string[] {
+export function cronToSchtasksArgs(
+  id: string,
+  cron: string,
+  binary: string,
+  env: Record<string, string> = {},
+): string[] {
   if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) {
     throw new Error(`Invalid job ID for schtasks: "${id}"`)
   }
@@ -50,7 +74,12 @@ export function cronToSchtasksArgs(id: string, cron: string, binary: string): st
 
   const [minStr, hourStr, domStr, monStr, dowStr] = fields
   const taskName = `YukiOshi\\${id}`
-  const taskRun = `"${binary}" schedule run ${id}`
+  const taskRun = taskRunCommand(id, binary, env)
+  if (taskRun.length > MAX_TASK_RUN) {
+    throw new Error(
+      `The command for scheduled job ${id} is ${taskRun.length} characters long, but Windows Task Scheduler accepts at most ${MAX_TASK_RUN}. Install YukiOshi in a shorter folder or unset XDG_*/YUKIOSHI_CONFIG* variables with long values.`,
+    )
+  }
 
   // Common rejection: Month cannot be restricted in schtasks without complex xml
   if (monStr !== "*") {
@@ -166,4 +195,74 @@ export function schtasksDeleteArgs(id: string): string[] {
     throw new Error(`Invalid job ID for schtasks delete: "${id}"`)
   }
   return ["/Delete", "/TN", `YukiOshi\\${id}`, "/F"]
+}
+
+function xmlEscape(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+}
+
+const DAY_ELEMENT: Record<string, string> = {
+  SUN: "Sunday",
+  MON: "Monday",
+  TUE: "Tuesday",
+  WED: "Wednesday",
+  THU: "Thursday",
+  FRI: "Friday",
+  SAT: "Saturday",
+}
+
+/**
+ * Task definition XML for `schtasks /Create /XML`. The command line flags cannot express power settings, so
+ * the task is created from XML: it still starts on battery power and runs once a missed start is possible.
+ * The schedule comes from the same mapping as the flags, so both accept exactly the same cron expressions.
+ */
+export function cronToTaskXml(id: string, cron: string, binary: string, env: Record<string, string> = {}): string {
+  const args = cronToSchtasksArgs(id, cron, binary, env)
+  const flag = (name: string) => {
+    const i = args.indexOf(name)
+    return i === -1 ? undefined : args[i + 1]
+  }
+  const sc = flag("/SC")
+  const mo = flag("/MO")
+  const st = flag("/ST") ?? "00:00"
+  const d = flag("/D")
+  const start = `2000-01-01T${st}:00`
+  let trigger: string
+  if (sc === "MINUTE") {
+    trigger = `<TimeTrigger><Repetition><Interval>PT${mo}M</Interval></Repetition><StartBoundary>2000-01-01T00:00:00</StartBoundary><Enabled>true</Enabled></TimeTrigger>`
+  } else if (sc === "HOURLY") {
+    trigger = `<TimeTrigger><Repetition><Interval>PT${mo}H</Interval></Repetition><StartBoundary>${start}</StartBoundary><Enabled>true</Enabled></TimeTrigger>`
+  } else if (sc === "DAILY") {
+    trigger = `<CalendarTrigger><StartBoundary>${start}</StartBoundary><Enabled>true</Enabled><ScheduleByDay><DaysInterval>1</DaysInterval></ScheduleByDay></CalendarTrigger>`
+  } else if (sc === "WEEKLY") {
+    const days = (d ?? "").split(",").map((x) => `<${DAY_ELEMENT[x]} />`).join("")
+    trigger = `<CalendarTrigger><StartBoundary>${start}</StartBoundary><Enabled>true</Enabled><ScheduleByWeek><DaysOfWeek>${days}</DaysOfWeek><WeeksInterval>1</WeeksInterval></ScheduleByWeek></CalendarTrigger>`
+  } else if (sc === "MONTHLY") {
+    const months = Object.values(["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]).map((m) => `<${m} />`).join("")
+    trigger = `<CalendarTrigger><StartBoundary>${start}</StartBoundary><Enabled>true</Enabled><ScheduleByMonth><DaysOfMonth><Day>${d}</Day></DaysOfMonth><Months>${months}</Months></ScheduleByMonth></CalendarTrigger>`
+  } else {
+    throw new Error(`Unsupported schedule type for Windows task: ${sc}`)
+  }
+  const [command, ...rest] = (() => {
+    const run = args[args.indexOf("/TR") + 1]
+    if (run.startsWith("cmd.exe ")) return ["cmd.exe", run.slice("cmd.exe ".length)]
+    return [binary, `schedule run ${id}`]
+  })()
+  return `<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo><Description>YukiOshi scheduled job ${xmlEscape(id)}</Description></RegistrationInfo>
+  <Triggers>${trigger}</Triggers>
+  <Principals><Principal id="Author"><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <ExecutionTimeLimit>PT72H</ExecutionTimeLimit>
+  </Settings>
+  <Actions Context="Author"><Exec><Command>${xmlEscape(command)}</Command><Arguments>${xmlEscape(rest.join(" "))}</Arguments></Exec></Actions>
+</Task>
+`
 }
