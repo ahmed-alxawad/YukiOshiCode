@@ -215,6 +215,20 @@ export async function writeCrontab(content: string): Promise<void> {
 }
 
 /**
+ * A warning to show when a job is added, for platforms where the system scheduler has limits the user would
+ * not expect. macOS uses cron too, and cron there is sandboxed by privacy protections.
+ */
+export function schedulerWarning(platform: NodeJS.Platform = process.platform): string | undefined {
+  if (platform !== "darwin") return undefined
+  return [
+    "Warning: on macOS, scheduled jobs run from cron, which has limits:",
+    "  - cron cannot read ~/Documents, ~/Desktop or ~/Downloads unless /usr/sbin/cron has Full Disk Access (System Settings > Privacy & Security).",
+    "  - jobs do not run while the Mac is asleep, and missed runs are not made up.",
+    "  - cron cannot reach the login Keychain, so keys stored there are unavailable to scheduled runs.",
+  ].join("\n")
+}
+
+/**
  * Synchronizes the list of configured jobs with the host system's scheduler:
  * - On Linux/macOS: updates the "# BEGIN yukioshi schedule" block in crontab.
  * - On Windows: creates or deletes tasks in Task Scheduler via schtasks.exe.

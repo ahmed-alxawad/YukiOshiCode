@@ -14,6 +14,7 @@ import {
   saveJobs,
   findJob,
   getRunLogs,
+  schedulerWarning,
   syncSystemSchedule,
   runJob,
   type ScheduleJob,
@@ -118,6 +119,8 @@ export const ScheduleAddCommand = effectCmd({
     UI.println(`Added scheduled job ${newJob.id} (${newJob.name})`)
     UI.println(`Schedule: ${newJob.cron} (next run: ${next})`)
     UI.println(`Directory: ${newJob.directory}`)
+    const warning = schedulerWarning()
+    if (warning) UI.println(warning)
     const keys = envOnlyKeys()
     if (process.platform !== "win32" && keys.length > 0)
       UI.println(
