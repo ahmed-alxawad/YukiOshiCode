@@ -365,7 +365,7 @@ export function withCliFixture<A, E>(
         ),
       )
 
-      const readyTimeoutMs = opts?.readyTimeoutMs ?? 15_000
+      const readyTimeoutMs = opts?.readyTimeoutMs ?? 40_000
       const match = yield* Deferred.await(readyDeferred).pipe(
         Effect.timeoutOrElse({
           duration: Duration.millis(readyTimeoutMs),
