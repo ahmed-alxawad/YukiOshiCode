@@ -4,7 +4,7 @@
 
 import path from "path"
 import fs from "fs/promises"
-import { existsSync } from "fs"
+import { existsSync, readFileSync } from "fs"
 import { Global } from "@yukioshi/core/global"
 
 export interface ScheduleJob {
@@ -173,15 +173,47 @@ export async function pruneLogs(jobId: string, maxLogs: number = 50): Promise<vo
   }
 }
 
+const LOCK_MIN_STALE_MS = 24 * 60 * 60 * 1000
+
+/** Start time of a process (Linux: /proc/<pid>/stat field 22), or undefined when it cannot be determined. */
+export function processStartTime(pid: number): string | undefined {
+  if (process.platform !== "linux") return undefined
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8")
+    // The command name (field 2) may contain spaces and parentheses, so split after the last ")".
+    const fields = stat.slice(stat.lastIndexOf(")") + 2).split(" ")
+    return fields[19]
+  } catch {
+    return undefined
+  }
+}
+
+export function isStaleLock(lock: { pid: number; time?: unknown; start?: unknown }, timeoutMs = 0): boolean {
+  const limit = Math.max(LOCK_MIN_STALE_MS, timeoutMs)
+  if (typeof lock.time === "number" && Date.now() - lock.time > limit) return true
+  try {
+    process.kill(lock.pid, 0)
+  } catch (e: any) {
+    // ESRCH means the process doesn't exist; EPERM means it exists but belongs to someone else
+    if (e.code === "ESRCH") return true
+  }
+  if (typeof lock.start === "string") {
+    const current = processStartTime(lock.pid)
+    if (current !== undefined && current !== lock.start) return true
+  }
+  return false
+}
+
 export interface JobLock {
   release: () => Promise<void>
 }
 
 /**
  * Attempts to acquire an exclusive lock file for the given job.
- * Returns null if another process holds the lock.
+ * Returns null if another process holds the lock. A lock is stale when its process is gone, when the pid now
+ * belongs to a different process (start time differs), or when it is older than max(24h, job timeout).
  */
-export async function acquireJobLock(jobId: string): Promise<JobLock | null> {
+export async function acquireJobLock(jobId: string, timeoutMs: number = 0): Promise<JobLock | null> {
   assertSafeJobId(jobId)
   const dir = getJobLogsDir(jobId)
   try {
@@ -209,26 +241,14 @@ export async function acquireJobLock(jobId: string): Promise<JobLock | null> {
   if (existsSync(lockFile)) {
     try {
       const data = await fs.readFile(lockFile, "utf8")
-      const { pid, time } = JSON.parse(data)
+      const { pid, time, start } = JSON.parse(data)
 
-      // Check if process is still running
-      if (typeof pid === "number") {
-        let isAlive = false
-        try {
-          process.kill(pid, 0)
-          isAlive = true
-        } catch (e: any) {
-          // ESRCH means process doesn't exist
-          isAlive = e.code !== "ESRCH"
-        }
-
-        if (isAlive) {
-          // Process is actively running
-          return null
-        }
+      if (typeof pid === "number" && !isStaleLock({ pid, time, start }, timeoutMs)) {
+        // Process is actively running
+        return null
       }
 
-      // If process is dead or lock file was stale (> 24 hours), remove it
+      // Dead process, reused pid, or lock older than the staleness limit: remove it
       await fs.unlink(lockFile)
     } catch {
       // Malformed lock file or race, try unlinking
@@ -244,7 +264,7 @@ export async function acquireJobLock(jobId: string): Promise<JobLock | null> {
   const tmpLock = path.join(dir, `lock.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`)
   try {
     const handle = await fs.open(tmpLock, "wx")
-    const payload = JSON.stringify({ pid: process.pid, time: Date.now() })
+    const payload = JSON.stringify({ pid: process.pid, time: Date.now(), start: processStartTime(process.pid) })
     await handle.writeFile(payload, "utf8")
     await handle.close()
     await fs.link(tmpLock, lockFile)
