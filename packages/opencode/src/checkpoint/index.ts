@@ -12,9 +12,21 @@ const PREFIX = "refs/yukioshi/checkpoints/"
 
 type GitResult = { stdout: string; status: number | null }
 
+const EMPTY_HOOKS_DIR = path.join(tmpdir(), "yukioshi-empty-hooks")
+try {
+  mkdirSync(EMPTY_HOOKS_DIR, { recursive: true })
+} catch {}
+
 // Checkpoints must never run code from the repository: no hooks (e.g. post-index-change fires on index writes)
 // and no fsmonitor command, whatever the repository or core.hooksPath says.
-const SAFE_CONFIG = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"]
+const SAFE_CONFIG = [
+  "-c",
+  `core.hooksPath=${EMPTY_HOOKS_DIR}`,
+  "-c",
+  "core.fsmonitor=false",
+  "-c",
+  "core.quotepath=false",
+]
 
 // spawnSync stops a command at 1 MB of output by default; a repository with ~30,000 files exceeds that in `git status`.
 const MAX_OUTPUT = 1024 * 1024 * 1024
@@ -129,9 +141,8 @@ export function listCheckpoints(directory: string, sessionID?: string): Checkpoi
       const message = git(root, ["show", "-s", "--format=%B", id]).stdout.trim()
       if (!message.includes("Session:") || !message.includes("Turn:")) continue
       const time = Number(git(root, ["show", "-s", "--format=%ct", id]).stdout.trim())
-      const files = git(root, ["diff-tree", "--no-commit-id", "--name-only", "-r", id])
-        .stdout.trim()
-        .split("\n")
+      const files = git(root, ["diff-tree", "--no-commit-id", "--name-only", "-r", "-z", id])
+        .stdout.split("\0")
         .filter(Boolean)
       result.push({ id, ref, sessionID: ref.slice(PREFIX.length), time, message, files })
     }
@@ -175,19 +186,21 @@ export function restoreCheckpoint(input: { directory: string; id: string; yes?: 
   })
   if (!safety) throw new Error("Could not create the safety checkpoint.")
   const target = new Set(
-    git(root, ["ls-tree", "-r", "--name-only", targetID]).stdout.trim().split("\n").filter(Boolean),
+    git(root, ["ls-tree", "-r", "-z", "--name-only", targetID]).stdout.split("\0").filter(Boolean),
   )
-  const current = git(root, ["ls-files"]).stdout.trim().split("\n").filter(Boolean)
-  for (const file of current) if (!target.has(file)) rmSync(path.join(root, file), { force: true })
-  for (const file of target) {
-    const shown = spawnSync("git", [...SAFE_CONFIG, "show", `${targetID}:${file}`], { cwd: root, maxBuffer: MAX_OUTPUT })
-    if (shown.error || shown.status !== 0)
-      throw new Error(`Could not read ${file} from the checkpoint: ${shown.error?.message ?? String(shown.stderr).trim()}`)
-    const content = shown.stdout
-    const output = path.join(root, file)
-    const parent = path.dirname(output)
-    mkdirSync(parent, { recursive: true })
-    writeFileSync(output, content)
+  const current = new Set([
+    ...git(root, ["ls-files", "-z"]).stdout.split("\0").filter(Boolean),
+    ...git(root, ["ls-tree", "-r", "-z", "--name-only", safety.id]).stdout.split("\0").filter(Boolean),
+  ])
+  for (const file of current) if (!target.has(file)) rmSync(path.join(root, file), { recursive: true, force: true })
+  const temp = mkdtempSync(path.join(tmpdir(), "yukioshi-checkpoint-restore-"))
+  const index = path.join(temp, "index")
+  try {
+    const env = { GIT_INDEX_FILE: index }
+    git(root, ["read-tree", targetID], env)
+    git(root, ["checkout-index", "-a", "-f"], env)
+  } finally {
+    rmSync(temp, { recursive: true, force: true })
   }
   return root
 }
