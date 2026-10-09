@@ -16,7 +16,7 @@ export interface RedactionResult {
 }
 
 const QUICK_HINT =
-  /(?:gh[posur]_|github_pat_|A[KS]IA|AWS_SECRET|aws_secret|sk-|AIza|xox|_live_|-----BEGIN|eyJ|password|passwd|secret|token)/i
+  /(?:gh[posur]_|github_pat_|A[KS]IA|AWS_SECRET|aws_secret|sk-|AIza|xox|_live_|-----BEGIN|eyJ|password|passwd|secret|token|:\/\/)/i
 
 const PLACEHOLDER_PREFIX = "[REDACTED:"
 const PLACEHOLDER_REGEX = /\[REDACTED:([a-zA-Z0-9_-]+)\]/g
@@ -80,6 +80,12 @@ const RULES: PatternRule[] = [
   {
     kind: "private-key",
     regex: /(-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----)/g,
+  },
+  // Credentials embedded in URLs (scheme://user:password@host): mask the password only
+  {
+    kind: "url-credentials",
+    regex: /(?<![a-z0-9+.-])([a-z][a-z0-9+.-]{1,20}:\/\/[^\s:@/?#]{0,256}:)(?![$<{]|\[REDACTED:)([^\s/?#]{1,2000})(@)/gi,
+    extractValue: (m) => ({ value: m[2]!, fullMatch: m[0]!, prefix: m[1]!, suffix: m[3]! }),
   },
   // JWT tokens
   {
