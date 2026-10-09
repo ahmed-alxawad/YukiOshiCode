@@ -18,6 +18,7 @@ import {
   type ReadTextFileResponse,
 } from "@agentclientprotocol/sdk"
 import { InstallationVersion } from "@yukioshi/core/installation/version"
+import { mergeEnv, planSpawn } from "./spawn"
 import { Redact } from "@yukioshi/core/redact"
 import { DEFAULT_TIMEOUT, type Agent as ConfigAgent } from "@yukioshi/core/v1/config/delegate"
 
@@ -40,19 +41,38 @@ export interface DelegateRunResult {
   stopReason: StopReason
 }
 
-/**
- * Kill a process and its entire process tree cleanly.
- */
-export async function killProcessTree(child: ChildProcess): Promise<void> {
-  const pid = child.pid
-  if (!pid || child.killed) return
+export interface KillDeps {
+  platform?: NodeJS.Platform
+  spawnFn?: typeof spawn
+}
 
-  const isWin = process.platform === "win32"
-  if (isWin) {
-    try {
-      const { spawnSync } = await import("child_process")
-      spawnSync("taskkill", ["/pid", String(pid), "/T", "/F"], { stdio: "ignore" })
-    } catch {}
+/**
+ * Kill a process and its entire process tree cleanly. `child.killed` only says a signal was sent to the
+ * leader, not that its descendants are gone, so it is not a reason to skip the tree kill.
+ */
+export async function killProcessTree(child: ChildProcess, deps: KillDeps = {}): Promise<void> {
+  const pid = child.pid
+  if (!pid) return
+
+  if ((deps.platform ?? process.platform) === "win32") {
+    // Asynchronous: a synchronous taskkill would freeze the whole event loop while it runs.
+    await new Promise<void>((resolve) => {
+      try {
+        const killer = (deps.spawnFn ?? spawn)("taskkill", ["/pid", String(pid), "/T", "/F"], {
+          stdio: "ignore",
+          windowsHide: true,
+        })
+        const timer = setTimeout(resolve, 5_000)
+        const done = () => {
+          clearTimeout(timer)
+          resolve()
+        }
+        killer.once("error", done)
+        killer.once("close", done)
+      } catch {
+        resolve()
+      }
+    })
     return
   }
 
@@ -186,16 +206,17 @@ export async function runDelegate(options: DelegateRunOptions): Promise<Delegate
 
   const [cmd, ...args] = agentConfig.command
 
-  const env = {
-    ...sanitizeDelegateEnv(process.env),
-    ...(agentConfig.env ?? {}),
-  }
+  const platform = process.platform
+  const env = mergeEnv(platform, sanitizeDelegateEnv(process.env), agentConfig.env ?? {})
+  const plan = planSpawn(cmd, args, { platform, env, cwd, exists: (file) => fs.existsSync(file) })
 
   let child: ChildProcess
   try {
-    child = spawn(cmd, args, {
+    child = spawn(plan.command, plan.args, {
       cwd,
       env,
+      ...(plan.windowsVerbatimArguments ? { windowsVerbatimArguments: true } : {}),
+      windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"],
       detached: process.platform !== "win32",
     })
