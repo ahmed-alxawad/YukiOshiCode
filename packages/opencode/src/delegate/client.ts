@@ -126,7 +126,7 @@ export function assertInCwd(targetPath: string, cwd: string): string {
   if (!targetPath) throw new Error("Path cannot be empty.")
   const resolved = path.isAbsolute(targetPath) ? path.resolve(targetPath) : path.resolve(cwd, targetPath)
   const rel = path.relative(cwd, resolved)
-  if (rel.startsWith("..") || path.isAbsolute(rel)) {
+  if (rel === ".." || rel.startsWith(".." + path.sep) || path.isAbsolute(rel)) {
     throw new Error(`Path "${targetPath}" resolves outside project directory "${cwd}".`)
   }
   return resolved
@@ -147,7 +147,7 @@ export async function resolveInCwd(targetPath: string, cwd: string): Promise<str
     })
     if (real !== undefined) {
       const rel = path.relative(root, real)
-      if (rel.startsWith("..") || path.isAbsolute(rel))
+      if (rel === ".." || rel.startsWith(".." + path.sep) || path.isAbsolute(rel))
         throw new Error(`Path "${targetPath}" resolves outside project directory "${cwd}" through a link.`)
       return resolved
     }
