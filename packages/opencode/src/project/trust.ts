@@ -1,6 +1,6 @@
 import path from "node:path"
 import { createHash, randomUUID } from "node:crypto"
-import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises"
+import { mkdir, readFile, rename as fsRename, rm, stat, writeFile } from "node:fs/promises"
 import { parse as parseJsonc } from "jsonc-parser"
 import { fileURLToPath } from "node:url"
 import { Global } from "@yukioshi/core/global"
@@ -168,12 +168,31 @@ async function read(file: string): Promise<Store> {
     .catch(() => empty())
 }
 
+const RENAME_RETRY_CODES = new Set(["EPERM", "EBUSY", "EACCES"])
+
+/** rename() that retries briefly: on Windows it fails while another process has the target open. */
+export async function renameWithRetry(
+  from: string,
+  to: string,
+  rename: (from: string, to: string) => Promise<void> = fsRename,
+  delayMs = 50,
+): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await rename(from, to)
+    } catch (err: any) {
+      if (attempt >= 5 || !RENAME_RETRY_CODES.has(err?.code)) throw err
+      await new Promise((resolve) => setTimeout(resolve, delayMs))
+    }
+  }
+}
+
 async function write(file: string, store: Store) {
   await mkdir(path.dirname(file), { recursive: true, mode: 0o700 })
   const temp = `${file}.${process.pid}.${randomUUID()}.tmp`
   try {
     await writeFile(temp, `${JSON.stringify(store, null, 2)}\n`, { mode: 0o600 })
-    await rename(temp, file)
+    await renameWithRetry(temp, file)
   } finally {
     await rm(temp, { force: true }).catch(() => undefined)
   }

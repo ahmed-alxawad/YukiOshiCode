@@ -66,13 +66,32 @@ export async function loadJobs(): Promise<ScheduleJob[]> {
   }
 }
 
+const RENAME_RETRY_CODES = new Set(["EPERM", "EBUSY", "EACCES"])
+
+/** rename() that retries briefly: on Windows it fails while another process has the target open. */
+export async function renameWithRetry(
+  from: string,
+  to: string,
+  rename: (from: string, to: string) => Promise<void> = (a, b) => fs.rename(a, b),
+  delayMs = 50,
+): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await rename(from, to)
+    } catch (err: any) {
+      if (attempt >= 5 || !RENAME_RETRY_CODES.has(err?.code)) throw err
+      await new Promise((resolve) => setTimeout(resolve, delayMs))
+    }
+  }
+}
+
 export async function saveJobs(jobs: ScheduleJob[]): Promise<void> {
   const scheduleDir = getScheduleDir()
   await fs.mkdir(scheduleDir, { recursive: true })
   const targetPath = getJobsPath()
   const tmpPath = `${targetPath}.${process.pid}.${Date.now()}.tmp`
-  await fs.writeFile(tmpPath, JSON.stringify(jobs, null, 2), "utf8")
-  await fs.rename(tmpPath, targetPath)
+  await fs.writeFile(tmpPath, JSON.stringify(jobs, null, 2), { encoding: "utf8", mode: 0o600 })
+  await renameWithRetry(tmpPath, targetPath)
 }
 
 export async function findJob(id: string): Promise<ScheduleJob | undefined> {
