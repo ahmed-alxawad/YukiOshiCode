@@ -227,12 +227,16 @@ const layer = Layer.effect(
       })
     const enabled = Effect.map(config.get(), (value) => value.checkpoints?.enabled === true)
     const withRoot = <A>(fn: (root: string) => A) =>
-      Effect.flatMap(InstanceState.context, (ctx) => run(() => fn(ctx.worktree)))
+      Effect.flatMap(InstanceState.context, (ctx) => run(() => fn(ctx.worktree === "/" ? ctx.directory : ctx.worktree)))
     return {
       create: (input) =>
-        Effect.flatMap(enabled, (on) =>
-          on ? withRoot((root) => createCheckpoint({ directory: root, ...input })) : Effect.succeed(undefined),
-        ),
+        Effect.gen(function* () {
+          const isEnabled = yield* enabled
+          if (!isEnabled) return undefined
+          const ctx = yield* InstanceState.context
+          const root = ctx.worktree === "/" ? ctx.directory : ctx.worktree
+          return yield* run(() => createCheckpoint({ directory: root, ...input }))
+        }),
       list: (sessionID) => withRoot((root) => listCheckpoints(root, sessionID)),
       show: (id) => withRoot((root) => showCheckpoint(root, id)),
       restore: (input) => withRoot((root) => restoreCheckpoint({ directory: root, ...input })),
