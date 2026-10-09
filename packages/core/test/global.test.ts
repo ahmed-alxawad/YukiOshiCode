@@ -30,6 +30,32 @@ describe("global paths", () => {
     }
   })
 
+  test.skipIf(process.platform === "win32")("state, log and config dirs are owner-only", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "yk-global-"))
+    try {
+      const dirs = {
+        XDG_DATA_HOME: path.join(home, "data"),
+        XDG_STATE_HOME: path.join(home, "state"),
+        XDG_CONFIG_HOME: path.join(home, "config"),
+      }
+      const log = path.join(dirs.XDG_DATA_HOME, "yukioshi", "log")
+      for (const dir of [...Object.values(dirs).map((d) => path.join(d, "yukioshi")), log]) {
+        await fs.mkdir(dir, { recursive: true })
+        await fs.chmod(dir, 0o755)
+      }
+      const proc = Bun.spawn(
+        ["bun", "-e", `await import(${JSON.stringify(path.resolve(import.meta.dir, "../src/global.ts"))})`],
+        { env: { ...process.env, ...dirs }, stdout: "ignore", stderr: "pipe" },
+      )
+      expect(await proc.exited).toBe(0)
+      for (const dir of [path.join(dirs.XDG_STATE_HOME, "yukioshi"), path.join(dirs.XDG_CONFIG_HOME, "yukioshi"), log]) {
+        expect((await fs.stat(dir)).mode & 0o077).toBe(0)
+      }
+    } finally {
+      await fs.rm(home, { recursive: true, force: true })
+    }
+  })
+
   test("tmp path is created on module load", async () => {
     expect((await fs.stat(Global.Path.tmp)).isDirectory()).toBe(true)
   })

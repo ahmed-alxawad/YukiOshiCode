@@ -34,7 +34,6 @@ Flock.setGlobal({ state })
 
 // The data dir holds the session database, logs and credentials: keep it owner-only.
 await fs.mkdir(Path.data, { recursive: true, mode: 0o700 })
-if (process.platform !== "win32") await fs.chmod(Path.data, 0o700).catch(() => {})
 
 await Promise.all([
   fs.mkdir(Path.config, { recursive: true }),
@@ -44,6 +43,17 @@ await Promise.all([
   fs.mkdir(Path.bin, { recursive: true }),
   fs.mkdir(Path.repos, { recursive: true }),
 ])
+
+// State (audit logs, locks), logs and config can hold sensitive material too: keep them owner-only.
+if (process.platform !== "win32") {
+  await Promise.all(
+    [Path.data, Path.state, Path.log, Path.config].map((dir) =>
+      fs.chmod(dir, 0o700).catch((error) => {
+        console.warn(`yukioshi: could not restrict ${dir} to owner-only: ${error instanceof Error ? error.message : error}`)
+      }),
+    ),
+  )
+}
 
 export class Service extends Context.Service<Service, Interface>()("@yukioshi/Global") {}
 
