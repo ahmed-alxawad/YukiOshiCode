@@ -30,8 +30,10 @@ export function getFilenameTruncated(path: string | undefined, maxLength: number
 
 export function truncateMiddle(text: string, maxLength: number = 20) {
   if (text.length <= maxLength) return text
+  if (maxLength <= 0) return ""
   const available = maxLength - 1 // -1 for ellipsis
   const start = Math.ceil(available / 2)
   const end = Math.floor(available / 2)
-  return text.slice(0, start) + "…" + text.slice(-end)
+  // slice(-0) would return the whole string, so skip the tail when there is no room for it
+  return text.slice(0, start) + "…" + (end > 0 ? text.slice(-end) : "")
 }
