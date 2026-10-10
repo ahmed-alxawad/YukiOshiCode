@@ -1,5 +1,5 @@
-import { Effect, Schema } from "effect"
-import { HttpClient, HttpClientRequest } from "effect/unstable/http"
+import { Effect, Schema, Stream } from "effect"
+import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/unstable/http"
 import { Parser } from "htmlparser2"
 import * as Tool from "./tool"
 import TurndownService from "turndown"
@@ -7,6 +7,7 @@ import DESCRIPTION from "./webfetch.txt"
 import { isImageAttachment } from "@/util/media"
 
 const MAX_RESPONSE_SIZE = 5 * 1024 * 1024 // 5MB
+const MAX_REDIRECTS = 10
 const DEFAULT_TIMEOUT = 30 * 1000 // 30 seconds
 const MAX_TIMEOUT = 120 * 1000 // 2 minutes
 
@@ -25,7 +26,6 @@ export const WebFetchTool = Tool.define(
   "webfetch",
   Effect.gen(function* () {
     const http = yield* HttpClient.HttpClient
-    const httpOk = HttpClient.filterStatusOk(http)
 
     return {
       description: DESCRIPTION,
@@ -73,35 +73,69 @@ export const WebFetchTool = Tool.define(
             "Accept-Language": "en-US,en;q=0.9",
           }
 
-          const request = HttpClientRequest.get(params.url).pipe(HttpClientRequest.setHeaders(headers))
+          // Redirects are followed by hand: a redirect can leave the host the permission was given for.
+          const send = (url: string, ua: string) =>
+            http
+              .execute(HttpClientRequest.get(url).pipe(HttpClientRequest.setHeaders({ ...headers, "User-Agent": ua })))
+              .pipe(Effect.provideService(FetchHttpClient.RequestInit, { redirect: "manual" }))
 
-          // Retry with honest UA if blocked by Cloudflare bot detection (TLS fingerprint mismatch)
-          const response = yield* httpOk.execute(request).pipe(
-            Effect.catchIf(
-              (err) =>
-                err.reason._tag === "StatusCodeError" &&
-                err.reason.response.status === 403 &&
-                err.reason.response.headers["cf-mitigated"] === "challenge",
-              () =>
-                httpOk.execute(
-                  HttpClientRequest.get(params.url).pipe(
-                    HttpClientRequest.setHeaders({ ...headers, "User-Agent": "yukioshi" }),
-                  ),
-                ),
-            ),
+          const fetchOnce = (url: string) =>
+            send(url, headers["User-Agent"]).pipe(
+              // Retry with honest UA if blocked by Cloudflare bot detection (TLS fingerprint mismatch)
+              Effect.flatMap((res) =>
+                res.status === 403 && res.headers["cf-mitigated"] === "challenge" ? send(url, "yukioshi") : Effect.succeed(res),
+              ),
+            )
+
+          const follow = Effect.gen(function* () {
+            let current = params.url
+            for (let hops = 0; ; hops++) {
+              const res = yield* fetchOnce(current)
+              const location = res.headers["location"]
+              if (res.status < 300 || res.status >= 400 || !location) {
+                if (res.status < 200 || res.status >= 300) throw new Error(`Request failed with status code ${res.status}`)
+                // Read the body here, under the same timeout, and stop at the size limit.
+                const declared = res.headers["content-length"]
+                if (declared && parseInt(declared) > MAX_RESPONSE_SIZE) {
+                  throw new Error("Response too large (exceeds 5MB limit)")
+                }
+                const chunks: Uint8Array[] = []
+                let total = 0
+                yield* Stream.runForEach(res.stream, (chunk) =>
+                  Effect.sync(() => {
+                    total += chunk.byteLength
+                    if (total > MAX_RESPONSE_SIZE) throw new Error("Response too large (exceeds 5MB limit)")
+                    chunks.push(chunk)
+                  }),
+                )
+                const arrayBuffer = new Uint8Array(total)
+                let at = 0
+                for (const chunk of chunks) {
+                  arrayBuffer.set(chunk, at)
+                  at += chunk.byteLength
+                }
+                return { response: res, arrayBuffer: arrayBuffer.buffer as ArrayBuffer }
+              }
+              if (hops >= MAX_REDIRECTS) throw new Error("Too many redirects")
+              const next = new URL(location, current)
+              if (next.protocol !== "http:" && next.protocol !== "https:") {
+                throw new Error("Redirect to a non-http URL was refused")
+              }
+              if (next.origin !== new URL(current).origin) {
+                yield* ctx.ask({
+                  permission: "webfetch",
+                  patterns: [next.toString()],
+                  always: ["*"],
+                  metadata: { url: next.toString(), redirectedFrom: current, format: params.format },
+                })
+              }
+              current = next.toString()
+            }
+          })
+
+          const { response, arrayBuffer } = yield* follow.pipe(
             Effect.timeoutOrElse({ duration: timeout, orElse: () => Effect.die(new Error("Request timed out")) }),
           )
-
-          // Check content length
-          const contentLength = response.headers["content-length"]
-          if (contentLength && parseInt(contentLength) > MAX_RESPONSE_SIZE) {
-            throw new Error("Response too large (exceeds 5MB limit)")
-          }
-
-          const arrayBuffer = yield* response.arrayBuffer
-          if (arrayBuffer.byteLength > MAX_RESPONSE_SIZE) {
-            throw new Error("Response too large (exceeds 5MB limit)")
-          }
 
           const contentType = response.headers["content-type"] || ""
           const mime = contentType.split(";")[0]?.trim().toLowerCase() || ""
