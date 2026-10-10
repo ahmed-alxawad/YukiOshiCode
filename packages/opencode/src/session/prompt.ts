@@ -109,6 +109,38 @@ function isOrphanedInterruptedTool(part: SessionV1.ToolPart) {
   return part.state.status === "error" && part.state.metadata?.interrupted === true
 }
 
+type RedactOptions = NonNullable<Parameters<typeof Redact.maskDeep>[1]>
+
+// Tool-call arguments (assistant) and tool results (tool role) are model/tool authored and reach the
+// provider verbatim, so they get the same masking as user text. Stored data is not changed.
+function maskToolTraffic<M extends { role: string; content: unknown }>(msg: M, options: RedactOptions | undefined): M {
+  if (options?.enabled === false) return msg
+  if (!Array.isArray(msg.content)) return msg
+  if (msg.role !== "assistant" && msg.role !== "tool") return msg
+  const content = msg.content.map((part: any) => {
+    if (part?.type === "tool-call") return { ...part, input: Redact.maskDeep(part.input, options) }
+    if (part?.type !== "tool-result") return part
+    const output = part.output
+    if (output?.type === "content" && Array.isArray(output.value)) {
+      return {
+        ...part,
+        output: {
+          ...output,
+          value: output.value.map((item: any) =>
+            item?.type === "text" && typeof item.text === "string"
+              ? { ...item, text: Redact.maskDeep(item.text, options) }
+              : item,
+          ),
+        },
+      }
+    }
+    if (output && (output.type === "text" || output.type === "error-text" || output.type === "json" || output.type === "error-json"))
+      return { ...part, output: { ...output, value: Redact.maskDeep(output.value, options) } }
+    return part
+  })
+  return { ...msg, content }
+}
+
 export interface Interface {
   readonly cancel: (sessionID: SessionID) => Effect.Effect<void>
   readonly prompt: (input: PromptInput) => Effect.Effect<SessionV1.WithParts, Image.Error>
@@ -1516,7 +1548,8 @@ const layer = Layer.effect(
             ])
             const redactCfg = (yield* config.get()).redact
             let promptRedacted = false
-            const modelMsgs = rawModelMsgs.map((msg) => {
+            const modelMsgs = rawModelMsgs.map((rawMsg) => {
+              const msg = maskToolTraffic(rawMsg, redactCfg)
               if (msg.role !== "user") return msg
               if (typeof msg.content === "string") {
                 const report = Redact.maskWithReport(msg.content, redactCfg)
