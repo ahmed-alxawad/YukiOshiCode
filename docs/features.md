@@ -33,7 +33,7 @@ If your configuration already defines an agent named `goal`, `reasoning`,
 that name instead of the built-in mode.
 
 These modes decide *how* the agent works. Permission modes (`manual`, `auto`,
-`auto-all`, `plan`, see [Permissions and safety](permissions-and-safety.md))
+`auto-all`, `plan`, `review`, see [Permissions and safety](permissions-and-safety.md))
 separately decide *what it may do without asking*; any mode can be combined
 with any permission mode.
 
@@ -458,8 +458,8 @@ jobs:
   provider works through its usual environment variable.
 - `--mode plan` keeps the run to low-risk actions such as reading files, so
   the review cannot change the checkout or run commands. The diff arrives on
-  stdin, so no shell access is needed. (This needs a release after 0.3.4;
-  until then `--mode plan` does not stop actions your rules allow.)
+  stdin, so no shell access is needed. (This needs 0.3.5 or later; older
+  releases let `--mode plan` run actions your rules allow.)
 - `--max-turns` and `--max-cost` cap the run; when one stops it, the step
   fails with exit code 5 or 6 (see [exit codes](commands.md#exit-codes)).
 - The checked-out repository is not trusted, so its own YukiOshi config cannot
@@ -484,9 +484,12 @@ Triggers are off by default. To enable them, configure `triggers` in your global
 
 - **Authentication**: Requests must send `Authorization: Bearer <token>`, compared in constant time against the environment variable specified in `token_env`. The token must be at least 32 characters long. The trigger token only grants access to `POST /trigger`, never to the rest of the server API.
 - **Modes**: Runs in `"review"` (the default) or `"plan"` mode; never `"auto-all"`.
+- **Request body**: JSON, at most 64 KB, with `prompt` (required), `directory` (required), and `model` (optional, `provider/model`). Other fields are rejected. A missing or wrong token gets 401, a body that is not JSON gets 415, a bad body gets 400, and a body over 64 KB gets 413.
 - **Allowed directories**: The request body's `directory` must resolve to one of the directories configured in `triggers.directories` (returns 403 Forbidden otherwise). Project configs cannot enable triggers or alter allowed directories.
+- **Unattended**: An approval prompt that reaches the run is refused, since no one is there to answer it.
+- **Disabled**: If `triggers` is off, or `token_env` is unset, empty, or shorter than 32 characters, the endpoint returns 404 and `yukioshi serve` logs why.
 - **Concurrency**: Only one run per directory at a time. A second trigger while a run is active returns 409 Conflict.
-- **Async execution**: Returns `202 Accepted` immediately with `{ "sessionID": "..." }`, while the run proceeds in the background.
+- **Async execution**: Returns `202 Accepted` immediately with `{ "sessionID": "..." }`, while the run proceeds in the background. The session is titled `Trigger: <start of the prompt>`. If the mode cannot be set on the session, nothing starts and the reply is 500.
 
 ```bash
 curl -X POST http://127.0.0.1:4096/trigger \
