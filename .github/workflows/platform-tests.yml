@@ -47,4 +47,13 @@ jobs:
             test/server/trigger.test.ts \
             test/audit/audit-security.test.ts \
             test/cli/run/outcome.test.ts \
-            test/permission/review.test.ts
+            test/permission/review.test.ts \
+            test/schedule/ \
+            test/delegate/in-cwd.test.ts \
+            test/delegate/spawn-windows.test.ts \
+            test/project/worktree-paths.test.ts \
+            test/hooks/timeout-group.test.ts \
+            test/platform/windows-verification.test.ts \
+            ../sandbox/test/platform-case.test.ts \
+            ../core/test/global.test.ts
+
