@@ -21,6 +21,7 @@ import { MessageID, SessionID } from "../../src/session/schema"
 import { TestInstance, trustProject } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 import { ProviderV2 } from "@yukioshi/core/provider"
+import { isRemovedProviderID } from "@yukioshi/core/opencode-guard"
 import { ModelV2 } from "@yukioshi/core/model"
 import { AppNodeBuilder } from "@yukioshi/core/effect/app-node-builder"
 import { LayerNode } from "@yukioshi/core/effect/layer-node"
@@ -222,9 +223,10 @@ function isSelected(scenario: RecordedScenario) {
 }
 
 const canRun = (scenario: RecordedScenario) =>
-  shouldRecord
+  !isRemovedProviderID(scenario.providerID) &&
+  (shouldRecord
     ? scenario.canRecord()
-    : HttpRecorderInternal.hasCassetteSync(scenario.cassette, { directory: FIXTURES_DIR })
+    : HttpRecorderInternal.hasCassetteSync(scenario.cassette, { directory: FIXTURES_DIR }))
 
 const recordError = (scenario: RecordedScenario) =>
   scenario.id === "openai-oauth"
