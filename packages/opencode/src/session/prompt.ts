@@ -2205,7 +2205,19 @@ const layer = Layer.effect(
         throw error
       }
 
-      const templateParts = yield* resolvePromptParts(template)
+      // MCP prompt templates come from a remote server, so they must not pull in files outside the
+      // project. References the user typed in the command arguments stay unrestricted (explicit consent).
+      const templateParts =
+        cmd.source === "mcp"
+          ? yield* Effect.gen(function* () {
+              const restricted = yield* resolvePromptParts(template, { restrictToProject: true })
+              const typed = (yield* resolvePromptParts(input.arguments)).slice(1)
+              const key = (part: (typeof restricted)[number]) =>
+                part.type === "file" ? `file:${part.url}` : part.type === "agent" ? `agent:${part.name}` : undefined
+              const known = new Set(restricted.map(key))
+              return [...restricted, ...typed.filter((part) => !known.has(key(part)))]
+            })
+          : yield* resolvePromptParts(template)
       const inputFiles = new Set(
         input.parts?.filter((part) => new URL(part.url).protocol === "file:").map((part) => fileURLToPath(part.url)),
       )
