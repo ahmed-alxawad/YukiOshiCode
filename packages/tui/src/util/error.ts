@@ -1,10 +1,20 @@
+import { Redact } from "@yukioshi/core/redact"
 import { isRecord } from "./record"
 
 type ConfigIssue = { message: string; path: string[] }
 
+// Error text is printed, logged and shown on screen: a provider response, a command line or a config file
+// quoted in it can hold a credential.
+const safe = (text: string) => Redact.scrubKnown(Redact.mask(text))
+
 export function cliErrorMessage(input: unknown): string | undefined {
+  const text = rawCliErrorMessage(input)
+  return text === undefined ? undefined : safe(text)
+}
+
+function rawCliErrorMessage(input: unknown): string | undefined {
   if (input instanceof Error && isRecord(input.cause) && "body" in input.cause) {
-    const formatted = cliErrorMessage(input.cause.body)
+    const formatted = rawCliErrorMessage(input.cause.body)
     if (formatted) return formatted
   }
 
@@ -106,6 +116,10 @@ function field(input: Record<string, unknown>, key: string) {
 }
 
 export function errorFormat(error: unknown): string {
+  return safe(rawErrorFormat(error))
+}
+
+function rawErrorFormat(error: unknown): string {
   if (error instanceof Error) {
     return error.stack ?? `${error.name}: ${error.message}`
   }
@@ -134,6 +148,10 @@ export function errorFormat(error: unknown): string {
 }
 
 export function errorMessage(error: unknown): string {
+  return safe(rawErrorMessage(error))
+}
+
+function rawErrorMessage(error: unknown): string {
   if (error instanceof Error) {
     if (error.message) return error.message
     if (error.name) return error.name
@@ -156,6 +174,10 @@ export function errorMessage(error: unknown): string {
 }
 
 export function errorData(error: unknown) {
+  return Redact.maskDeep(rawErrorData(error))
+}
+
+function rawErrorData(error: unknown) {
   if (error instanceof Error) {
     return {
       type: error.name,

@@ -1,3 +1,4 @@
+import { Redact } from "@yukioshi/core/redact"
 import { NamedError } from "@yukioshi/core/util/error"
 import { errorFormat } from "@/util/error"
 import { isRecord } from "@/util/record"
@@ -33,8 +34,13 @@ function configIssues(input: Record<string, unknown>): ConfigIssue[] {
 }
 
 export function FormatError(input: unknown): string | undefined {
+  const text = formatError(input)
+  return text === undefined ? undefined : Redact.scrubKnown(Redact.mask(text))
+}
+
+function formatError(input: unknown): string | undefined {
   if (input instanceof Error && isRecord(input.cause) && "body" in input.cause) {
-    const formatted = FormatError(input.cause.body)
+    const formatted = formatError(input.cause.body)
     if (formatted) return formatted
   }
 
