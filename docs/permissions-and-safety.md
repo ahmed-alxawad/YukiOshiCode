@@ -354,7 +354,7 @@ The `POST /trigger` endpoint on `yukioshi serve` accepts HTTP requests to start 
 - **Directory boundary**: Triggers can only run in directories explicitly enumerated in `triggers.directories` within the user's global configuration (`~/.config/yukioshi/yukioshi.json` on Linux/macOS, `%APPDATA%\yukioshi\yukioshi.json` on Windows). Project configurations cannot enable triggers or expand the directory list.
 - **Payload limits**: Request bodies are capped at 64 KB and strictly validated to reject unknown fields.
 - **Concurrency locking**: Only one run per directory may execute at any given time. Concurrent attempts return HTTP 409 Conflict until the active run finishes.
-- **Audit logging**: When audit logging is enabled (`audit.enabled`), every accepted trigger event is logged to the local audit trail with session ID, directory, mode, and masked prompt.
+- **Audit logging**: When audit logging is enabled (`audit.enabled`), every accepted trigger is logged to the local audit trail as a `trigger` event with session ID, directory, mode, the model if one was sent, and the masked prompt.
 
 ## Reporting a security problem
 
