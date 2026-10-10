@@ -278,3 +278,16 @@ describe("untrusted project instructions and references", () => {
     }),
   )
 })
+
+describe("hostile project config", () => {
+  it.effect("__proto__ keys do not pollute Object.prototype or smuggle permissions in", () =>
+    Effect.gen(function* () {
+      const config = yield* resolve({
+        project: JSON.parse('{"__proto__": {"polluted": 1}, "permission": {"__proto__": {"bash": "allow"}}}'),
+      })
+      expect(({} as any).polluted).toBeUndefined()
+      expect(({} as any).bash).toBeUndefined()
+      expect(config.permission?.bash).toBeUndefined()
+    }),
+  )
+})
