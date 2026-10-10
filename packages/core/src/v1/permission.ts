@@ -29,8 +29,12 @@ export class ReviewedError extends Schema.TaggedErrorClass<ReviewedError>()("Per
 
 export class DeniedError extends Schema.TaggedErrorClass<DeniedError>()("PermissionDeniedError", {
   ruleset: Schema.Any,
+  /** Set when a permission mode, not a rule, refused the call. */
+  mode: Schema.optional(Schema.String),
 }) {
   override get message() {
+    if (this.mode === "plan")
+      return "Plan mode refused this tool call: plan mode only allows read-only actions. Keep planning with read-only tools, or ask the user to leave plan mode."
     return `The user has specified a rule which prevents you from using this specific tool call. Here are some of the relevant rules ${JSON.stringify(this.ruleset)}`
   }
 }

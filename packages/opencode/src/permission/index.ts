@@ -133,6 +133,7 @@ const layer = Layer.effect(
       if (mode === "plan" && risk !== "low") {
         return yield* new PermissionV1.DeniedError({
           ruleset: ruleset.filter((rule) => Wildcard.match(request.permission, rule.permission)),
+          mode: "plan",
         })
       }
 
