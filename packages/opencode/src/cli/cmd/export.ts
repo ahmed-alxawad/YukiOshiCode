@@ -7,6 +7,7 @@ import { UI } from "../ui"
 import * as prompts from "@clack/prompts"
 import { EOL } from "os"
 import { Effect } from "effect"
+import { Redact } from "@yukioshi/core/redact"
 
 function redact(kind: string, id: string, value: string) {
   return value.trim() ? `[redacted:${kind}:${id}]` : value
@@ -219,6 +220,14 @@ function sanitize(data: { info: Session.Info; messages: SessionV1.WithParts[] })
   }
 }
 
+/**
+ * What `export` prints. Stored prompts and tool input can hold credentials, so secrets are masked even
+ * without --sanitize; --sanitize additionally removes transcript and file data.
+ */
+export function exportOutput(data: { info: Session.Info; messages: SessionV1.WithParts[] }, sanitized?: boolean) {
+  return sanitized ? sanitize(data) : Redact.maskDeep(data)
+}
+
 export const ExportCommand = effectCmd({
   command: "export [sessionID]",
   describe: "export session data as JSON",
@@ -286,7 +295,7 @@ const run = Effect.fn("Cli.export.body")(function* (args: { sessionID?: string; 
 
     const exportData = { info: sessionInfo, messages }
 
-    process.stdout.write(JSON.stringify(args.sanitize ? sanitize(exportData) : exportData, null, 2))
+    process.stdout.write(JSON.stringify(exportOutput(exportData, args.sanitize), null, 2))
     process.stdout.write(EOL)
   }).pipe(Effect.catchCause(() => fail(`Session not found: ${sessionID!}`)))
 })

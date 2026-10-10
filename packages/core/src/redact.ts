@@ -246,6 +246,21 @@ export function mask(text: string, options?: ConfigRedactV1.Info): string {
 }
 
 /**
+ * Mask secrets in every string of a JSON-like value (objects, arrays, strings), returning a copy.
+ * Keys, numbers and other values are left alone. Used for payloads that leave the machine or reach disk.
+ */
+export function maskDeep<T>(value: T, options?: ConfigRedactV1.Info): T {
+  const walk = (item: unknown): unknown => {
+    if (typeof item === "string") return scrubKnown(mask(item, options))
+    if (Array.isArray(item)) return item.map(walk)
+    if (item && typeof item === "object" && [Object.prototype, null].includes(Object.getPrototypeOf(item)))
+      return Object.fromEntries(Object.entries(item).map(([key, entry]) => [key, walk(entry)]))
+    return item
+  }
+  return walk(value) as T
+}
+
+/**
  * Extract all secrets from text without modifying it.
  */
 export function findSecrets(text: string, options?: ConfigRedactV1.Info): RedactionMatch[] {
