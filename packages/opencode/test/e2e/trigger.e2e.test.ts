@@ -311,7 +311,7 @@ describe("authenticated trigger on yukioshi serve", () => {
 
         yield* llm.pushMatch(
           fromAgent,
-          reply().tool("bash", { command: `touch ${targetFile}`, description: "create trigger file" }),
+          reply().tool("bash", { command: `echo ok > "${targetFile}"`, description: "create trigger file" }),
           reply().text("finished task").stop(),
         )
         yield* llm.pushMatch(

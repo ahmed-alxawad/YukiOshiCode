@@ -25,6 +25,7 @@ import { AppProcess } from "@yukioshi/core/process"
 import { Deferred, Duration, Effect, Layer, Queue, Schedule, Scope, Stream } from "effect"
 import { FetchHttpClient, HttpClient } from "effect/unstable/http"
 import { ChildProcess } from "effect/unstable/process"
+import fsNode from "node:fs"
 import path from "node:path"
 import { TestLLMServer } from "./llm-server"
 import { testProviderConfig } from "./test-provider"
@@ -199,7 +200,8 @@ export function withCliFixture<A, E>(
     const fs = yield* FSUtil.Service
     const appProc = yield* AppProcess.Service
 
-    const home = yield* fs.makeTempDirectory({ prefix: "oc-cli-" }).pipe(Effect.flatMap((dir) => fs.realPath(dir)))
+    const rawHome = yield* fs.makeTempDirectory({ prefix: "oc-cli-" }).pipe(Effect.flatMap((dir) => fs.realPath(dir)))
+    const home = process.platform === "win32" ? fsNode.realpathSync.native(rawHome) : rawHome
     yield* Effect.addFinalizer(() =>
       fs
         .remove(home, { recursive: true })

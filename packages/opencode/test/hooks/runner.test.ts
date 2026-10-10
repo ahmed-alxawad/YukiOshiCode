@@ -4,6 +4,7 @@ import { LayerNode } from "@yukioshi/core/effect/layer-node"
 import { Hooks } from "@/hooks"
 import { CrossSpawnSpawner } from "@yukioshi/core/cross-spawn-spawner"
 import type { ConfigHooksV1 } from "@yukioshi/core/v1/config/hooks"
+import path from "node:path"
 import { testEffect } from "../lib/effect"
 import { tmpdirScoped } from "../fixture/fixture"
 
@@ -43,8 +44,12 @@ describe("Hooks.Service", () => {
     withCwd((cwd) =>
       Effect.gen(function* () {
         const hooks = yield* Hooks.Service
+        const script = path.join(cwd, "block.ts")
+        yield* Effect.promise(() =>
+          Bun.write(script, "process.stderr.write('no deletes allowed'); process.exit(2)\n"),
+        )
         const cfg: ConfigHooksV1.Info = {
-          preToolUse: [{ matcher: "*", command: 'bun -e "process.stderr.write(\'no deletes allowed\'); process.exit(2)"' }],
+          preToolUse: [{ matcher: "*", command: `bun ${JSON.stringify(script)}` }],
         }
         const result = yield* hooks.run({ hooks: cfg, event: "PreToolUse", payload: {}, cwd, toolName: "bash" })
         expect(result.blocked).toBe("no deletes allowed")

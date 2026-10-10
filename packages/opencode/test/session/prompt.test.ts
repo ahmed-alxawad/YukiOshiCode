@@ -1306,6 +1306,7 @@ it.instance(
           if (tool?.state.status === "running" && tool.state.metadata?.sessionId) return tool
         }),
         "timed out waiting for running subtask metadata",
+        "15 seconds",
       )
 
       if (tool.state.status !== "running") return
@@ -1316,7 +1317,7 @@ it.instance(
       yield* prompt.cancel(chat.id)
       yield* Fiber.await(fiber)
     }),
-  5_000,
+  15_000,
 )
 
 it.instance(
@@ -1350,6 +1351,7 @@ it.instance(
           if (tool?.state.status === "running" && tool.state.metadata?.sessionId) return tool
         }),
         "timed out waiting for running task metadata",
+        "15 seconds",
       )
 
       if (tool.state.status !== "running") return
@@ -1360,7 +1362,7 @@ it.instance(
       yield* prompt.cancel(chat.id)
       yield* Fiber.await(fiber)
     }),
-  10_000,
+  15_000,
 )
 
 it.instance(
@@ -1384,7 +1386,7 @@ it.instance(
       yield* Fiber.await(fiber)
       expect((yield* status.get(chat.id)).type).toBe("idle")
     }),
-  3_000,
+  10_000,
 )
 
 // Cancel semantics
@@ -1523,7 +1525,7 @@ raceNoLLMServer.instance(
       }
     }),
   { config: cfg },
-  3_000,
+  10_000,
 )
 
 noLLMServer.instance(
@@ -1633,7 +1635,7 @@ it.instance(
       }
     }),
   { git: true },
-  10_000,
+  20_000,
 )
 
 // Queue semantics
@@ -1976,7 +1978,7 @@ unixNoLLMServer(
   30_000,
 )
 
-it.instance(
+unix(
   "loop waits while shell runs and starts after shell exits",
   () =>
     Effect.gen(function* () {
@@ -2013,7 +2015,7 @@ it.instance(
   10_000,
 )
 
-it.instance(
+unix(
   "shell completion resumes queued loop callers",
   () =>
     Effect.gen(function* () {

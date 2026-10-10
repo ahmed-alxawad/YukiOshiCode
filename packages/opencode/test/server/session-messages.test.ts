@@ -157,7 +157,7 @@ describe("session messages endpoint", () => {
     ),
     { git: true },
     // Writes and reads back 520 messages: well past the default 5 s on a busy CI runner.
-    30_000,
+    60_000,
   )
 
   it.instance(

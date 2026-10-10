@@ -54,6 +54,17 @@ jobs:
             test/project/worktree-paths.test.ts \
             test/hooks/timeout-group.test.ts \
             test/platform/windows-verification.test.ts \
+            test/cli/trust.test.ts \
+            test/e2e/audit.e2e.test.ts \
+            test/e2e/import.e2e.test.ts \
+            test/e2e/trigger.e2e.test.ts \
+            test/e2e/untrusted-repository.e2e.test.ts \
+            test/hooks/runner.test.ts \
+            test/server/httpapi-file.test.ts \
+            test/server/session-messages.test.ts \
+            test/session/prompt.test.ts \
+            test/server/httpapi-v2-pty.test.ts \
+            test/tool/shell.test.ts \
             ../sandbox/test/platform-case.test.ts \
             ../core/test/global.test.ts
 
