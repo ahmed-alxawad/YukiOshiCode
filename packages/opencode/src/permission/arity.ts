@@ -1,5 +1,6 @@
 export function prefix(tokens: string[]) {
-  for (let len = tokens.length; len > 0; len--) {
+  // No ARITY key has more than 3 words; avoid O(n^2) joins on huge argument lists.
+  for (let len = Math.min(tokens.length, 3); len > 0; len--) {
     const prefix = tokens.slice(0, len).join(" ")
     const arity = Object.hasOwn(ARITY, prefix) ? ARITY[prefix] : undefined
     if (arity !== undefined) return tokens.slice(0, arity)
