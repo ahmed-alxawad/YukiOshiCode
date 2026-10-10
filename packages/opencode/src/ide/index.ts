@@ -19,6 +19,11 @@ export const InstallFailedError = NamedError.create("InstallFailedError", {
   stderr: Schema.String,
 })
 
+export const PUBLISHED_EXTENSIONS: readonly string[] = []
+
+export const REFUSAL_MESSAGE =
+  "no YukiOshi editor extension is published; connect your editor over ACP: `yukioshi acp`"
+
 export function ide() {
   if (process.env["TERM_PROGRAM"] === "vscode") {
     const v = process.env["GIT_ASKPASS"]
@@ -37,7 +42,16 @@ export async function install(ide: (typeof SUPPORTED_IDES)[number]["name"]) {
   const cmd = SUPPORTED_IDES.find((i) => i.name === ide)?.cmd
   if (!cmd) throw new Error(`Unknown IDE: ${ide}`)
 
-  const p = await Process.run([cmd, "--install-extension", "yukioshi.yukioshi"], {
+  // Refuse to install any extension unless the id is one we publish.
+  // YukiOshi does not publish editor extensions; users connect editors via ACP.
+  // Never install untrusted extensions or legacy sst-dev.opencode / yukioshi.yukioshi.
+  const extensionId = ""
+  if (!extensionId || !PUBLISHED_EXTENSIONS.includes(extensionId)) {
+    process.stderr.write(REFUSAL_MESSAGE + "\n")
+    process.exit(1)
+  }
+
+  const p = await Process.run([cmd, "--install-extension", extensionId], {
     nothrow: true,
   })
   const stdout = p.stdout.toString()

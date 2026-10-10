@@ -607,4 +607,4 @@ To protect your system, YukiOshi installs only non-executable parts of a Claude 
   configure (`"enterprise": { "url": "…" }`). YukiOshi has no public share
   service and never uploads sessions anywhere else.
 - **Editors**: `yukioshi acp` speaks the Agent Client Protocol for editors that
-  support it.
+  support it. No separate YukiOshi editor extension is published; connect your editor over ACP: `yukioshi acp`.

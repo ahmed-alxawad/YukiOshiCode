@@ -79,4 +79,33 @@ describe("ide", () => {
 
     expect(Ide.alreadyInstalled()).toBe(false)
   })
+
+  test("refuses to install unpublished extensions, prints clear message, and exits 1", async () => {
+    let exitCode: number | undefined
+    let stderr = ""
+    const origExit = process.exit.bind(process)
+    const origStderrWrite = process.stderr.write.bind(process)
+
+    // @ts-ignore
+    process.exit = (code?: number) => {
+      exitCode = code ?? 0
+      throw new Error(`process.exit(${code})`)
+    }
+    // @ts-ignore
+    process.stderr.write = (chunk: string | Uint8Array) => {
+      stderr += chunk.toString()
+      return true
+    }
+
+    try {
+      await expect(Ide.install("Visual Studio Code")).rejects.toThrow("process.exit(1)")
+      expect(exitCode).toBe(1)
+      expect(stderr.trim()).toBe(
+        "no YukiOshi editor extension is published; connect your editor over ACP: `yukioshi acp`",
+      )
+    } finally {
+      process.exit = origExit
+      process.stderr.write = origStderrWrite
+    }
+  })
 })
