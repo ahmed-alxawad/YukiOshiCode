@@ -19,6 +19,7 @@ import { SessionShareTable } from "@yukioshi/core/share/sql"
 import { ProviderV2 } from "@yukioshi/core/provider"
 import { ModelV2 } from "@yukioshi/core/model"
 import { EventV2 } from "@yukioshi/core/event"
+import { Redact } from "@yukioshi/core/redact"
 
 /** Sharing cannot run (no share server configured, or turned off); the message says what to do. */
 export class ShareUnavailableError extends Error {
@@ -99,6 +100,11 @@ function api(resource: string): Api {
 const legacyApi = api("share")
 const consoleApi = api("shares")
 
+/** Everything uploaded to the share server is masked first: prompts, tool input and diffs can hold credentials. */
+export function maskShareData<T extends { data: unknown }>(items: T[], redact?: Parameters<typeof Redact.maskDeep>[1]): T[] {
+  return items.map((item) => ({ ...item, data: Redact.maskDeep(item.data, redact) }))
+}
+
 function key(item: Data) {
   switch (item.type) {
     case "session":
@@ -126,11 +132,12 @@ const layer = Layer.effect(
     const provider = yield* Provider.Service
     const session = yield* Session.Service
 
-    function sync(sessionID: SessionID, data: Data[]) {
+    function sync(sessionID: SessionID, raw: Data[]) {
       return Effect.gen(function* () {
         if (disabled) return
         const share = yield* getCached(sessionID)
         if (!share) return
+        const data = maskShareData(raw, (yield* cfg.get()).redact)
 
         const s = yield* InstanceState.get(state)
         const existing = s.queue.get(sessionID)
