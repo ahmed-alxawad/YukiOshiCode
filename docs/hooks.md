@@ -52,6 +52,13 @@ Every hook also gets two environment variables:
 - `YUKIOSHI_PROJECT_DIR`: the project folder
 - `YUKIOSHI_HOOK_EVENT`: the event name
 
+Hooks do not inherit credentials from your environment. Variables named
+`DATABASE_URL`, `PASSWORD`, or `PASSWD`, and variables ending in `_PASSWORD`,
+`_PASSWD`, `_PRIVATE_KEY`, `_ACCESS_KEY`, `_SECRET_KEY`, `_SECRET_ACCESS_KEY`,
+`_SECRET`, `_TOKEN`, or `_API_KEY`, are removed before a hook runs. The JSON a
+hook receives and the output it prints are secret-masked, so credentials that
+appear in a prompt or tool output are replaced with `[REDACTED:...]`.
+
 ## Blocking
 
 A hook blocks the action by exiting with code `2`, or by printing
