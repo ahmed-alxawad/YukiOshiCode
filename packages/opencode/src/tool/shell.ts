@@ -652,6 +652,8 @@ export const ShellTool = Tool.define(
           Effect.scoped(sandbox ? Sandbox.run(sandbox, spawnEffect) : spawnEffect).pipe(Effect.orDie),
         )
       }
+      // Like the audit log itself, only the global config turns the audit lines on.
+      const audit = yield* config.getGlobal()
       const job = BackgroundShell.start({
         sessionID: ctx.sessionID,
         command: input.command,
@@ -662,9 +664,9 @@ export const ShellTool = Tool.define(
         bufferChars: settings?.buffer_kb === undefined ? undefined : settings.buffer_kb * 1024,
         waitMs: settings?.run_wait_seconds === undefined ? undefined : settings.run_wait_seconds * 1000,
         mask: (text) => Redact.mask(text, cfg.redact),
-        onEnd: (ended) => void auditJob("exit", ended, cfg),
+        onEnd: (ended) => void auditJob("exit", ended, audit),
       })
-      yield* Effect.promise(() => auditJob("start", job, cfg))
+      yield* Effect.promise(() => auditJob("start", job, audit))
       return {
         title: input.command,
         metadata: { background: true, job: job.id, output: "", exit: null, truncated: false },

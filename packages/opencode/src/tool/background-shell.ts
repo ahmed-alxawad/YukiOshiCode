@@ -159,8 +159,8 @@ export const JobStopTool = Tool.define(
           const was = job.state
           yield* Effect.promise(() => BackgroundShell.stop(job, "stopped"))
           if (was === "running") {
-            const cfg = yield* config.get()
-            yield* Effect.promise(() => auditJob("stop", job, cfg))
+            const audit = yield* config.getGlobal()
+            yield* Effect.promise(() => auditJob("stop", job, audit))
           }
           const last = BackgroundShell.list(ctx.sessionID).find((item) => item.id === job.id)?.last ?? []
           return {
