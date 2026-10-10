@@ -55,7 +55,10 @@ describe("tool.webfetch security", () => {
         () =>
           new Response(
             new ReadableStream({
-              pull(controller) {
+              // Yield on every pull: a synchronous endless producer would starve the event loop
+              // that this in-process server shares with the client, and the test would hang.
+              async pull(controller) {
+                await Bun.sleep(0)
                 sent += chunk.byteLength
                 controller.enqueue(chunk)
               },
@@ -70,6 +73,7 @@ describe("tool.webfetch security", () => {
       expect(String(exit)).toContain("too large")
       expect(sent).toBeLessThan(32 * 1024 * 1024)
     }),
+    20_000,
   )
 
   it.instance("asks again when a redirect leaves the origin that was approved", () =>
