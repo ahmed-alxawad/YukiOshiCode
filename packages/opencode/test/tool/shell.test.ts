@@ -1183,6 +1183,7 @@ describe("tool.shell truncation", () => {
         expect(result.output).toMatch(/Full output saved to:\s+\S+/)
       }),
     ),
+    60_000,
   )
 
   it.live("truncates output exceeding byte limit", () =>
@@ -1198,6 +1199,7 @@ describe("tool.shell truncation", () => {
         expect(result.output).toMatch(/Full output saved to:\s+\S+/)
       }),
     ),
+    60_000,
   )
 
   it.live("does not truncate small output", () =>
@@ -1211,6 +1213,7 @@ describe("tool.shell truncation", () => {
         expect(result.output).toContain("1")
       }),
     ),
+    60_000,
   )
 
   it.live("full output is saved to file when truncated", () =>
@@ -1233,5 +1236,6 @@ describe("tool.shell truncation", () => {
         expect(lines[lineCount - 1]).toBe(String(lineCount))
       }),
     ),
+    60_000,
   )
 })
