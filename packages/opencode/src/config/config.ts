@@ -11,7 +11,8 @@ import { Flag } from "@yukioshi/core/flag/flag"
 import { Auth } from "../auth"
 import { Env } from "../env"
 import { applyEdits, modify } from "jsonc-parser"
-import { existsSync } from "fs"
+import { existsSync, realpathSync } from "fs"
+import { ConfigMarkdown } from "./markdown"
 import { Account } from "@/account/account"
 import { isRecord } from "@/util/record"
 import type { ConsoleState } from "@yukioshi/core/v1/config/console-state"
@@ -441,13 +442,43 @@ const layer = Layer.effect(
 
         // A command template can run shell commands (!`cmd`) when the command is used, with no permission
         // prompt, and a project can name its command like a built-in one (/init, /review). So an untrusted
-        // project's commands that contain one are dropped until the project is trusted.
+        // project's commands that contain one are dropped until the project is trusted. A template can also
+        // attach files with @path, read without a permission prompt, so `@~/.ssh/id_rsa` or `@../x` would hand
+        // a file outside the project to the model; commands that do so are dropped the same way.
+        const canonicalRoots = {
+          ...ctx,
+          directory: ProjectTrust.canonical(ctx.directory),
+          worktree: ProjectTrust.canonical(ctx.worktree),
+        }
+        const referencesOutsideProject = (template: string) =>
+          ConfigMarkdown.files(template).some((match) => {
+            const name = match[1]
+            if (!name) return false
+            // The prompt resolves names against the worktree ("/" outside a repository, so try the directory too).
+            const targets = name.startsWith("~/")
+              ? [path.join(os.homedir(), name.slice(2))]
+              : [...new Set([ctx.worktree, ctx.directory])].map((base) => path.resolve(base, name))
+            return targets.some((target) => {
+              try {
+                return !containsPath(ProjectTrust.canonical(realpathSync(target)), canonicalRoots)
+              } catch {
+                // A name that does not exist attaches nothing (it can only resolve to an agent).
+                return false
+              }
+            })
+          })
         const withoutShellCommands = <T extends { template: string }>(label: string, commands: Record<string, T>) =>
           Object.fromEntries(
             Object.entries(commands).filter(([name, command]) => {
-              if (!/!`[^`]+`/.test(command.template)) return true
-              blockedExecutables.add(`${label} (command ${name} runs shell commands)`)
-              return false
+              if (/!`[^`]+`/.test(command.template)) {
+                blockedExecutables.add(`${label} (command ${name} runs shell commands)`)
+                return false
+              }
+              if (referencesOutsideProject(command.template)) {
+                blockedExecutables.add(`${label} (command ${name} attaches files outside the project)`)
+                return false
+              }
+              return true
             }),
           )
 
