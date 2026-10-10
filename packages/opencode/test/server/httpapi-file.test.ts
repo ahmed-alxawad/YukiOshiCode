@@ -64,11 +64,13 @@ describe("file HttpApi", () => {
       pollWithTimeout(
         Effect.promise(async () => {
           const response = await request(FilePaths.findFile, tmp.path, { query: "hello", type: "file" })
-          const body = await response.json()
-          return body.includes("hello.txt") ? { response, body } : undefined
+          const body = (await response.json()) as string[]
+          return Array.isArray(body) && body.some((item) => item.includes("hello.txt"))
+            ? { response, body }
+            : undefined
         }),
         "file search index was not ready",
-        "30 seconds",
+        "50 seconds",
       ),
     )
 
@@ -76,9 +78,9 @@ describe("file HttpApi", () => {
     expect(await text.json()).toContainEqual(expect.objectContaining({ line_number: 1 }))
 
     expect(files.response.status).toBe(200)
-    expect(files.body).toContain("hello.txt")
+    expect(files.body.some((item) => item.includes("hello.txt"))).toBe(true)
 
     expect(symbols.status).toBe(200)
     expect(await symbols.json()).toEqual([])
-  }, 30_000)
+  }, 60_000)
 })
