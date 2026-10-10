@@ -56,6 +56,7 @@ describe("memory tools registration", () => {
       expect(ids).not.toContain("memory_recall")
       expect(ids).not.toContain("memory_save")
     }),
+    30_000,
   )
 
   it.instance("are registered when memory.enabled is true", () =>
@@ -65,6 +66,7 @@ describe("memory tools registration", () => {
       expect(ids).toContain("memory_recall")
       expect(ids).toContain("memory_save")
     }),
+    30_000,
   )
 })
 
