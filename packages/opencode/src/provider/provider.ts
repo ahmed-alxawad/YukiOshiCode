@@ -34,6 +34,13 @@ import { ModelV2 } from "@yukioshi/core/model"
 import { ModelStatus } from "./model-status"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { ProviderError } from "./error"
+import {
+  OPENCODE_DISABLED_MESSAGE,
+  REMOVED_PROVIDER_IDS,
+  assertNotOpencodeRequest,
+  isOpencodeHost,
+  isRemovedProviderID,
+} from "@yukioshi/core/opencode-guard"
 
 // Interactive requests should never look hung for five minutes. Providers can
 // override either value in configuration when a long-running model needs it.
@@ -1234,9 +1241,12 @@ export class ModelNotFoundError extends Schema.TaggedErrorClass<ModelNotFoundErr
   suggestions: Schema.optional(Schema.Array(Schema.String)),
   /** The provider is unknown and the project is not trusted, so its own provider settings were ignored. */
   untrustedProject: Schema.optional(Schema.Boolean),
+  /** The provider is operated by opencode and is disabled in YukiOshi Code. */
+  disabled: Schema.optional(Schema.Boolean),
   cause: Schema.optional(Schema.Defect()),
 }) {
   override get message() {
+    if (this.disabled) return `Model not available: ${this.providerID}/${this.modelID}: ${OPENCODE_DISABLED_MESSAGE}.`
     const suggestions = this.suggestions?.length ? ` Did you mean: ${this.suggestions.join(", ")}?` : ""
     const trust = this.untrustedProject
       ? ` If ${this.providerID} is set up in this project's own config, run \`yukioshi trust .\` first: provider settings from an untrusted project are ignored.`
@@ -1596,6 +1606,15 @@ const layer = Layer.effect(
 
         // extend database from config
         for (const [providerID, provider] of configProviders) {
+          if (
+            isRemovedProviderID(providerID) ||
+            isOpencodeHost(provider.options?.baseURL) ||
+            isOpencodeHost(provider.api) ||
+            Object.values(provider.models ?? {}).some((model) => isOpencodeHost(model.provider?.api))
+          ) {
+            yield* Effect.logWarning(`provider "${providerID}" ignored: ${OPENCODE_DISABLED_MESSAGE}`)
+            continue
+          }
           const existing = database[providerID]
           const parsed: Info = {
             id: ProviderV2.ID.make(providerID),
@@ -1956,6 +1975,8 @@ const layer = Layer.effect(
             : undefined
 
         options["fetch"] = async (input: any, init?: BunFetchRequestInit) => {
+          // Hard stop: no prompt or credential ever leaves for an opencode-operated host.
+          assertNotOpencodeRequest(input)
           const fetchFn = rotation?.fetch ?? customFetch ?? fetch
           const opts = init ?? {}
           const chunkAbortCtl = typeof chunkTimeout === "number" && chunkTimeout > 0 ? new AbortController() : undefined
@@ -2025,8 +2046,20 @@ const layer = Layer.effect(
 
     const getModel = Effect.fn("Provider.getModel")(function* (providerID: ProviderV2.ID, modelID: ModelV2.ID) {
       const s = yield* InstanceState.get(state)
+      if (isRemovedProviderID(providerID)) {
+        return yield* new ModelNotFoundError({ providerID, modelID, disabled: true })
+      }
       const provider = s.providers[providerID]
       if (!provider) {
+        const configured = (yield* config.get()).provider?.[providerID]
+        if (
+          configured &&
+          (isOpencodeHost(configured.options?.baseURL) ||
+            isOpencodeHost(configured.api) ||
+            Object.values(configured.models ?? {}).some((model) => isOpencodeHost(model.provider?.api)))
+        ) {
+          return yield* new ModelNotFoundError({ providerID, modelID, disabled: true })
+        }
         const catalogProvider = s.catalog[providerID]
         const suggestions = catalogProvider
           ? modelSuggestions(catalogProvider, modelID, runtimeFlags.enableExperimentalModels)
@@ -2042,6 +2075,9 @@ const layer = Layer.effect(
       }
 
       const info = provider.models[modelID]
+      if (info && (isOpencodeHost(info.api.url) || isOpencodeHost(provider.options?.["baseURL"]))) {
+        return yield* new ModelNotFoundError({ providerID, modelID, disabled: true })
+      }
       if (!info) {
         const current = modelSuggestions(provider, modelID, runtimeFlags.enableExperimentalModels)
         const suggestions = current.length
@@ -2202,7 +2238,7 @@ const layer = Layer.effect(
  * Providers YukiOshi no longer offers: OpenCode limits them, including the free models, to its own client.
  * Credentials saved for them by older versions are kept but cannot be used.
  */
-export const REMOVED_PROVIDERS: readonly string[] = ["opencode", "opencode-zen", "opencode-go"]
+export const REMOVED_PROVIDERS: readonly string[] = REMOVED_PROVIDER_IDS
 
 // Later entries rank higher. Keep these to current coding-model families: an entry that matches no
 // real model (or only image models) silently weakens every default that relies on this order.

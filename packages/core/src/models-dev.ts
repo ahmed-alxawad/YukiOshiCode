@@ -4,6 +4,7 @@ import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/unstable/
 import { ModelsDev } from "@yukioshi/schema/models-dev"
 import { Global } from "./global"
 import { Flag } from "./flag/flag"
+import { stripOpencodeProviders } from "./opencode-guard"
 import { Flock } from "./util/flock"
 import { Hash } from "./util/hash"
 import { FSUtil } from "./fs-util"
@@ -250,7 +251,10 @@ const layer = Layer.effect(
       )
     }).pipe(Effect.withSpan("ModelsDev.populate"))
 
-    const [cachedGet, invalidate] = yield* Effect.cachedInvalidateWithTTL(populate, Duration.infinity)
+    const [cachedGet, invalidate] = yield* Effect.cachedInvalidateWithTTL(
+      populate.pipe(Effect.map(stripOpencodeProviders)),
+      Duration.infinity,
+    )
 
     const get = (): Effect.Effect<Record<string, Provider>> => cachedGet
 
