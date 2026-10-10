@@ -10,7 +10,7 @@
     "url": "git+https://github.com/ahmed-alxawad/YukiOshiCode.git",
     "directory": "packages/http-recorder"
   },
-  "homepage": "https://github.com/ahmed-alxawad/YukiOshiCode/tree/opencode-foundation/packages/http-recorder",
+  "homepage": "https://github.com/ahmed-alxawad/YukiOshiCode/tree/main/packages/http-recorder",
   "bugs": "https://github.com/ahmed-alxawad/YukiOshiCode/issues",
   "keywords": [
     "effect",
