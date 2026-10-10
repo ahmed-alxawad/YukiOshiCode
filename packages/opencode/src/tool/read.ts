@@ -15,8 +15,52 @@ const MAX_LINE_LENGTH = 2000
 const MAX_LINE_SUFFIX = `... (line truncated to ${MAX_LINE_LENGTH} chars)`
 const MAX_BYTES = 50 * 1024
 const MAX_BYTES_LABEL = `${MAX_BYTES / 1024} KB`
+const MAX_ATTACHMENT_BYTES = 32 * 1024 * 1024
 const SAMPLE_BYTES = 4096
 const SUPPORTED_IMAGE_MIMES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"])
+
+/**
+ * Splits text into lines the way Stream.splitLines does (\n, \r\n and \r), but keeps at most `keep`
+ * characters of every line. The rest of a long line is dropped as it arrives.
+ */
+function boundedLines(keep: number) {
+  let line = ""
+  let open = false
+  let afterCR = false
+  const push = (text: string) => {
+    const out: string[] = []
+    let start = 0
+    const add = (end: number) => {
+      if (line.length < keep) line += text.slice(start, Math.min(end, start + keep - line.length))
+    }
+    const breaks = /[\r\n]/g
+    for (let match = breaks.exec(text); match; match = breaks.exec(text)) {
+      const i = match.index
+      const ch = match[0]
+      if (afterCR) {
+        afterCR = false
+        if (ch === "\n" && i === start) {
+          start = i + 1
+          continue
+        }
+      }
+      add(i)
+      out.push(line)
+      line = ""
+      open = false
+      start = i + 1
+      if (ch === "\r") afterCR = true
+    }
+    if (afterCR && start < text.length) afterCR = false
+    if (start < text.length) {
+      add(text.length)
+      open = true
+    }
+    return out
+  }
+  const end = () => (open ? [line] : [])
+  return { push, end }
+}
 
 class ReadStop extends Schema.TaggedErrorClass<ReadStop>()("ReadStop", {}) {}
 
@@ -145,9 +189,13 @@ export const ReadTool = Tool.define<
       // line of the upstream splitLines pipeline) and use a tagged error to stop the
       // upstream file stream as soon as the byte cap is reached.
       const decoder = new TextDecoder("utf-8")
+      // Stream.splitLines buffers a whole line, so a huge file without newlines would be held in memory.
+      // This splitter keeps only the first MAX_LINE_LENGTH + 1 characters of each line.
+      const splitter = boundedLines(MAX_LINE_LENGTH + 1)
       yield* fs.stream(filepath).pipe(
         Stream.map((bytes) => decoder.decode(bytes, { stream: true })),
-        Stream.splitLines,
+        Stream.flatMap((text) => Stream.fromIterable(splitter.push(text))),
+        Stream.concat(Stream.suspend(() => Stream.fromIterable(splitter.end()))),
         Stream.runForEach((text) =>
           Effect.gen(function* () {
             if (flags.done) return yield* new ReadStop()
@@ -304,6 +352,11 @@ export const ReadTool = Tool.define<
       const isImage = SUPPORTED_IMAGE_MIMES.has(mime)
 
       if (isImage || isPdfAttachment(mime)) {
+        if (Number(stat.size) > MAX_ATTACHMENT_BYTES) {
+          return yield* Effect.fail(
+            new Error(`File is too large to attach (${stat.size} bytes, limit ${MAX_ATTACHMENT_BYTES}): ${filepath}`),
+          )
+        }
         const bytes = yield* fs.readFile(filepath)
         const msg = isPdfAttachment(mime) ? "PDF read successfully" : "Image read successfully"
         return {
