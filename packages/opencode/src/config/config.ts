@@ -484,23 +484,54 @@ const layer = Layer.effect(
 
         // An untrusted project may make YukiOshi stricter, never looser: "allow" rules are dropped (what the
         // rules do not allow is still asked, or refused), so a repository cannot approve its own access.
-        const withoutAllowRules = (label: string, permission: unknown): unknown => {
+        // Rules are evaluated last-match-wins and a string replaces a pattern map on merge, so "ask" must
+        // not follow a user "deny" (it would override it) and a map must not replace a user's whole-key rule.
+        // `existing` is the permission already merged from the user's own config (and earlier sources).
+        const withoutAllowRules = (label: string, permission: unknown, existing?: unknown): unknown => {
           if (!isRecord(permission)) return permission
+          const have = isRecord(existing) ? existing : {}
+          const hasDeny = (rule: unknown) =>
+            rule === "deny" || (isRecord(rule) && Object.values(rule).some((action) => action === "deny"))
+          // Wildcard keys can overlap anything, so any deny under a key that could overlap counts.
+          const denied = (name: string) =>
+            Object.entries(have).some(
+              ([other, rule]) => hasDeny(rule) && (other === name || name.includes("*") || other.includes("*")),
+            )
           const kept: Record<string, unknown> = {}
           for (const [name, rule] of Object.entries(permission)) {
+            const current = Object.hasOwn(have, name) ? have[name] : undefined
             if (rule === "allow") {
               blockedExecutables.add(`${label} (permission ${name}: allow)`)
               continue
             }
+            if (rule === "ask" && (denied(name) || isRecord(current))) {
+              blockedExecutables.add(`${label} (permission ${name}: ask would weaken the user's rules)`)
+              continue
+            }
             if (isRecord(rule)) {
-              const inner = Object.fromEntries(
+              // The user denies the whole key: nothing a map adds is stricter, and it would replace the string.
+              if (current === "deny") {
+                blockedExecutables.add(`${label} (permission ${name} overrides the user's deny)`)
+                continue
+              }
+              const blockedDeny = denied(name)
+              let inner: Record<string, unknown> = Object.fromEntries(
                 Object.entries(rule).filter(([pattern, action]) => {
-                  if (action !== "allow") return true
-                  blockedExecutables.add(`${label} (permission ${name} ${pattern}: allow)`)
-                  return false
+                  if (action === "allow") {
+                    blockedExecutables.add(`${label} (permission ${name} ${pattern}: allow)`)
+                    return false
+                  }
+                  if (action === "ask" && blockedDeny) {
+                    blockedExecutables.add(`${label} (permission ${name} ${pattern}: ask would weaken the user's deny)`)
+                    return false
+                  }
+                  return true
                 }),
               )
-              if (Object.keys(inner).length > 0) kept[name] = inner
+              if (Object.keys(inner).length === 0) continue
+              // Keep the user's whole-key rule as the base the project's patterns refine.
+              if (typeof current === "string") inner = { "*": current, ...inner }
+              kept[name] = inner
               continue
             }
             kept[name] = rule
@@ -585,11 +616,16 @@ const layer = Layer.effect(
               ...(network === "deny" ? { network } : {}),
             } as typeof safe.sandbox
           }
-          if (safe.permission) safe.permission = withoutAllowRules(source, safe.permission) as typeof safe.permission
+          if (safe.permission) safe.permission = withoutAllowRules(source, safe.permission, result.permission) as typeof safe.permission
           for (const group of [safe.agent, safe.mode]) {
             for (const [name, agent] of Object.entries(group ?? {})) {
               if (isRecord(agent) && agent["permission"] !== undefined)
-                (agent as Record<string, unknown>)["permission"] = withoutAllowRules(`${source} agent ${name}`, agent["permission"])
+                (agent as Record<string, unknown>)["permission"] = withoutAllowRules(
+                  `${source} agent ${name}`,
+                  agent["permission"],
+                  (result.agent?.[name] as Record<string, unknown> | undefined)?.["permission"] ??
+                    (result.mode?.[name] as Record<string, unknown> | undefined)?.["permission"],
+                )
             }
           }
           // Reading files outside the project into the model's context, or fetching other repositories,
@@ -923,7 +959,11 @@ const layer = Layer.effect(
             if (!untrustedAgents) return agents
             for (const [name, agent] of Object.entries(agents)) {
               if (isRecord(agent) && agent["permission"] !== undefined)
-                agent["permission"] = withoutAllowRules(`${dir} agent ${name}`, agent["permission"])
+                agent["permission"] = withoutAllowRules(
+                  `${dir} agent ${name}`,
+                  agent["permission"],
+                  (result.agent?.[name] as Record<string, unknown> | undefined)?.["permission"],
+                )
             }
             return agents
           }
