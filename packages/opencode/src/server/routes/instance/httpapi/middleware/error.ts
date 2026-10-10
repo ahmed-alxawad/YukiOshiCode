@@ -2,6 +2,7 @@ import { NamedError } from "@yukioshi/core/util/error"
 import { ConfigErrorV1 } from "@yukioshi/core/v1/config/error"
 import { Provider } from "@/provider/provider"
 import { ShareNext } from "@/share/share-next"
+import { Redact } from "@yukioshi/core/redact"
 import { Cause, Effect } from "effect"
 import { HttpRouter, HttpServerError, HttpServerRespondable, HttpServerResponse } from "effect/unstable/http"
 
@@ -25,7 +26,7 @@ export const errorLayer = HttpRouter.middleware<{ handles: unknown }>()((effect)
         ConfigErrorV1.DirectoryTypoError.isInstance(error) ||
         ConfigErrorV1.RemoteAuthError.isInstance(error)
       ) {
-        return Effect.succeed(HttpServerResponse.jsonUnsafe(error.toObject(), { status: 400 }))
+        return Effect.succeed(HttpServerResponse.jsonUnsafe(Redact.maskDeep(error.toObject()), { status: 400 }))
       }
 
       // No model chosen yet, nothing connected, or the configured model does not exist (for example a

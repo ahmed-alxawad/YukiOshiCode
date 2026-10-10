@@ -609,7 +609,7 @@ function isAfter(info: Info, other?: Info) {
 }
 
 function scrubValue<T>(value: T): T {
-  if (typeof value === "string") return Redact.scrubKnown(value) as T
+  if (typeof value === "string") return Redact.scrubKnown(Redact.mask(value)) as T
   if (Array.isArray(value)) return value.map(scrubValue) as T
   if (value && typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype)
     return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, scrubValue(v)])) as T
