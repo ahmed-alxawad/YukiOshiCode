@@ -53,8 +53,11 @@ so it can take another way. Reading and searching are not reviewed.
   which in `yukioshi run` and scheduled jobs means it is refused.
 - Each reviewed action is one small-model call. Projects cannot change the
   reviewer's instructions.
-- A refusal pauses a running goal, so `yukioshi run --command goal` exits
-  with 3 (see [exit codes](commands.md#exit-codes)).
+- A refusal that ends the turn pauses a running goal, so
+  `yukioshi run --command goal` exits with 3 (see
+  [exit codes](commands.md#exit-codes)); this is what happens when the
+  reviewer gives no clear answer. When the reviewer refuses an action and the
+  agent takes another way, the goal keeps going.
 - A model can be wrong or be misled by what it reads, so keep the sandbox on
   and use `plan` where no changes are needed. The mode is not in the terminal
   UI's cycle.
