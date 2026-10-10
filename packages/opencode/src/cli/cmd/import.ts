@@ -110,12 +110,19 @@ export const ImportCommand = effectCmd({
   handler: Effect.fn("Cli.import")(function* (args) {
     const ctx = yield* InstanceRef
     if (!ctx) return yield* Effect.die("InstanceRef not provided")
+    const conflict = importArgsError(args.from, args.file)
+    if (conflict) return yield* fail(conflict)
     if (args.from) return yield* runTranscriptImport(args.from, undefined, ctx)
     if (!args.file) return yield* fail("Name a file to import, or use --from claude or --from codex.")
     if (args.file.endsWith(".jsonl")) return yield* runTranscriptImport(undefined, args.file, ctx)
     return yield* runImport(args.file, ctx)
   }),
 })
+
+/** `--from` picks the newest conversation itself, so it cannot be combined with a file. */
+export function importArgsError(from: string | undefined, file: string | undefined) {
+  if (from && file) return "Use --from or a file, not both."
+}
 
 const NAMES: Record<Source, string> = { claude: "Claude Code", codex: "Codex" }
 
@@ -127,6 +134,8 @@ const runTranscriptImport = Effect.fn("Cli.import.transcript")(function* (
 ) {
   const transcript = from ? yield* Effect.promise(() => latest(from, ctx.directory)) : file
   if (!transcript) return yield* fail(`No ${NAMES[from!]} conversation found for ${ctx.directory}.`)
+  if (!from && !(yield* Effect.promise(() => Bun.file(transcript).exists())))
+    return yield* fail(`File not found: ${transcript}`)
   const conversation = yield* Effect.tryPromise({
     try: () => readTranscript(transcript),
     catch: (error) =>
