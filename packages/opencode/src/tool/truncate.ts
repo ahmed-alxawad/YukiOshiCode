@@ -4,6 +4,7 @@ import { Cause, Duration, Effect, Layer, Option, Schedule, Context } from "effec
 import path from "path"
 import type { Agent } from "../agent/agent"
 import { FSUtil } from "@yukioshi/core/fs-util"
+import { Redact } from "@yukioshi/core/redact"
 import { evaluate } from "@/permission/evaluate"
 import { Config } from "@/config/config"
 import { ToolID } from "./schema"
@@ -67,8 +68,13 @@ const layer = Layer.effect(
 
     const write = Effect.fn("Truncate.write")(function* (text: string) {
       const file = path.join(TRUNCATION_DIR, ToolID.ascending())
+      // The full output stays on disk for days and is read back by the model: store it masked.
+      const configSvc = yield* Effect.serviceOption(Config.Service)
+      const cfg = Option.isNone(configSvc)
+        ? undefined
+        : yield* configSvc.value.get().pipe(Effect.catch(() => Effect.succeed(undefined)))
       yield* fs.ensureDir(TRUNCATION_DIR).pipe(Effect.orDie)
-      yield* fs.writeFileString(file, text).pipe(Effect.orDie)
+      yield* fs.writeFileString(file, Redact.scrubKnown(Redact.mask(text, cfg?.redact))).pipe(Effect.orDie)
       return file
     })
 
