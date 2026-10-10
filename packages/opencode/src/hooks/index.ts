@@ -134,7 +134,10 @@ function spawnHook(input: {
   signal?: AbortSignal
 }): Effect.Effect<SpawnOutcome, never, ChildProcessSpawner> {
   return Effect.gen(function* () {
-    const handle = yield* ChildProcess.make(input.command, [], {
+    const command = Shell.ps(input.shell)
+      ? `${input.command}; if ($LASTEXITCODE) { exit $LASTEXITCODE }`
+      : input.command
+    const handle = yield* ChildProcess.make(command, [], {
       shell: input.shell,
       cwd: input.cwd,
       env: { ...hiddenEnv(), YUKIOSHI_PROJECT_DIR: input.cwd, YUKIOSHI_HOOK_EVENT: input.event },

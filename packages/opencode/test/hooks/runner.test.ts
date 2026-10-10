@@ -49,7 +49,7 @@ describe("Hooks.Service", () => {
           Bun.write(script, "process.stderr.write('no deletes allowed'); process.exit(2)\n"),
         )
         const cfg: ConfigHooksV1.Info = {
-          preToolUse: [{ matcher: "*", command: `bun ${JSON.stringify(script)}` }],
+          preToolUse: [{ matcher: "*", command: "bun block.ts" }],
         }
         const result = yield* hooks.run({ hooks: cfg, event: "PreToolUse", payload: {}, cwd, toolName: "bash" })
         expect(result.blocked).toBe("no deletes allowed")
