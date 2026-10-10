@@ -37,6 +37,10 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Install ripgrep (Windows)
+        if: runner.os == 'Windows'
+        run: choco install ripgrep --no-progress
+
       - name: Run platform feature tests
         working-directory: packages/opencode
         run: |

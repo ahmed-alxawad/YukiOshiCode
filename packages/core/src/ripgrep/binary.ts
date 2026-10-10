@@ -1,4 +1,5 @@
 import path from "path"
+import nodeFs from "node:fs"
 import { Context, Effect, Layer, Stream } from "effect"
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/unstable/http"
 import { ChildProcess } from "effect/unstable/process"
@@ -91,7 +92,15 @@ export namespace RipgrepBinary {
       return Service.of({
         filepath: yield* Effect.cached(
           Effect.gen(function* () {
-            const system = yield* Effect.sync(() => which(process.platform === "win32" ? "rg.exe" : "rg"))
+            const system = yield* Effect.sync(() => {
+              const found = which("rg") ?? (process.platform === "win32" ? which("rg.exe") : null)
+              if (found) return found
+              if (process.platform === "win32") {
+                const choco = "C:\\ProgramData\\chocolatey\\bin\\rg.exe"
+                if (nodeFs.existsSync(choco)) return choco
+              }
+              return null
+            })
             if (system && (yield* fs.isFile(system).pipe(Effect.orDie))) return system
 
             const target = path.join(Global.Path.bin, `rg${process.platform === "win32" ? ".exe" : ""}`)

@@ -27,7 +27,10 @@ export const fileHandlers = HttpApiBuilder.group(InstanceHttpApi, "file", (handl
     const findText = Effect.fn("FileHttpApi.findText")(function* (ctx: { query: { pattern: string } }) {
       return (yield* ripgrep
         .grep({ cwd: (yield* InstanceState.context).directory, pattern: ctx.query.pattern, limit: 10 })
-        .pipe(Effect.orDie)).map((match) => ({
+        .pipe(
+          Effect.tapError((cause) => Effect.logError("ripgrep grep failed in findText", { cause })),
+          Effect.orDie,
+        )).map((match) => ({
         path: { text: match.entry.path },
         lines: { text: match.text },
         line_number: match.line,

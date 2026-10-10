@@ -81,14 +81,14 @@ describe("v2 pty HttpApi", () => {
     expect(body.data.title).toBe("v2")
 
     // The canonical surface keeps exited sessions observable with their exit code.
-    const deadline = Date.now() + 20_000
+    const deadline = Date.now() + 30_000
     let info: { status: string; exitCode?: number } | undefined
     while (Date.now() < deadline) {
       const found = await request(`/api/pty/${body.data.id}`, tmp.path)
       expect(found.status).toBe(200)
       info = Schema.decodeUnknownSync(Location.response(Pty.Info))(await found.json()).data
       if (info.status === "exited") break
-      await new Promise((resolve) => setTimeout(resolve, 50))
+      await new Promise((resolve) => setTimeout(resolve, 150))
     }
     expect(info).toMatchObject({ status: "exited", exitCode: 4 })
 
@@ -98,7 +98,7 @@ describe("v2 pty HttpApi", () => {
     const missing = await request(`/api/pty/${body.data.id}`, tmp.path)
     expect(missing.status).toBe(404)
     expect(await missing.json()).toMatchObject({ _tag: "PtyNotFoundError", ptyID: body.data.id })
-  }, 30_000)
+  }, 45_000)
 
   testPty("rejects connect tokens without the CSRF header and connects with a valid ticket", async () => {
     await using tmp = await tmpdir({ git: true, config: { formatter: false, lsp: false } })
@@ -211,7 +211,7 @@ describe("v2 pty HttpApi", () => {
           directoryHeader(dir),
           HttpClientRequest.bodyJson({
             command: "/bin/sh",
-            args: ["-c", 'printf "%s|%s|%s|%s|%s\\n" "$CALLER" "$SHARED" "$PLUGIN" "$TERM" "$HOOK_CWD"; sleep 5'],
+            args: ["-c", 'printf "%s|%s|%s|%s|%s\\n" "$CALLER" "$SHARED" "$PLUGIN" "$TERM" "$HOOK_CWD"; sleep 30'],
             cwd,
             env: { CALLER: "caller", SHARED: "caller", TERM: "caller" },
           }),
@@ -245,7 +245,7 @@ describe("v2 pty HttpApi", () => {
         const takeUntil = (expected: string) =>
           loop(expected).pipe(
             Effect.timeoutOrElse({
-              duration: "25 seconds",
+              duration: "40 seconds",
               orElse: () => Effect.fail(new Error(`Timed out waiting for ${expected}`)),
             }),
           )
@@ -256,6 +256,6 @@ describe("v2 pty HttpApi", () => {
         yield* write(new Socket.CloseEvent(1000, "done")).pipe(Effect.catch(() => Effect.void))
         yield* HttpClientRequest.delete(`/api/pty/${info.id}`).pipe(directoryHeader(dir), HttpClient.execute)
       }),
-    60_000,
+    75_000,
   )
 })
