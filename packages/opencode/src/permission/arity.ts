@@ -1,7 +1,7 @@
 export function prefix(tokens: string[]) {
   for (let len = tokens.length; len > 0; len--) {
     const prefix = tokens.slice(0, len).join(" ")
-    const arity = ARITY[prefix]
+    const arity = Object.hasOwn(ARITY, prefix) ? ARITY[prefix] : undefined
     if (arity !== undefined) return tokens.slice(0, arity)
   }
   if (tokens.length === 0) return []
