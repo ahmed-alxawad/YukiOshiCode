@@ -1,6 +1,7 @@
 import { LayerNode } from "@yukioshi/core/effect/layer-node"
 import { CrossSpawnSpawner } from "@yukioshi/core/cross-spawn-spawner"
 import { Shell } from "@yukioshi/core/shell"
+import { Redact } from "@yukioshi/core/redact"
 import type { ConfigHooksV1 } from "@yukioshi/core/v1/config/hooks"
 import { Context, Effect, Exit, Layer, Stream } from "effect"
 import { ChildProcess } from "effect/unstable/process"
@@ -39,8 +40,9 @@ export interface Result {
 
 const EMPTY: Result = { context: [], warnings: [], ran: 0 }
 const MAX_OUTPUT = 16_000
-// Model/provider API keys are never passed to hook commands.
-const HIDDEN_ENV_PATTERN = /(_API_KEY|_TOKEN|_SECRET)$/i
+// Model/provider API keys and other credentials in the environment are never passed to hook commands.
+const HIDDEN_ENV_PATTERN =
+  /(_API_KEY|_TOKEN|_SECRET|_SECRET_KEY|_SECRET_ACCESS_KEY|_ACCESS_KEY|_PRIVATE_KEY|_PASSWORD|_PASSWD)$|^(PASSWORD|PASSWD|DATABASE_URL)$/i
 
 export interface RunInput {
   readonly hooks: ConfigHooksV1.Info | undefined
@@ -191,7 +193,8 @@ const layer = Layer.effect(
         if (commands.length === 0) return EMPTY
 
         const shell = input.shell ?? Shell.acceptable()
-        const stdin = JSON.stringify({ hook_event_name: input.event, cwd: input.cwd, ...input.payload })
+        // The payload carries the prompt and tool input/output; credentials in it are masked.
+        const stdin = JSON.stringify(Redact.maskDeep({ hook_event_name: input.event, cwd: input.cwd, ...input.payload }))
         const context: string[] = []
         const warnings: string[] = []
         let blocked: string | undefined
@@ -237,7 +240,14 @@ const layer = Layer.effect(
             context.push(stdout)
         }
 
-        return { ...(blocked ? { blocked } : {}), context, warnings, ran: commands.length }
+        // What a hook printed goes to the model and the screen: mask it like any other tool output.
+        const safe = (text: string) => Redact.scrubKnown(Redact.mask(text))
+        return {
+          ...(blocked ? { blocked: safe(blocked) } : {}),
+          context: context.map(safe),
+          warnings: warnings.map(safe),
+          ran: commands.length,
+        }
       }).pipe(Effect.provideService(ChildProcessSpawner, spawner))
 
     return Service.of({ has, run })
