@@ -12,7 +12,7 @@ describe("mcp.failure-redact", () => {
     Effect.gen(function* () {
       const mcp = yield* MCP.Service
       const result = yield* mcp.add("leaky", { type: "local", command: [`/nonexistent/${SECRET}`] })
-      const status = result.status["leaky"] as { status: string; error?: string }
+      const status = (result.status as Record<string, { status: string; error?: string }>)["leaky"]!
       expect(status.status).toBe("failed")
       expect(status.error).toBeDefined()
       expect(status.error).not.toContain(SECRET)
