@@ -61,13 +61,42 @@ export interface Interface {
 
 export class Service extends Context.Service<Service, Interface>()("@yukioshi/Hooks") {}
 
-function matches(matcher: string | undefined, toolName: string | undefined): boolean {
-  if (!matcher || matcher === "*" || toolName === undefined) return true
+/** Compiles a matcher; undefined when it is not a valid regular expression. */
+function compile(matcher: string): RegExp | undefined {
   try {
-    return new RegExp(`^(?:${matcher})$`).test(toolName)
+    return new RegExp(`^(?:${matcher})$`)
   } catch {
-    return false
+    return undefined
   }
+}
+
+// An invalid matcher is reported once per hook, not on every tool call.
+const reportedInvalid = new Set<string>()
+
+/**
+ * Whether the hook applies to this tool. An invalid matcher fails closed for PreToolUse (the hook is the
+ * guard, so it runs for every tool call) and skips the hook for other events; both log a warning once.
+ */
+function matches(event: EventName, hook: ConfigHooksV1.HookCommand, toolName: string | undefined): Effect.Effect<boolean> {
+  const matcher = hook.matcher
+  if (!matcher || matcher === "*" || toolName === undefined) return Effect.succeed(true)
+  const regex = compile(matcher)
+  if (regex) return Effect.succeed(regex.test(toolName))
+  const failClosed = event === "PreToolUse"
+  const key = `${event}\0${matcher}\0${hook.command}`
+  const warn = reportedInvalid.has(key)
+    ? Effect.void
+    : Effect.sync(() => void reportedInvalid.add(key)).pipe(
+        Effect.andThen(
+          Effect.logWarning(
+            failClosed
+              ? "hook matcher is not a valid regular expression; the hook will run for every tool call"
+              : "hook matcher is not a valid regular expression; the hook is skipped",
+            { event, matcher, command: hook.command },
+          ),
+        ),
+      )
+  return warn.pipe(Effect.as(failClosed))
 }
 
 interface Decision {
@@ -190,9 +219,10 @@ const layer = Layer.effect(
 
     const run: Interface["run"] = (input) =>
       Effect.gen(function* () {
-        const commands = (
-          (input.hooks?.[CONFIG_KEYS[input.event]] as ReadonlyArray<ConfigHooksV1.HookCommand> | undefined) ?? []
-        ).filter((hook) => matches(hook.matcher, input.toolName))
+        const commands = yield* Effect.filter(
+          (input.hooks?.[CONFIG_KEYS[input.event]] as ReadonlyArray<ConfigHooksV1.HookCommand> | undefined) ?? [],
+          (hook) => matches(input.event, hook, input.toolName),
+        )
         if (commands.length === 0) return EMPTY
 
         const shell = input.shell ?? Shell.acceptable()

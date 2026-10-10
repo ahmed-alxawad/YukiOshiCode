@@ -69,11 +69,11 @@ describe("hook matcher", () => {
       expect(yield* selected("read", "read\nbash")).toBe(false)
     }))
 
-  it("does not run, and does not throw, for an invalid regular expression", () =>
+  it("runs a PreToolUse hook with an invalid regular expression (fails closed), without throwing", () =>
     Effect.gen(function* () {
-      expect(yield* selected("(", "bash")).toBe(false)
-      expect(yield* selected("[", "bash")).toBe(false)
-      expect(yield* selected("*bash", "bash")).toBe(false)
+      expect(yield* selected("(", "bash")).toBe(true)
+      expect(yield* selected("[", "bash")).toBe(true)
+      expect(yield* selected("*bash", "bash")).toBe(true)
     }))
 
   it("handles unicode tool names and very long names", () =>
