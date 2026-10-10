@@ -39,7 +39,7 @@ export interface ParsedCron {
 
 function parseNumber(token: string, nameMap?: Record<string, number>): number {
   const lower = token.toLowerCase()
-  if (nameMap && lower in nameMap) {
+  if (nameMap && Object.hasOwn(nameMap, lower)) {
     return nameMap[lower]
   }
   const val = Number.parseInt(token, 10)
@@ -124,6 +124,11 @@ function parseField(
     const single = parseNumber(rangePart, nameMap)
     if (single < min || single > max) {
       throw new Error(`Value ${single} out of range [${min}, ${max}] in cron ${fieldName}`)
+    }
+    if (slashIdx !== -1) {
+      // `5/15` means "from 5 to the end of the field, every 15" (Vixie cron).
+      for (let i = single; i <= max; i += step) result.add(i)
+      continue
     }
     result.add(single)
   }
