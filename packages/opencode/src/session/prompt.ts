@@ -115,7 +115,10 @@ export interface Interface {
   readonly loop: (input: LoopInput) => Effect.Effect<SessionV1.WithParts>
   readonly shell: (input: ShellInput) => Effect.Effect<SessionV1.WithParts, Session.BusyError>
   readonly command: (input: CommandInput) => Effect.Effect<SessionV1.WithParts, Image.Error>
-  readonly resolvePromptParts: (template: string) => Effect.Effect<PromptInput["parts"]>
+  readonly resolvePromptParts: (
+    template: string,
+    options?: { readonly restrictToProject?: boolean },
+  ) => Effect.Effect<PromptInput["parts"]>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@yukioshi/SessionPrompt") {}
@@ -157,7 +160,8 @@ const layer = Layer.effect(
     const ops = Effect.fn("SessionPrompt.ops")(function* () {
       return {
         cancel: (sessionID: SessionID) => cancel(sessionID),
-        resolvePromptParts: (template: string) => resolvePromptParts(template),
+        // Task prompts are authored by the model: never attach files outside the project.
+        resolvePromptParts: (template: string) => resolvePromptParts(template, { restrictToProject: true }),
         prompt: (input: PromptInput) => prompt(input).pipe(Effect.catch(Effect.die)),
       } satisfies TaskPromptOps
     })
@@ -167,7 +171,10 @@ const layer = Layer.effect(
       yield* state.cancel(sessionID)
     })
 
-    const resolvePromptParts = Effect.fn("SessionPrompt.resolvePromptParts")(function* (template: string) {
+    const resolvePromptParts = Effect.fn("SessionPrompt.resolvePromptParts")(function* (
+      template: string,
+      options?: { readonly restrictToProject?: boolean },
+    ) {
       const ctx = yield* InstanceState.context
       const parts: Types.DeepMutable<PromptInput["parts"]> = [{ type: "text", text: template }]
       const files = ConfigMarkdown.files(template)
@@ -182,9 +189,18 @@ const layer = Layer.effect(
 
           const filepath = name.startsWith("~/")
             ? path.join(os.homedir(), name.slice(2))
-            : path.resolve(ctx.worktree, name)
+            : path.resolve(options?.restrictToProject && ctx.worktree === "/" ? ctx.directory : ctx.worktree, name)
 
           const info = yield* fsys.stat(filepath).pipe(Effect.option)
+          if (Option.isSome(info) && options?.restrictToProject) {
+            // Compare real paths so symlinks and ~/ or absolute references cannot escape the project.
+            const real = yield* fsys.resolve(filepath)
+            const roots = [ctx.directory, ...(ctx.worktree === "/" ? [] : [ctx.worktree])]
+            const inside = yield* Effect.forEach(roots, (root) => fsys.resolve(root)).pipe(
+              Effect.map((resolved) => resolved.some((root) => FSUtil.contains(root, real))),
+            )
+            if (!inside) return
+          }
           if (Option.isNone(info)) {
             const found = yield* agents.get(name)
             if (found) parts.push({ type: "agent", name: found.name })
