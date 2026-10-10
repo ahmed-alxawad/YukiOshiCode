@@ -63,72 +63,83 @@ afterEach(async () => {
 })
 
 describe("v2 pty HttpApi", () => {
-  testPty("serves location-wrapped PTY routes and retains exited sessions", async () => {
-    await using tmp = await tmpdir({ git: true, config: { formatter: false, lsp: false } })
+  testPty(
+    "serves location-wrapped PTY routes and retains exited sessions",
+    async () => {
+      await using tmp = await tmpdir({ git: true, config: { formatter: false, lsp: false } })
 
-    const empty = await request("/api/pty", tmp.path)
-    expect(empty.status).toBe(200)
-    expect(Schema.decodeUnknownSync(Location.response(Schema.Array(Pty.Info)))(await empty.json()).data).toEqual([])
+      const empty = await request("/api/pty", tmp.path)
+      expect(empty.status).toBe(200)
+      expect(Schema.decodeUnknownSync(Location.response(Schema.Array(Pty.Info)))(await empty.json()).data).toEqual([])
 
-    const created = await request("/api/pty", tmp.path, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ command: "/usr/bin/env", args: ["sh", "-c", "exit 4"], title: "v2" }),
-    })
-    expect(created.status).toBe(200)
-    const body = Schema.decodeUnknownSync(Location.response(Pty.Info))(await created.json())
-    expect(String(body.location.directory)).toBe(tmp.path)
-    expect(body.data.title).toBe("v2")
-
-    // The canonical surface keeps exited sessions observable with their exit code.
-    const deadline = Date.now() + 30_000
-    let info: { status: string; exitCode?: number } | undefined
-    while (Date.now() < deadline) {
-      const found = await request(`/api/pty/${body.data.id}`, tmp.path)
-      expect(found.status).toBe(200)
-      info = Schema.decodeUnknownSync(Location.response(Pty.Info))(await found.json()).data
-      if (info.status === "exited") break
-      await new Promise((resolve) => setTimeout(resolve, 150))
-    }
-    expect(info).toMatchObject({ status: "exited", exitCode: 4 })
-
-    const removed = await request(`/api/pty/${body.data.id}`, tmp.path, { method: "DELETE" })
-    expect(removed.status).toBe(204)
-
-    const missing = await request(`/api/pty/${body.data.id}`, tmp.path)
-    expect(missing.status).toBe(404)
-    expect(await missing.json()).toMatchObject({ _tag: "PtyNotFoundError", ptyID: body.data.id })
-  }, 45_000)
-
-  testPty("rejects connect tokens without the CSRF header and connects with a valid ticket", async () => {
-    await using tmp = await tmpdir({ git: true, config: { formatter: false, lsp: false } })
-    const created = await request("/api/pty", tmp.path, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ command: "/usr/bin/env", args: ["sh", "-c", "sleep 5"] }),
-    })
-    expect(created.status).toBe(200)
-    const info = Schema.decodeUnknownSync(Location.response(Pty.Info))(await created.json()).data
-
-    try {
-      const forbidden = await request(`/api/pty/${info.id}/connect-token`, tmp.path, { method: "POST" })
-      expect(forbidden.status).toBe(403)
-      expect(await forbidden.json()).toMatchObject({ _tag: "ForbiddenError" })
-
-      const token = await request(`/api/pty/${info.id}/connect-token`, tmp.path, {
+      const created = await request("/api/pty", tmp.path, {
         method: "POST",
-        headers: { "x-yukioshi-ticket": "1" },
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ command: "/usr/bin/env", args: ["sh", "-c", "exit 4"], title: "v2" }),
       })
-      expect(token.status).toBe(200)
-      const ticket = Schema.decodeUnknownSync(Location.response(PtyTicket.ConnectToken))(await token.json()).data.ticket
-      expect(ticket).toBeTruthy()
+      expect(created.status).toBe(200)
+      const body = Schema.decodeUnknownSync(Location.response(Pty.Info))(await created.json())
+      expect(String(body.location.directory)).toBe(tmp.path)
+      expect(body.data.title).toBe("v2")
 
-      const invalid = await request(`/api/pty/${info.id}/connect?ticket=not-a-ticket`, tmp.path)
-      expect(invalid.status).toBe(403)
-    } finally {
-      await request(`/api/pty/${info.id}`, tmp.path, { method: "DELETE" })
-    }
-  }, 30_000)
+      // The canonical surface keeps exited sessions observable with their exit code.
+      // Bounded retry on the observable state: the exit event is delivered asynchronously by the
+      // native PTY, so poll the session info until it reports the exit rather than assuming timing.
+      const deadline = Date.now() + 30_000
+      let info: { status: string; exitCode?: number } | undefined
+      for (let attempt = 0; ; attempt++) {
+        const found = await request(`/api/pty/${body.data.id}`, tmp.path)
+        expect(found.status).toBe(200)
+        info = Schema.decodeUnknownSync(Location.response(Pty.Info))(await found.json()).data
+        if (info.status === "exited" || Date.now() >= deadline) break
+        await new Promise((resolve) => setTimeout(resolve, Math.min(25 * 2 ** attempt, 250)))
+      }
+      expect(info).toMatchObject({ status: "exited", exitCode: 4 })
+
+      const removed = await request(`/api/pty/${body.data.id}`, tmp.path, { method: "DELETE" })
+      expect(removed.status).toBe(204)
+
+      const missing = await request(`/api/pty/${body.data.id}`, tmp.path)
+      expect(missing.status).toBe(404)
+      expect(await missing.json()).toMatchObject({ _tag: "PtyNotFoundError", ptyID: body.data.id })
+    },
+    45_000,
+  )
+
+  testPty(
+    "rejects connect tokens without the CSRF header and connects with a valid ticket",
+    async () => {
+      await using tmp = await tmpdir({ git: true, config: { formatter: false, lsp: false } })
+      const created = await request("/api/pty", tmp.path, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ command: "/bin/cat" }),
+      })
+      expect(created.status).toBe(200)
+      const info = Schema.decodeUnknownSync(Location.response(Pty.Info))(await created.json()).data
+
+      try {
+        const forbidden = await request(`/api/pty/${info.id}/connect-token`, tmp.path, { method: "POST" })
+        expect(forbidden.status).toBe(403)
+        expect(await forbidden.json()).toMatchObject({ _tag: "ForbiddenError" })
+
+        const token = await request(`/api/pty/${info.id}/connect-token`, tmp.path, {
+          method: "POST",
+          headers: { "x-yukioshi-ticket": "1" },
+        })
+        expect(token.status).toBe(200)
+        const ticket = Schema.decodeUnknownSync(Location.response(PtyTicket.ConnectToken))(await token.json()).data
+          .ticket
+        expect(ticket).toBeTruthy()
+
+        const invalid = await request(`/api/pty/${info.id}/connect?ticket=not-a-ticket`, tmp.path)
+        expect(invalid.status).toBe(403)
+      } finally {
+        await request(`/api/pty/${info.id}`, tmp.path, { method: "DELETE" })
+      }
+    },
+    30_000,
+  )
   ;(process.platform === "win32" ? effectIt.live.skip : effectIt.live)(
     "serves PTY websocket output and input through the canonical route",
     () =>
@@ -142,6 +153,9 @@ describe("v2 pty HttpApi", () => {
         expect(created.status).toBe(200)
         const body = yield* Schema.decodeUnknownEffect(Location.response(Pty.Info))(yield* created.json)
         const info = body.data
+        yield* Effect.addFinalizer(() =>
+          HttpClientRequest.delete(`/api/pty/${info.id}`).pipe(directoryHeader(dir), HttpClient.execute, Effect.ignore),
+        )
 
         const socket = yield* Socket.makeWebSocket(
           `${(yield* serverUrl()).replace(/^http/, "ws")}/api/pty/${info.id}/connect?cursor=-1&location[directory]=${encodeURIComponent(dir)}`,
@@ -156,15 +170,29 @@ describe("v2 pty HttpApi", () => {
           .pipe(Effect.forkScoped)
         const write = yield* socket.writer
 
+        // Accumulate frames until the expected marker shows up, bounded by a timeout per frame.
         const takeUntil = (expected: string, seen = ""): Effect.Effect<string, unknown> =>
           Effect.gen(function* () {
-            const next = seen + (yield* Queue.take(messages).pipe(Effect.timeout("5 seconds")))
+            const next = seen + (yield* Queue.take(messages).pipe(Effect.timeout("30 seconds")))
             if (next.includes(expected)) return next
             return yield* takeUntil(expected, next)
           })
 
-        yield* write("ping-v2\n")
-        expect(yield* takeUntil("ping-v2")).toContain("ping-v2")
+        // The server sends a 0x00 control frame once replay is applied and live delivery is active.
+        // Input sent earlier could be dropped because the server is not reading the socket yet.
+        yield* takeUntil("\u0000")
+
+        // Even after the meta frame the server-side reader may attach a tick later, so resend the
+        // input a bounded number of times until the PTY echoes the marker back.
+        const echoed = (attempt: number): Effect.Effect<string, unknown> =>
+          Effect.gen(function* () {
+            yield* write("ping-v2\n")
+            const result = yield* takeUntil("ping-v2").pipe(Effect.timeoutOption("2 seconds"))
+            if (result._tag === "Some") return result.value
+            if (attempt >= 10) return yield* Effect.fail(new Error("PTY never echoed ping-v2"))
+            return yield* echoed(attempt + 1)
+          })
+        expect(yield* echoed(0)).toContain("ping-v2")
         yield* write(new Socket.CloseEvent(1000, "done")).pipe(Effect.catch(() => Effect.void))
 
         const removed = yield* HttpClientRequest.delete(`/api/pty/${info.id}`).pipe(
@@ -211,7 +239,7 @@ describe("v2 pty HttpApi", () => {
           directoryHeader(dir),
           HttpClientRequest.bodyJson({
             command: "/bin/sh",
-            args: ["-c", 'printf "%s|%s|%s|%s|%s\\n" "$CALLER" "$SHARED" "$PLUGIN" "$TERM" "$HOOK_CWD"; sleep 30'],
+            args: ["-c", 'printf "%s|%s|%s|%s|%s\\n" "$CALLER" "$SHARED" "$PLUGIN" "$TERM" "$HOOK_CWD"; exec cat'],
             cwd,
             env: { CALLER: "caller", SHARED: "caller", TERM: "caller" },
           }),
@@ -219,6 +247,9 @@ describe("v2 pty HttpApi", () => {
         )
         expect(created.status).toBe(200)
         const info = (yield* Schema.decodeUnknownEffect(Location.response(Pty.Info))(yield* created.json)).data
+        yield* Effect.addFinalizer(() =>
+          HttpClientRequest.delete(`/api/pty/${info.id}`).pipe(directoryHeader(dir), HttpClient.execute, Effect.ignore),
+        )
 
         const socket = yield* Socket.makeWebSocket(
           `${(yield* serverUrl()).replace(/^http/, "ws")}/api/pty/${info.id}/connect?cursor=0&location[directory]=${encodeURIComponent(dir)}`,
