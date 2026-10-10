@@ -3,6 +3,7 @@ import { usageTotals, type UsageRow } from "@yukioshi/core/usage"
 import { SessionTable } from "@yukioshi/core/session/sql"
 import type { ConfigBudgetV1 } from "@yukioshi/core/v1/config/budget"
 import { Context, Effect, Layer } from "effect"
+import { dollars } from "./cli/cmd/run/outcome"
 import { Config } from "./config/config"
 import { Database } from "@yukioshi/core/database/database"
 
@@ -24,10 +25,6 @@ function startOfMonth(now: number) {
   date.setDate(1)
   date.setHours(0, 0, 0, 0)
   return date.getTime()
-}
-
-function money(value: number) {
-  return `$${value.toFixed(2)}`
 }
 
 function capitalize(value: string) {
@@ -56,8 +53,8 @@ export function evaluateBudget(input: {
 
   const exceeded = checks.find((check) => check.used >= check.limit)
   if (exceeded) {
-    const amount = exceeded.unit === "cost" ? money(exceeded.used) : `${exceeded.used.toLocaleString()} tokens`
-    const limit = exceeded.unit === "cost" ? money(exceeded.limit) : `${exceeded.limit.toLocaleString()} tokens`
+    const amount = exceeded.unit === "cost" ? dollars(exceeded.used) : `${exceeded.used.toLocaleString()} tokens`
+    const limit = exceeded.unit === "cost" ? dollars(exceeded.limit) : `${exceeded.limit.toLocaleString()} tokens`
     return {
       allowed: false,
       exceeded: `${capitalize(exceeded.kind)} budget of ${limit} reached (${amount} used). Raise ${setting(exceeded)} in yukioshi.json to continue.`,
@@ -71,8 +68,8 @@ export function evaluateBudget(input: {
     const key = `${check.kind}:${check.unit}`
     if (input.warned.has(key)) continue
     input.warned.add(key)
-    const amount = check.unit === "cost" ? money(check.used) : `${check.used.toLocaleString()} tokens`
-    const limit = check.unit === "cost" ? money(check.limit) : `${check.limit.toLocaleString()} tokens`
+    const amount = check.unit === "cost" ? dollars(check.used) : `${check.used.toLocaleString()} tokens`
+    const limit = check.unit === "cost" ? dollars(check.limit) : `${check.limit.toLocaleString()} tokens`
     warnings.push(
       `${capitalize(check.kind)} budget is at 80% (${amount} of ${limit} used). Raise ${setting(check)} in yukioshi.json if needed.`,
     )
