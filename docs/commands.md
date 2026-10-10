@@ -127,6 +127,7 @@ Manage recurring prompts run by your operating system's background scheduler (cr
 | `yukioshi import <file or url>` | import a session: an exported JSON file, a share URL, or a Claude Code or Codex conversation (`.jsonl`) |
 | `yukioshi import --from claude` | import this folder's newest Claude Code conversation (`--from codex` for Codex) |
 | `yukioshi stats`                | token use and cost (`--days`, `--models`, `--tools`, `--project`) |
+| `yukioshi tasks`                | background shell jobs and background subagents of a session (`--session`, `--format json`; read-only) |
 
 In the TUI, `/changes` shows the files changed by the latest turn. With
 `"loop": { "enabled": true }`, `/loop 5m <prompt>` runs a prompt again on an

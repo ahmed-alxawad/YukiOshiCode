@@ -310,6 +310,59 @@ on either way in your config:
 `YUKIOSHI_EXPERIMENTAL_PARALLEL_TASKS=1` also turn these on. `subagent_depth`
 (default 1) sets whether subagents may start subagents of their own.
 
+## Background shell commands
+
+The agent can start a long command, such as a dev server or a build, and keep
+working while it runs. This is off by default:
+
+```json
+{
+  "background_shell": { "enabled": true }
+}
+```
+
+`YUKIOSHI_BACKGROUND_SHELL=1` also turns it on. Then the `bash` tool takes a
+`background: true` option and three more tools appear:
+
+- `bash` with `background: true` starts the command and returns a job id at
+  once. It asks for the same permission as the same command in the foreground,
+  and runs with the same sandbox, environment and secret masking. In review
+  mode the reviewer sees the command.
+- `monitor` reads the new output of a job since the last read. With `until` (a
+  regular expression) it waits for a matching line, for the job to end, or for
+  `timeout_seconds` (at most 600). With `match` it returns only the matching
+  new lines. When the job has ended, it reports the exit code.
+- `job_list` lists the jobs of the session with state, age and the last output
+  lines.
+- `job_stop` stops a job.
+
+Each job keeps a rolling output buffer. When it is full, the oldest output is
+dropped and `monitor` says how much. Output is masked like all other tool
+output. Limits, all under `background_shell`:
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `max_jobs` | 4 | jobs that may run at once in one session |
+| `max_minutes` | 30 | a job is killed after this long |
+| `buffer_kb` | 1024 | output kept per job |
+| `run_wait_seconds` | 60 | how long `yukioshi run` waits for running jobs |
+
+A job runs in its own process group. Stopping, expiry, cancelling the session,
+deleting the session and exiting the process kill the whole group, children
+included. Jobs do not survive the session.
+
+`yukioshi run` waits for running jobs up to `run_wait_seconds`, then kills the
+rest. The final `result` event of `--format json` has a `background_jobs` object
+with `started`, `finished` and `killed`.
+
+`yukioshi tasks [--session <id>] [--format json]` lists the background jobs and
+background subagents of a session. It is read-only and defaults to the latest
+session. A job whose process has gone away shows as `lost`.
+
+With the [audit log](permissions-and-safety.md#audit-log) on, start, stop and
+exit of a job are recorded. The `PreToolUse` and `PostToolUse` hooks run for
+`bash`, `monitor`, `job_list` and `job_stop` as for any tool.
+
 ## Web search
 
 The `websearch` tool is off by default. Turn it on to let the agent search the

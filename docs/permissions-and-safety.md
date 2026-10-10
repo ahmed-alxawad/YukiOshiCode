@@ -295,6 +295,15 @@ characters becomes `Bearer [REDACTED:bearer-token]`. A provider can echo the
 }
 ```
 
+## Background shell commands
+
+When you turn on [background shell commands](features.md#background-shell-commands),
+starting one asks the same permission as running that command in the foreground.
+It is never approved on its own. The sandbox, environment and secret masking are
+the same too. Reading a job, listing jobs and stopping a job are low-risk. Jobs
+are limited in number, output size and lifetime, and the whole process group is
+killed when the session ends.
+
 ## Audit log
 
 A local record of what the agent did, for you or your team to review later. It
@@ -316,6 +325,8 @@ answer to `<state>/audit/<date>.jsonl` (`~/.local/state/yukioshi/audit/<date>.js
 
 - A tool call is recorded with the part of its input that says what it did
   (the command, file, URL, or search pattern), shortened to 500 characters.
+- Background shell jobs add `background_shell.start`, `background_shell.stop` and
+  `background_shell.exit` lines.
 - Secrets in what is recorded are masked, as for [redaction](#secret-redaction), including your provider keys.
 - Only the global config counts: a project's own config cannot turn the log on
   or off.

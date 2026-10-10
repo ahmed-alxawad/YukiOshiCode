@@ -126,6 +126,7 @@ Keep API keys out of checked-in config files: use `{env:…}` or
 | `checkpoints`          | durable git commits on `refs/yukioshi/checkpoints/*` (off by default) | [Features](features.md#git-checkpoints) |
 | `audit`                | local log of tool calls and approvals: `enabled` (off by default; global config only) | [Permissions and safety](permissions-and-safety.md#audit-log) |
 | `subagents`            | background subagents (`background`) and the `task_parallel` tool (`parallel`), both off by default | [Features](features.md#subagents) |
+| `background_shell`     | shell commands in the background with `monitor`, `job_list` and `job_stop`: `enabled` (off by default), `max_jobs` (4), `max_minutes` (30), `buffer_kb` (1024), `run_wait_seconds` (60) | [Features](features.md#background-shell-commands) |
 | `share`, `enterprise.url` | session sharing (`manual`, `auto`, `disabled`) and the share server it needs | [Features](features.md) |
 | `triggers`             | authenticated HTTP trigger endpoint on `yukioshi serve` (global only) | [Features](features.md#triggers) |
 | `default_agent`        | the primary agent used when none is chosen (default `build`)       |                                             |
@@ -252,4 +253,5 @@ When search mode is active, the model receives a `tool_search` tool listing avai
 | `YUKIOSHI_DISABLE_TERMINAL_TITLE`     | do not set the terminal title                             |
 | `YUKIOSHI_EXPERIMENTAL_PARALLEL_TASKS` | enable the `task_parallel` tool (same as `subagents.parallel`) |
 | `YUKIOSHI_EXPERIMENTAL_BACKGROUND_SUBAGENTS` | enable background subagents (same as `subagents.background`) |
+| `YUKIOSHI_BACKGROUND_SHELL` | enable background shell commands (same as `background_shell.enabled`) |
 | `YUKIOSHI_SERVER_PASSWORD`, `YUKIOSHI_SERVER_USERNAME` | protect `yukioshi serve` with a password ([details](permissions-and-safety.md#the-headless-server)) |
