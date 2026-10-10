@@ -19,7 +19,8 @@ function realTarget(target: string): string {
   let current = path.resolve(target)
   for (;;) {
     try {
-      return path.join(realpathSync(current), ...missing.reverse())
+      // native resolves Windows 8.3 short names and macOS /var -> /private/var alike
+      return path.join(realpathSync.native(current), ...missing.reverse())
     } catch {
       const parent = path.dirname(current)
       if (parent === current) return path.resolve(target)
@@ -29,9 +30,17 @@ function realTarget(target: string): string {
   }
 }
 
-function realContext(ins: { directory: string; worktree: string }) {
-  const real = (dir: string) => (dir === "/" ? dir : realTarget(dir))
-  return { directory: real(ins.directory), worktree: real(ins.worktree) } as Parameters<typeof containsPath>[1]
+const foldCase = process.platform === "win32" || process.platform === "darwin"
+
+function inside(root: string, child: string) {
+  return foldCase ? FSUtil.contains(root.toLowerCase(), child.toLowerCase()) : FSUtil.contains(root, child)
+}
+
+/** The project directory always counts; the worktree only when there is one (non-git projects use "/"). */
+function insideRealProject(real: string, ins: { directory: string; worktree: string }) {
+  if (inside(realTarget(ins.directory), real)) return true
+  if (ins.worktree === "/") return false
+  return inside(realTarget(ins.worktree), real)
 }
 
 export const assertExternalDirectoryEffect = Effect.fn("Tool.assertExternalDirectory")(function* (
@@ -45,12 +54,11 @@ export const assertExternalDirectoryEffect = Effect.fn("Tool.assertExternalDirec
 
   const ins = yield* InstanceState.context
   let full = process.platform === "win32" ? FSUtil.normalizePath(target) : target
-  if (containsPath(full, ins)) {
-    // A symlink inside the project can point anywhere. Judge the place the path really lands on.
-    const real = realTarget(full)
-    if (containsPath(real, realContext(ins))) return false
-    full = real
-  }
+  // Judge the place the path really lands on: a symlink inside the project can point anywhere, and a path
+  // spelled through a symlinked parent (macOS /var -> /private/var) can still be inside it.
+  const real = realTarget(full)
+  if (insideRealProject(real, ins)) return false
+  if (containsPath(full, ins)) full = real
 
   const kind = options?.kind ?? "file"
   const dir = kind === "directory" ? full : path.dirname(full)

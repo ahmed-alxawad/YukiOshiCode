@@ -120,7 +120,8 @@ type Result = { code: number; stdout: string; stderr: string }
 async function yk(args: string[], extra: Record<string, string> = {}): Promise<Result> {
   const proc = Bun.spawn([bin!, ...args], {
     cwd: project,
-    env: { ...env, ...extra },
+    // Bun.spawn leaves PWD at the parent's value; a shell would have set it to the project.
+    env: { ...env, PWD: project, ...extra },
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",

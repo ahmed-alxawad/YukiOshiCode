@@ -18,6 +18,7 @@ import type { Argv } from "yargs"
 import path from "path"
 import { pathToFileURL } from "url"
 import { open } from "node:fs/promises"
+import { realpathSync } from "node:fs"
 import { Effect } from "effect"
 import { UI } from "../ui"
 import { CliError, effectCmd, fail } from "../effect-cmd"
@@ -126,6 +127,15 @@ async function toolError(part: ToolPart) {
       icon: "✗",
       title: `${part.tool} failed`,
     })
+  }
+}
+
+export function trustedPwd(pwd: string | undefined, cwd: string) {
+  if (!pwd) return cwd
+  try {
+    return realpathSync.native(pwd) === realpathSync.native(cwd) ? pwd : cwd
+  } catch {
+    return cwd
   }
 }
 
@@ -411,7 +421,8 @@ export const RunCommand = effectCmd({
 
       const replay = args.replay === false ? false : args.replay || args["replay-limit"] !== undefined
 
-      const root = Filesystem.resolve(process.env.PWD ?? process.cwd())
+      // PWD is only trusted while it names the real working directory; a parent process can leave it stale.
+      const root = Filesystem.resolve(trustedPwd(process.env.PWD, process.cwd()))
       const directory = (() => {
         if (!args.dir) return args.attach ? undefined : root
         if (args.attach) return args.dir
