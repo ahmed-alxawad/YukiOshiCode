@@ -339,8 +339,8 @@ answer to `<state>/audit/<date>.jsonl` (`~/.local/state/yukioshi/audit/<date>.js
 ## The headless server
 
 `yukioshi serve` takes a password from `YUKIOSHI_SERVER_PASSWORD` (and a user
-name from `YUKIOSHI_SERVER_USERNAME`). Set one if anyone else can reach the
-port.
+name from `YUKIOSHI_SERVER_USERNAME`, which is `opencode` when not set; HTTP
+basic auth). Set a password if anyone else can reach the port.
 
 - The user name and password are compared in constant time. Both are always
   checked, so a wrong user name cannot be told apart from a wrong password by

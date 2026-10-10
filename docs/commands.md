@@ -45,7 +45,7 @@ explicitly denied), `--mini` (a minimal interface), `--no-replay`,
 | `--share`                  | share the session; needs your own share server (see [Features](features.md)) |
 | `--attach <url>`           | send the message to a running `yukioshi serve`              |
 | `-p, --password`           | basic auth password when attaching (`--attach`); defaults to `YUKIOSHI_SERVER_PASSWORD` |
-| `-u, --username`           | basic auth username when attaching (`--attach`); defaults to `YUKIOSHI_SERVER_USERNAME` or `yukioshi` |
+| `-u, --username`           | basic auth username when attaching (`--attach`); defaults to `YUKIOSHI_SERVER_USERNAME` or `opencode` |
 | `--dir`                    | folder to run in                                            |
 | `--worktree <name>`        | run in a Git worktree of this project (created if needed; see [Features](features.md#worktrees)) |
 | `--port <port>`            | port for the local server                                   |

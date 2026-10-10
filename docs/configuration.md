@@ -186,7 +186,10 @@ if (a.length === b.length && timingSafeEqual(a, b)) accept()
 ```
 
 Delivery has a 10-second timeout and retries network errors and 5xx responses
-twice. 4xx responses are not retried, and delivery never delays the agent.
+twice. 4xx responses are not retried, and delivery never delays the agent. For
+that reason `yukioshi run` does not wait for retries: it exits when the turn
+ends, so a retry still pending then is dropped. `yukioshi serve` and the
+terminal UI keep retrying.
 
 ## Tool limits
 
