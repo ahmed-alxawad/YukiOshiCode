@@ -17,6 +17,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js"
 import { Config } from "@/config/config"
 import { ConfigMCPV1 } from "@yukioshi/core/v1/config/mcp"
+import { Redact } from "@yukioshi/core/redact"
 import { NamedError } from "@yukioshi/core/util/error"
 import { InstallationVersion } from "@yukioshi/core/installation/version"
 import { withTimeout } from "@/util/timeout"
@@ -87,6 +88,11 @@ const StatusConnected = Schema.Struct({ status: Schema.Literal("connected") }).a
 const StatusDisabled = Schema.Struct({ status: Schema.Literal("disabled") }).annotate({
   identifier: "MCPStatusDisabled",
 })
+// Connection errors can echo URLs, headers or response bodies; mask before storing or showing.
+function failureText(text: string) {
+  return Redact.mask(Redact.scrubKnown(text))
+}
+
 const StatusFailed = Schema.Struct({ status: Schema.Literal("failed"), error: Schema.String }).annotate({
   identifier: "MCPStatusFailed",
 })
@@ -328,7 +334,7 @@ const layer = Layer.effect(
               }
             }
 
-            lastStatus = { status: "failed" as const, error: lastError.message }
+            lastStatus = { status: "failed" as const, error: failureText(lastError.message) }
             return Effect.void
           }),
         )
@@ -370,7 +376,7 @@ const layer = Layer.effect(
         })),
         Effect.catch((error): Effect.Effect<{ client: MCPClient | undefined; status: Status }> => {
           const msg = error instanceof Error ? error.message : String(error)
-          return Effect.succeed({ client: undefined, status: { status: "failed", error: msg } })
+          return Effect.succeed({ client: undefined, status: { status: "failed", error: failureText(msg) } })
         }),
       )
     })
@@ -415,7 +421,7 @@ const layer = Layer.effect(
         if (Cause.hasInterruptsOnly(cause)) return Effect.interrupt
         const error = Cause.squash(cause)
         return Effect.succeed<CreateResult>({
-          status: { status: "failed", error: error instanceof Error ? error.message : String(error) },
+          status: { status: "failed", error: failureText(error instanceof Error ? error.message : String(error)) },
         })
       }),
     )
@@ -965,7 +971,7 @@ const layer = Layer.effect(
         }),
       )
 
-      if (error) return { status: "failed", error: `OAuth completion failed: ${error}` } satisfies Status
+      if (error) return { status: "failed", error: failureText(`OAuth completion failed: ${error}`) } satisfies Status
 
       yield* Effect.promise(() => pending.provider?.commit() ?? Promise.resolve())
       yield* auth.clearCodeVerifier(mcpName)
