@@ -258,7 +258,11 @@ describe("v2 pty HttpApi", () => {
         const messages = yield* Queue.unbounded<string>()
         yield* socket
           .runRaw((message) =>
-            Queue.offer(messages, typeof message === "string" ? message : new TextDecoder().decode(message)),
+            // The 0x00 meta frame is a control frame, not terminal output. The shell may flush its line in
+            // several reads (macOS), so a meta frame landing between them must not split the expected text.
+            typeof message !== "string" && message[0] === 0
+              ? Effect.void
+              : Queue.offer(messages, typeof message === "string" ? message : new TextDecoder().decode(message)),
           )
           .pipe(
             Effect.catch(() => Effect.void),
@@ -266,18 +270,19 @@ describe("v2 pty HttpApi", () => {
           )
         const write = yield* socket.writer
 
-        const loop = (expected: string, seen = ""): Effect.Effect<string, unknown> =>
+        let output = ""
+        const loop = (expected: string): Effect.Effect<string, unknown> =>
           Effect.gen(function* () {
-            const chunk = yield* Queue.take(messages)
-            const next = seen + chunk
-            if (next.includes(expected)) return next
-            return yield* loop(expected, next)
+            if (output.includes(expected)) return output
+            output += yield* Queue.take(messages)
+            return yield* loop(expected)
           })
         const takeUntil = (expected: string) =>
           loop(expected).pipe(
             Effect.timeoutOrElse({
               duration: "40 seconds",
-              orElse: () => Effect.fail(new Error(`Timed out waiting for ${expected}`)),
+              orElse: () =>
+                Effect.fail(new Error(`Timed out waiting for ${expected}; saw ${JSON.stringify(output)}`)),
             }),
           )
 
