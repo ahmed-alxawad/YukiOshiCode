@@ -18,6 +18,13 @@ const crashing = Layer.succeed(
   RipgrepBinary.Service.of({ filepath: Effect.die(new Error("thrown while downloading")) }),
 )
 
+// A shared/cached download that was interrupted elsewhere replays the interrupt to every later caller
+// (observed as an empty HTTP 503 from the file search route on Windows). That must also fall back.
+const interrupted = Layer.succeed(
+  RipgrepBinary.Service,
+  RipgrepBinary.Service.of({ filepath: Effect.interrupt as Effect.Effect<string, Error> }),
+)
+
 const withTmp = <A, E, R>(body: (dir: string) => Effect.Effect<A, E, R>) =>
   Effect.acquireUseRelease(
     Effect.promise(() => tmpdir()),
@@ -32,6 +39,7 @@ const write = (file: string, content: string | Buffer) =>
   })
 
 const it = testEffect(LayerNode.compile(Ripgrep.node, [[RipgrepBinary.node, missing]]))
+const itInterrupted = testEffect(LayerNode.compile(Ripgrep.node, [[RipgrepBinary.node, interrupted]]))
 const itCrash = testEffect(LayerNode.compile(Ripgrep.node, [[RipgrepBinary.node, crashing]]))
 
 describe("Ripgrep built-in search hardening", () => {
@@ -43,6 +51,17 @@ describe("Ripgrep built-in search hardening", () => {
         expect(matches.map((m) => String(m.entry.path))).toEqual(["a.txt"])
         const files = yield* (yield* Ripgrep.Service).find({ cwd: dir, pattern: "*", limit: 10 })
         expect(files.map((f) => String(f.path))).toEqual(["a.txt"])
+      }),
+    ),
+  )
+
+  itInterrupted.live("falls back when the binary lookup was interrupted by another fiber", () =>
+    withTmp((dir) =>
+      Effect.gen(function* () {
+        yield* write(path.join(dir, "a.txt"), "needle\n")
+        const rg = yield* Ripgrep.Service
+        expect((yield* rg.grep({ cwd: dir, pattern: "needle", limit: 10 })).map((m) => String(m.entry.path))).toEqual(["a.txt"])
+        expect((yield* rg.glob({ cwd: dir, pattern: "*.txt", limit: 10 })).map((m) => String(m.path))).toEqual(["a.txt"])
       }),
     ),
   )

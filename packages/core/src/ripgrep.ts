@@ -4,7 +4,7 @@ import nodeFs from "node:fs/promises"
 import type { Dirent } from "node:fs"
 import path from "node:path"
 import ignore from "ignore"
-import { Context, Effect, Fiber, Layer, Schema, Stream } from "effect"
+import { Cause, Context, Effect, Fiber, Layer, Schema, Stream } from "effect"
 import { ChildProcess } from "effect/unstable/process"
 import { Entry, Match } from "@yukioshi/schema/filesystem"
 import { makeGlobalNode } from "./effect/app-node"
@@ -104,11 +104,19 @@ const layer = Layer.effect(
     const binary = yield* RipgrepBinary.Service
 
     let warned = false
+    const describe = (cause: unknown) => {
+      try {
+        if (Cause.isCause(cause)) return Cause.pretty(cause).split("\n").slice(0, 6).join("\n")
+        return cause instanceof globalThis.Error ? cause.message : String(cause)
+      } catch {
+        return "unknown"
+      }
+    }
     const warnFallback = (cause?: unknown) =>
       Effect.sync(() => {
         if (!warned) {
           warned = true
-          console.warn("yukioshi: ripgrep binary is not available; falling back to built-in search")
+          console.warn(`yukioshi: ripgrep binary is not available; falling back to built-in search (${describe(cause)})`)
         }
       }).pipe(
         Effect.flatMap(() =>
@@ -489,7 +497,7 @@ const layer = Layer.effect(
             ripgrepUnavailable = true
             return warnFallback(cause).pipe(Effect.flatMap(() => fallbackGlob(input)))
           }),
-          Effect.catchDefect((cause) => {
+          Effect.catchCause((cause) => {
             ripgrepUnavailable = true
             return warnFallback(cause).pipe(Effect.flatMap(() => fallbackGlob(input)))
           }),
@@ -530,7 +538,7 @@ const layer = Layer.effect(
             ripgrepUnavailable = true
             return warnFallback(cause).pipe(Effect.flatMap(() => fallbackFind(input)))
           }),
-          Effect.catchDefect((cause) => {
+          Effect.catchCause((cause) => {
             ripgrepUnavailable = true
             return warnFallback(cause).pipe(Effect.flatMap(() => fallbackFind(input)))
           }),
@@ -605,7 +613,7 @@ const layer = Layer.effect(
             ripgrepUnavailable = true
             return warnFallback(cause).pipe(Effect.flatMap(() => fallbackGrep(input)))
           }),
-          Effect.catchDefect((cause) => {
+          Effect.catchCause((cause) => {
             ripgrepUnavailable = true
             return warnFallback(cause).pipe(Effect.flatMap(() => fallbackGrep(input)))
           }),
