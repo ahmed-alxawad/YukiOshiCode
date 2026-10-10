@@ -37,10 +37,6 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Install ripgrep (Windows)
-        if: runner.os == 'Windows'
-        run: choco install ripgrep --no-progress
-
       - name: Run platform feature tests
         working-directory: packages/opencode
         run: |
@@ -70,5 +66,6 @@ jobs:
             test/server/httpapi-v2-pty.test.ts \
             test/tool/shell.test.ts \
             ../sandbox/test/platform-case.test.ts \
-            ../core/test/global.test.ts
+            ../core/test/global.test.ts \
+            ../core/test/ripgrep-fallback.test.ts
 

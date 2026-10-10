@@ -1,5 +1,9 @@
 export * as Ripgrep from "./ripgrep"
 
+import nodeFs from "node:fs/promises"
+import type { Dirent } from "node:fs"
+import path from "node:path"
+import ignore from "ignore"
 import { Context, Effect, Fiber, Layer, Schema, Stream } from "effect"
 import { ChildProcess } from "effect/unstable/process"
 import { Entry, Match } from "@yukioshi/schema/filesystem"
@@ -95,6 +99,248 @@ const layer = Layer.effect(
     const process = yield* AppProcess.Service
     const binary = yield* RipgrepBinary.Service
 
+    let warned = false
+    const warnFallback = (cause?: unknown) =>
+      Effect.sync(() => {
+        if (!warned) {
+          warned = true
+          console.warn("yukioshi: ripgrep binary is not available; falling back to built-in search")
+        }
+      }).pipe(
+        Effect.flatMap(() =>
+          Effect.logWarning("ripgrep binary is not available; falling back to built-in search", { error: cause }),
+        ),
+      )
+
+    const matchesGlob = (pattern: string, relPath: string): boolean => {
+      if (pattern === "*" || pattern === "**/*") return true
+      const norm = relPath.replaceAll("\\", "/")
+      const basename = path.basename(norm)
+      if (!pattern.includes("/")) {
+        if (new Bun.Glob(pattern).match(basename)) return true
+      }
+      return new Bun.Glob(pattern).match(norm) || new Bun.Glob(`**/${pattern}`).match(norm)
+    }
+
+    const loadGitignore = async (cwd: string) => {
+      const ig = ignore().add(".git")
+      try {
+        const content = await nodeFs.readFile(path.join(cwd, ".gitignore"), "utf8")
+        ig.add(
+          content
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter((line) => line.length > 0 && !line.startsWith("#")),
+        )
+      } catch {
+        // No .gitignore, ignore
+      }
+      return ig
+    }
+
+    async function* walk(
+      cwd: string,
+      dir: string,
+      options: { hidden?: boolean; follow?: boolean; signal?: AbortSignal; ig: ReturnType<typeof ignore> },
+    ): AsyncGenerator<{ relPath: string; fullPath: string }> {
+      if (options.signal?.aborted) return
+
+      let entries: Dirent[]
+      try {
+        entries = await nodeFs.readdir(dir, { withFileTypes: true })
+      } catch {
+        return
+      }
+
+      for (const dirent of entries) {
+        if (options.signal?.aborted) return
+        const name = dirent.name
+        if (name === ".git") continue
+        if (!options.hidden && name.startsWith(".")) continue
+
+        const fullPath = path.join(dir, name)
+        const relPath = path.relative(cwd, fullPath).replaceAll("\\", "/")
+
+        if (dirent.isDirectory()) {
+          if (options.ig.ignores(relPath + "/") || options.ig.ignores(relPath)) continue
+          yield* walk(cwd, fullPath, options)
+        } else if (dirent.isFile()) {
+          if (options.ig.ignores(relPath)) continue
+          yield { relPath, fullPath }
+        } else if (dirent.isSymbolicLink() && options.follow) {
+          try {
+            const stat = await nodeFs.stat(fullPath)
+            if (stat.isDirectory()) {
+              if (options.ig.ignores(relPath + "/") || options.ig.ignores(relPath)) continue
+              yield* walk(cwd, fullPath, options)
+            } else if (stat.isFile()) {
+              if (options.ig.ignores(relPath)) continue
+              yield { relPath, fullPath }
+            }
+          } catch {
+            // broken link
+          }
+        }
+      }
+    }
+
+    const fallbackFind = (input: FindInput) =>
+      Effect.gen(function* () {
+        const ig = yield* Effect.promise(() => loadGitignore(input.cwd))
+        const results: Entry[] = []
+        const walker = walk(input.cwd, input.cwd, {
+          hidden: input.hidden,
+          follow: input.follow,
+          signal: input.signal,
+          ig,
+        })
+        while (true) {
+          const next = yield* Effect.promise(() => walker.next())
+          if (next.done) break
+          if (input.signal?.aborted) break
+          const { relPath } = next.value
+          if (matchesGlob(input.pattern, relPath)) {
+            const entry = Entry.make({
+              path: RelativePath.make(relPath),
+              type: "file",
+            })
+            if (input.onEntry && results.length < input.limit) {
+              yield* input.onEntry(entry)
+            }
+            results.push(entry)
+            if (results.length >= input.limit) break
+          }
+        }
+        return results
+      })
+
+    const fallbackGlob = (input: GlobInput) =>
+      Effect.gen(function* () {
+        const ig = yield* Effect.promise(() => loadGitignore(input.cwd))
+        const results: Entry[] = []
+        const walker = walk(input.cwd, input.cwd, {
+          hidden: input.hidden,
+          follow: input.follow,
+          signal: input.signal,
+          ig,
+        })
+        while (true) {
+          const next = yield* Effect.promise(() => walker.next())
+          if (next.done) break
+          if (input.signal?.aborted) break
+          const { relPath } = next.value
+          if (matchesGlob(input.pattern, relPath)) {
+            results.push(
+              Entry.make({
+                path: RelativePath.make(relPath),
+                type: "file",
+              }),
+            )
+            if (results.length >= input.limit) break
+          }
+        }
+        return results
+      })
+
+    const isBinaryBuffer = (buf: Buffer) => {
+      const len = Math.min(buf.length, 8192)
+      for (let i = 0; i < len; i++) {
+        if (buf[i] === 0) return true
+      }
+      return false
+    }
+
+    const fallbackGrep = (input: GrepInput) =>
+      Effect.gen(function* () {
+        let regex: RegExp
+        try {
+          regex = new RegExp(input.pattern, "gd")
+        } catch (e: any) {
+          return yield* new InvalidPatternError({ pattern: input.pattern, message: e?.message ?? String(e) })
+        }
+
+        const matches: Match[] = []
+
+        const searchFile = function* (relPath: string, fullPath: string) {
+          let contentBuffer: Buffer
+          try {
+            contentBuffer = yield* Effect.promise(() => nodeFs.readFile(fullPath))
+          } catch {
+            return
+          }
+          if (isBinaryBuffer(contentBuffer)) return
+
+          const text = contentBuffer.toString("utf8")
+          const lines = text.split(/\r?\n/)
+          let offset = 0
+
+          for (let i = 0; i < lines.length; i++) {
+            if (input.signal?.aborted || matches.length >= input.limit) break
+            const line = lines[i]!
+            regex.lastIndex = 0
+            const submatches: { text: string; start: number; end: number }[] = []
+            let match: RegExpExecArray | null
+
+            while ((match = regex.exec(line)) !== null) {
+              const start = match.indices ? match.indices[0]![0] : match.index
+              const end = match.indices ? match.indices[0]![1] : match.index + match[0].length
+              submatches.push({ text: match[0], start, end })
+              if (submatches.length >= MAX_SUBMATCHES) break
+              if (match[0].length === 0) {
+                regex.lastIndex++
+              }
+            }
+
+            if (submatches.length > 0) {
+              const preview =
+                line.length > 2000 ? line.slice(0, 2000).replace(/[\uD800-\uDBFF]$/, "") + "..." : line
+              matches.push(
+                Match.make({
+                  entry: Entry.make({
+                    path: RelativePath.make(relPath),
+                    type: "file",
+                  }),
+                  line: i + 1,
+                  offset,
+                  text: preview,
+                  submatches,
+                }),
+              )
+            }
+
+            offset += Buffer.byteLength(line, "utf8") + 1
+          }
+        }
+
+        if (input.file) {
+          const fullPath = path.resolve(input.cwd, input.file)
+          const relPath = path.relative(input.cwd, fullPath).replaceAll("\\", "/")
+          yield* searchFile(relPath, fullPath)
+          return matches
+        }
+
+        const ig = yield* Effect.promise(() => loadGitignore(input.cwd))
+        const walker = walk(input.cwd, input.cwd, {
+          hidden: true,
+          follow: false,
+          signal: input.signal,
+          ig,
+        })
+
+        while (true) {
+          const next = yield* Effect.promise(() => walker.next())
+          if (next.done) break
+          if (input.signal?.aborted || matches.length >= input.limit) break
+          const { relPath, fullPath } = next.value
+          if (input.include && !matchesGlob(input.include, relPath)) continue
+          yield* searchFile(relPath, fullPath)
+        }
+
+        return matches
+      })
+
+    let ripgrepUnavailable = false
+
     const run = <A>(input: {
       readonly cwd: string
       readonly args: string[]
@@ -152,8 +398,9 @@ const layer = Layer.effect(
     }
 
     return Service.of({
-      glob: (input) =>
-        run<string>({
+      glob: (input) => {
+        if (ripgrepUnavailable) return fallbackGlob(input)
+        return run<string>({
           cwd: input.cwd,
           limit: input.limit,
           signal: input.signal,
@@ -183,9 +430,15 @@ const layer = Layer.effect(
             ),
           ),
           Effect.catchTag("Ripgrep.InvalidPatternError", (cause) => Effect.fail(failure(cause.message, cause))),
-        ),
-      find: (input) =>
-        run<Entry>({
+          Effect.catch((cause) => {
+            ripgrepUnavailable = true
+            return warnFallback(cause).pipe(Effect.flatMap(() => fallbackGlob(input)))
+          }),
+        )
+      },
+      find: (input) => {
+        if (ripgrepUnavailable) return fallbackFind(input)
+        return run<Entry>({
           cwd: input.cwd,
           limit: input.limit,
           signal: input.signal,
@@ -214,9 +467,15 @@ const layer = Layer.effect(
         }).pipe(
           Effect.map((result) => result.items),
           Effect.catchTag("Ripgrep.InvalidPatternError", (cause) => Effect.fail(failure(cause.message, cause))),
-        ),
-      grep: (input) =>
-        run<RawMatchData>({
+          Effect.catch((cause) => {
+            ripgrepUnavailable = true
+            return warnFallback(cause).pipe(Effect.flatMap(() => fallbackFind(input)))
+          }),
+        )
+      },
+      grep: (input) => {
+        if (ripgrepUnavailable) return fallbackGrep(input)
+        return run<RawMatchData>({
           ...input,
           args: [
             "--no-config",
@@ -276,7 +535,15 @@ const layer = Layer.effect(
               })
             }),
           ),
-        ),
+          Effect.catch((cause) => {
+            if (cause instanceof InvalidPatternError) {
+              return Effect.fail(cause)
+            }
+            ripgrepUnavailable = true
+            return warnFallback(cause).pipe(Effect.flatMap(() => fallbackGrep(input)))
+          }),
+        )
+      },
     })
   }),
 )

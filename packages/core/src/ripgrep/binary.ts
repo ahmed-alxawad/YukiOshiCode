@@ -1,27 +1,65 @@
 import path from "path"
 import nodeFs from "node:fs"
+import crypto from "node:crypto"
 import { Context, Effect, Layer, Stream } from "effect"
-import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/unstable/http"
 import { ChildProcess } from "effect/unstable/process"
 import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner"
 import { CrossSpawnSpawner } from "../cross-spawn-spawner"
 import { makeGlobalNode } from "../effect/app-node"
-import { httpClient } from "../effect/app-node-platform"
 import { FSUtil } from "../fs-util"
 import { Global } from "../global"
 import { which } from "../util/which"
 
 export namespace RipgrepBinary {
-  const VERSION = "15.1.0"
-  const PLATFORM = {
-    "arm64-darwin": { platform: "aarch64-apple-darwin", extension: "tar.gz" },
-    "arm64-linux": { platform: "aarch64-unknown-linux-gnu", extension: "tar.gz" },
-    "x64-darwin": { platform: "x86_64-apple-darwin", extension: "tar.gz" },
-    "x64-linux": { platform: "x86_64-unknown-linux-musl", extension: "tar.gz" },
-    "arm64-win32": { platform: "aarch64-pc-windows-msvc", extension: "zip" },
-    "ia32-win32": { platform: "i686-pc-windows-msvc", extension: "zip" },
-    "x64-win32": { platform: "x86_64-pc-windows-msvc", extension: "zip" },
+  export const VERSION = "15.1.0"
+  export const PLATFORM = {
+    "arm64-darwin": {
+      platform: "aarch64-apple-darwin",
+      extension: "tar.gz",
+      sha256: "378e973289176ca0c6054054ee7f631a065874a352bf43f0fa60ef079b6ba715",
+    },
+    "x64-darwin": {
+      platform: "x86_64-apple-darwin",
+      extension: "tar.gz",
+      sha256: "64811cb24e77cac3057d6c40b63ac9becf9082eedd54ca411b475b755d334882",
+    },
+    "arm64-linux": {
+      platform: "aarch64-unknown-linux-gnu",
+      extension: "tar.gz",
+      sha256: "2b661c6ef508e902f388e9098d9c4c5aca72c87b55922d94abdba830b4dc885e",
+    },
+    "x64-linux": {
+      platform: "x86_64-unknown-linux-musl",
+      extension: "tar.gz",
+      sha256: "1c9297be4a084eea7ecaedf93eb03d058d6faae29bbc57ecdaf5063921491599",
+    },
+    "arm64-win32": {
+      platform: "aarch64-pc-windows-msvc",
+      extension: "zip",
+      sha256: "00d931fb5237c9696ca49308818edb76d8eb6fc132761cb2a1bd616b2df02f8e",
+    },
+    "ia32-win32": {
+      platform: "i686-pc-windows-msvc",
+      extension: "zip",
+      sha256: "725be85a1e8f92878a548f40ee4f6df64bc93b809586462b3c6d884e1de1e83a",
+    },
+    "x64-win32": {
+      platform: "x86_64-pc-windows-msvc",
+      extension: "zip",
+      sha256: "124510b94b6baa3380d051fdf4650eaa80a302c876d611e9dba0b2e18d87493a",
+    },
   } as const
+
+  export const isAllowedHost = (u: URL): boolean => {
+    if (u.protocol !== "https:") return false
+    const host = u.hostname.toLowerCase()
+    return (
+      host === "github.com" ||
+      host.endsWith(".github.com") ||
+      host === "githubusercontent.com" ||
+      host.endsWith(".githubusercontent.com")
+    )
+  }
 
   interface Interface {
     readonly filepath: Effect.Effect<string, Error>
@@ -33,7 +71,6 @@ export namespace RipgrepBinary {
     Service,
     Effect.gen(function* () {
       const fs = yield* FSUtil.Service
-      const http = HttpClient.filterStatusOk(yield* HttpClient.HttpClient)
       const spawner = yield* ChildProcessSpawner
 
       const run = Effect.fnUntraced(function* (command: string, args: string[]) {
@@ -54,7 +91,8 @@ export namespace RipgrepBinary {
         config: (typeof PLATFORM)[keyof typeof PLATFORM],
         target: string,
       ) {
-        const dir = yield* fs.makeTempDirectoryScoped({ directory: Global.Path.bin, prefix: "ripgrep-" })
+        const dataBin = path.join(Global.Path.data, "bin")
+        const dir = yield* fs.makeTempDirectoryScoped({ directory: dataBin, prefix: "ripgrep-" })
 
         if (config.extension === "zip") {
           const shell = (yield* Effect.sync(() => which("powershell.exe") ?? which("pwsh.exe"))) ?? "powershell.exe"
@@ -92,9 +130,15 @@ export namespace RipgrepBinary {
       return Service.of({
         filepath: yield* Effect.cached(
           Effect.gen(function* () {
+            const dataBin = path.join(Global.Path.data, "bin")
+            const target = path.join(dataBin, process.platform === "win32" ? "rg.exe" : "rg")
+
             const system = yield* Effect.sync(() => {
               const found = which("rg") ?? (process.platform === "win32" ? which("rg.exe") : null)
               if (found) return found
+              if (nodeFs.existsSync(target)) return target
+              const cacheBin = path.join(Global.Path.bin, process.platform === "win32" ? "rg.exe" : "rg")
+              if (nodeFs.existsSync(cacheBin)) return cacheBin
               if (process.platform === "win32") {
                 const choco = "C:\\ProgramData\\chocolatey\\bin\\rg.exe"
                 if (nodeFs.existsSync(choco)) return choco
@@ -103,27 +147,62 @@ export namespace RipgrepBinary {
             })
             if (system && (yield* fs.isFile(system).pipe(Effect.orDie))) return system
 
-            const target = path.join(Global.Path.bin, `rg${process.platform === "win32" ? ".exe" : ""}`)
-            if (yield* fs.isFile(target).pipe(Effect.orDie)) return target
-
             const platformKey = `${process.arch}-${process.platform}` as keyof typeof PLATFORM
             const config = PLATFORM[platformKey]
             if (!config) throw new Error(`unsupported platform for ripgrep: ${platformKey}`)
 
             const filename = `ripgrep-${VERSION}-${config.platform}.${config.extension}`
             const url = `https://github.com/BurntSushi/ripgrep/releases/download/${VERSION}/${filename}`
-            const archive = path.join(Global.Path.bin, filename)
+            const archive = path.join(dataBin, filename)
 
-            yield* Effect.logInfo("downloading ripgrep", { url })
-            yield* fs.ensureDir(Global.Path.bin).pipe(Effect.orDie)
-            const bytes = yield* HttpClientRequest.get(url).pipe(
-              http.execute,
-              Effect.flatMap((response) => response.arrayBuffer),
-              Effect.mapError((cause) => (cause instanceof Error ? cause : new Error(String(cause)))),
-            )
+            yield* Effect.logInfo("downloading ripgrep", { url, sha256: config.sha256 })
+            yield* fs.ensureDir(dataBin).pipe(Effect.orDie)
+
+            let currentUrl = new URL(url)
+            let hops = 0
+            let finalResponse: Response | null = null
+
+            while (hops < 5) {
+              if (!isAllowedHost(currentUrl)) {
+                throw new Error(`ripgrep download redirected to disallowed host: ${currentUrl.hostname}`)
+              }
+              const response: Response = yield* Effect.tryPromise({
+                try: () => fetch(currentUrl.toString(), { redirect: "manual" }),
+                catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
+              })
+              if (response.status >= 300 && response.status < 400) {
+                const location = response.headers.get("location")
+                if (!location) throw new Error("ripgrep download redirect missing Location header")
+                currentUrl = new URL(location, currentUrl)
+                hops++
+                continue
+              }
+              if (!response.ok) {
+                throw new Error(
+                  `failed to download ripgrep from ${currentUrl}: HTTP ${response.status} ${response.statusText}`,
+                )
+              }
+              finalResponse = response
+              break
+            }
+
+            if (!finalResponse) throw new Error("too many redirects while downloading ripgrep")
+
+            const arrayBuffer = yield* Effect.tryPromise({
+              try: () => finalResponse!.arrayBuffer(),
+              catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
+            })
+            const bytes = new Uint8Array(arrayBuffer)
             if (bytes.byteLength === 0) throw new Error(`failed to download ripgrep from ${url}`)
 
-            yield* fs.writeWithDirs(archive, new Uint8Array(bytes))
+            const actualHash = crypto.createHash("sha256").update(bytes).digest("hex")
+            if (actualHash !== config.sha256) {
+              throw new Error(
+                `ripgrep checksum mismatch for ${filename}: expected ${config.sha256}, got ${actualHash}`,
+              )
+            }
+
+            yield* fs.writeWithDirs(archive, bytes)
             yield* extract(archive, config, target)
             yield* fs.remove(archive, { force: true }).pipe(Effect.ignore)
             return target
@@ -136,6 +215,6 @@ export namespace RipgrepBinary {
   export const node = makeGlobalNode({
     service: Service,
     layer: layer,
-    deps: [FSUtil.node, httpClient, CrossSpawnSpawner.node],
+    deps: [FSUtil.node, CrossSpawnSpawner.node],
   })
 }

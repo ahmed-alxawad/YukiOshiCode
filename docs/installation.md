@@ -143,3 +143,12 @@ prints the last step, removing the binary itself. Options:
 
 These follow the XDG variables (`XDG_CONFIG_HOME` and so on) when they are set.
 `yukioshi debug paths` prints the exact folders on your machine.
+
+## Ripgrep and search
+
+YukiOshi uses ripgrep for workspace file and text search (`grep`, `glob`, file search, and `@` file completion).
+
+- If `rg` is already present on your `PATH` (or installed via Homebrew or Chocolatey), YukiOshi uses it directly.
+- If ripgrep is missing, YukiOshi downloads and verifies a pinned, SHA-256-validated ripgrep release (v15.1.0) into its data directory (`Global.Path.data/bin`) on first use. All redirect locations are restricted strictly to GitHub releases.
+- If ripgrep cannot be downloaded or executed (e.g. in offline, proxy-restricted, or air-gapped environments), YukiOshi automatically falls back to built-in pure-JavaScript search with a clear warning: `ripgrep binary is not available; falling back to built-in search`. All tools continue to work seamlessly.
+
