@@ -61,6 +61,11 @@ const TOP_LEVEL = [
   "session",
   "plugin",
   "db",
+  "trust",
+  "checkpoint",
+  "schedule",
+  "skill",
+  "worktree",
 ] as const
 
 // Subcommands worth pinning. Not exhaustive — the goal is one snapshot per
@@ -79,6 +84,13 @@ const SUBCOMMANDS = [
   ["session", "list"],
   ["session", "delete"],
   ["db", "path"],
+  ["schedule", "add"],
+  ["schedule", "list"],
+  ["schedule", "remove"],
+  ["schedule", "run"],
+  ["schedule", "logs"],
+  ["schedule", "enable"],
+  ["schedule", "disable"],
 ] as const
 
 // Fixed wrap width so a developer's terminal doesn't affect snapshots.

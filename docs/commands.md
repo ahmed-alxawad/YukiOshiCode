@@ -166,3 +166,24 @@ interval; see [Features](features.md#loop).
 | `yukioshi debug info`           | version and environment details for bug reports         |
 | `yukioshi db [query], db path`  | open an interactive sqlite3 shell, run a query (`--format json\|tsv`), or print the database path |
 | `yukioshi completion`           | print a shell completion script for bash or zsh         |
+
+## When a command fails
+
+A command that fails prints one message that says what went wrong and what to
+do next, and exits with status 1. It does not print a stack trace, and API keys
+are masked. For example:
+
+| You see | Do this |
+| ------- | ------- |
+| `No model selected` or `No providers are available` | `yukioshi providers login`, then pass `--model provider/model` or set `"model"` in `yukioshi.json` |
+| `Model not found: x/y` | `yukioshi models` lists the names; if the provider is set up in the project's own config, run `yukioshi trust .` first |
+| `Session not found` | `yukioshi session list` shows the IDs |
+| `Agent not found` | `yukioshi agent list` shows the agents |
+| `Config file ... is not valid JSON(C)` or `Configuration is invalid` | fix the file and key named in the message; `yukioshi debug config` shows what is read |
+| `... needs an interactive terminal` | name the provider, session, or server on the command line instead of using the menu, for example `yukioshi providers login --provider anthropic` |
+| `Port ... is already in use` | `yukioshi serve --port <other>` (`--port 0` picks a free one) |
+| `Could not reach <host>` | check your connection, VPN or proxy, and the provider's `baseURL`; keys are sent only to that host and are never written to logs |
+| `Invalid cron expression` | five fields in quotes, for example `yukioshi schedule add "0 9 * * 1-5" "summarize recent commits"` |
+
+For errors with no specific advice, add `--print-logs --log-level DEBUG` and run
+the command again; with that flag the stack trace is shown too.

@@ -11,7 +11,7 @@ Options:
       --print-logs   print logs to stderr                                                  [boolean]
       --log-level    log level                  [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure         run without external plugins                                          [boolean]
-      --port         port to listen on                                         [number] [default: 0]
+      --port         port to listen on (0 tries 4096, then any free port)      [number] [default: 0]
       --hostname     hostname to listen on                           [string] [default: "127.0.0.1"]
       --mdns         enable mDNS service discovery (defaults hostname to 0.0.0.0)
                                                                           [boolean] [default: false]
@@ -47,7 +47,8 @@ exports[`yukioshi CLI help-text snapshots every documented command emits stable 
 attach to a running yukioshi server
 
 Positionals:
-  url  http://localhost:4096                                                     [string] [required]
+  url  address of a running server, for example http://localhost:4096 (start one with \`yukioshi
+       serve\`)                                                                   [string] [required]
 
 Options:
   -h, --help          show help                                                            [boolean]
@@ -123,7 +124,14 @@ Options:
                        auto-approves anything not explicitly denied or hard-blocked, plan restricts
                        the agent to low-risk actions only, review has a small model approve or
                        refuse each action that is not low-risk
-                                  [string] [choices: "manual", "auto", "auto-all", "plan", "review"]"
+                                  [string] [choices: "manual", "auto", "auto-all", "plan", "review"]
+
+Examples:
+  yukioshi run "explain what this repo does"          send one message and print the answer
+  yukioshi run -c "now add tests"                     continue the last session
+  yukioshi run -m anthropic/claude-sonnet-4-5 "fix    pick the model for this run
+  the failing test"
+  git diff | yukioshi run "review this change"        pipe text in as extra context"
 `;
 
 exports[`yukioshi CLI help-text snapshots every documented command emits stable help text: yukioshi debug --help 1`] = `
@@ -235,13 +243,19 @@ Options:
       --print-logs   print logs to stderr                                                  [boolean]
       --log-level    log level                  [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure         run without external plugins                                          [boolean]
-      --port         port to listen on                                         [number] [default: 0]
+      --port         port to listen on (0 tries 4096, then any free port)      [number] [default: 0]
       --hostname     hostname to listen on                           [string] [default: "127.0.0.1"]
       --mdns         enable mDNS service discovery (defaults hostname to 0.0.0.0)
                                                                           [boolean] [default: false]
       --mdns-domain  custom domain name for mDNS service (default: yukioshi.local)
                                                                 [string] [default: "yukioshi.local"]
-      --cors         additional domains to allow for CORS                      [array] [default: []]"
+      --cors         additional domains to allow for CORS                      [array] [default: []]
+
+Examples:
+  yukioshi serve --port 4096                          serve on a fixed port; then \`yukioshi attach
+                                                      http://localhost:4096\`
+  YUKIOSHI_SERVER_PASSWORD=secret yukioshi serve      reachable from other machines, password
+  --hostname 0.0.0.0                                  protected"
 `;
 
 exports[`yukioshi CLI help-text snapshots every documented command emits stable help text: yukioshi models --help 1`] = `
@@ -286,7 +300,8 @@ exports[`yukioshi CLI help-text snapshots every documented command emits stable 
 export session data as JSON
 
 Positionals:
-  sessionID  session id to export                                                           [string]
+  sessionID  session id to export (leave out to pick one in a terminal; \`yukioshi session list\`
+             shows the ids)                                                                 [string]
 
 Options:
   -h, --help        show help                                                              [boolean]
@@ -294,7 +309,10 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
-      --sanitize    redact sensitive transcript and file data                              [boolean]"
+      --sanitize    redact sensitive transcript and file data                              [boolean]
+
+Examples:
+  yukioshi export ses_abc123 > session.json  save a session to a file you can import later"
 `;
 
 exports[`yukioshi CLI help-text snapshots every documented command emits stable help text: yukioshi import --help 1`] = `
@@ -313,7 +331,11 @@ Options:
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
       --from        import the newest Claude Code or Codex conversation held in this folder
-                                                               [string] [choices: "claude", "codex"]"
+                                                               [string] [choices: "claude", "codex"]
+
+Examples:
+  yukioshi import session.json   restore a session made by \`yukioshi export\`
+  yukioshi import --from claude  continue the newest Claude Code conversation held in this folder"
 `;
 
 exports[`yukioshi CLI help-text snapshots every documented command emits stable help text: yukioshi pr --help 1`] = `
@@ -391,6 +413,122 @@ Options:
       --format      Output format                 [string] [choices: "json", "tsv"] [default: "tsv"]"
 `;
 
+exports[`yukioshi CLI help-text snapshots every documented command emits stable help text: yukioshi trust --help 1`] = `
+"yukioshi trust [directory]
+
+allow this project to run its own hooks, plugins, and commands
+
+Positionals:
+  directory  project directory (defaults to the current directory)                          [string]
+
+Options:
+  -h, --help        show help                                                              [boolean]
+  -v, --version     show version number                                                    [boolean]
+      --print-logs  print logs to stderr                                                   [boolean]
+      --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
+      --pure        run without external plugins                                           [boolean]
+      --revoke      remove previously granted project trust               [boolean] [default: false]
+      --status      show whether the project is trusted without changing it
+                                                                          [boolean] [default: false]
+
+Examples:
+  yukioshi trust .         trust the project in the current folder
+  yukioshi trust --status  check whether it is trusted"
+`;
+
+exports[`yukioshi CLI help-text snapshots every documented command emits stable help text: yukioshi checkpoint --help 1`] = `
+"yukioshi checkpoint <action> [id]
+
+list, inspect, restore, or prune durable git checkpoints
+
+Positionals:
+  action  list checkpoints, show or restore one by id, or prune old ones
+                                            [required] [choices: "list", "show", "restore", "prune"]
+  id      checkpoint commit id (for show or restore)                                        [string]
+
+Options:
+  -h, --help        show help                                                              [boolean]
+  -v, --version     show version number                                                    [boolean]
+      --print-logs  print logs to stderr                                                   [boolean]
+      --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
+      --pure        run without external plugins                                           [boolean]
+      --session     limit list to a session id                                              [string]
+      --yes         confirm restoring over unsaved changes                [boolean] [default: false]
+      --older-than  prune refs older than this age (30d, 12h or 90m)       [string] [default: "30d"]
+
+Examples:
+  yukioshi checkpoint list                  list checkpoints for this project
+  yukioshi checkpoint restore 1a2b3c4d5e6f  put the files back as they were at that checkpoint"
+`;
+
+exports[`yukioshi CLI help-text snapshots every documented command emits stable help text: yukioshi schedule --help 1`] = `
+"yukioshi schedule
+
+manage scheduled tasks and recurring runs
+
+Commands:
+  yukioshi schedule add <cron> <prompt>  schedule a prompt to run on a recurring cron schedule
+  yukioshi schedule list                 list all scheduled jobs
+  yukioshi schedule remove <id>          remove a scheduled job
+  yukioshi schedule run <id>             run a scheduled job immediately
+  yukioshi schedule logs <id>            view logs of past runs for a scheduled job
+  yukioshi schedule enable <id>          enable a scheduled job
+  yukioshi schedule disable <id>         disable a scheduled job
+
+Options:
+  -h, --help        show help                                                              [boolean]
+  -v, --version     show version number                                                    [boolean]
+      --print-logs  print logs to stderr                                                   [boolean]
+      --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
+      --pure        run without external plugins                                           [boolean]"
+`;
+
+exports[`yukioshi CLI help-text snapshots every documented command emits stable help text: yukioshi skill --help 1`] = `
+"yukioshi skill <action> [target]
+
+install, list, or remove skills from git repositories
+
+Positionals:
+  action  add a skill repository, list installed ones, or remove one
+                                                       [required] [choices: "add", "list", "remove"]
+  target  git URL (add) or installed name (remove)                                          [string]
+
+Options:
+  -h, --help        show help                                                              [boolean]
+  -v, --version     show version number                                                    [boolean]
+      --print-logs  print logs to stderr                                                   [boolean]
+      --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
+      --pure        run without external plugins                                           [boolean]
+      --name        folder name to install under (add); defaults to the repository name     [string]
+
+Examples:
+  yukioshi skill add                                  install the skills in a git repository
+  https://github.com/owner/skills-repo"
+`;
+
+exports[`yukioshi CLI help-text snapshots every documented command emits stable help text: yukioshi worktree --help 1`] = `
+"yukioshi worktree <action> [name]
+
+create, list, locate, or remove git worktrees for parallel sessions
+
+Positionals:
+  action  create a worktree, list them, print one's path, or remove one
+                                               [required] [choices: "new", "list", "path", "remove"]
+  name    worktree name                                                                     [string]
+
+Options:
+  -h, --help        show help                                                              [boolean]
+  -v, --version     show version number                                                    [boolean]
+      --print-logs  print logs to stderr                                                   [boolean]
+      --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
+      --pure        run without external plugins                                           [boolean]
+      --yes         remove even with uncommitted changes                  [boolean] [default: false]
+
+Examples:
+  yukioshi worktree new fix-login           create a worktree to work on in parallel
+  cd "$(yukioshi worktree path fix-login)"  go to it"
+`;
+
 exports[`yukioshi CLI help-text snapshots every documented command emits stable help text: yukioshi mcp list --help 1`] = `
 "yukioshi mcp list
 
@@ -420,7 +558,13 @@ Options:
       --pure        run without external plugins                                           [boolean]
       --url         URL for a remote MCP server                                             [string]
       --env         environment variable for a local MCP server (KEY=VALUE)                  [array]
-      --header      HTTP header for a remote MCP server (KEY=VALUE)                          [array]"
+      --header      HTTP header for a remote MCP server (KEY=VALUE)                          [array]
+
+Examples:
+  yukioshi mcp add docs --url                         add a remote server without prompts
+  https://example.com/mcp
+  yukioshi mcp add files -- npx -y some-mcp-server    add a local server: its start command goes
+                                                      after --"
 `;
 
 exports[`yukioshi CLI help-text snapshots every documented command emits stable help text: yukioshi mcp auth --help 1`] = `
@@ -477,7 +621,8 @@ exports[`yukioshi CLI help-text snapshots every documented command emits stable 
 log in to a provider
 
 Positionals:
-  url  yukioshi auth provider                                                               [string]
+  url  address of a server that publishes its sign-in command; leave empty to pick a provider from
+       the list                                                                             [string]
 
 Options:
   -h, --help        show help                                                              [boolean]
@@ -573,6 +718,131 @@ exports[`yukioshi CLI help-text snapshots every documented command emits stable 
 "yukioshi db path
 
 print the database path
+
+Options:
+  -h, --help        show help                                                              [boolean]
+  -v, --version     show version number                                                    [boolean]
+      --print-logs  print logs to stderr                                                   [boolean]
+      --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
+      --pure        run without external plugins                                           [boolean]"
+`;
+
+exports[`yukioshi CLI help-text snapshots every documented command emits stable help text: yukioshi schedule add --help 1`] = `
+"yukioshi schedule add <cron> <prompt>
+
+schedule a prompt to run on a recurring cron schedule
+
+Positionals:
+  cron    5-field cron expression in local time: minute hour day-of-month month day-of-week
+                                                                                 [string] [required]
+  prompt  prompt to execute on schedule                                          [string] [required]
+
+Options:
+  -h, --help        show help                                                              [boolean]
+  -v, --version     show version number                                                    [boolean]
+      --print-logs  print logs to stderr                                                   [boolean]
+      --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
+      --pure        run without external plugins                                           [boolean]
+      --name        display name for the scheduled task                                     [string]
+      --dir         target directory for task execution (defaults to current directory)     [string]
+      --model       model to execute the prompt with (provider/model)                       [string]
+      --agent       agent mode to execute with                                              [string]
+      --auto        automatically approve permission requests during runs [boolean] [default: false]
+      --review      have a small model approve or refuse each action that is not low-risk
+                    (permission mode review)                              [boolean] [default: false]
+
+Examples:
+  yukioshi schedule add "0 9 * * 1-5" "summarize      every weekday at 09:00
+  recent commits"
+  yukioshi schedule add "*/30 * * * *" "check the     every 30 minutes in a given folder
+  build" --dir ~/code/app"
+`;
+
+exports[`yukioshi CLI help-text snapshots every documented command emits stable help text: yukioshi schedule list --help 1`] = `
+"yukioshi schedule list
+
+list all scheduled jobs
+
+Options:
+  -h, --help        show help                                                              [boolean]
+  -v, --version     show version number                                                    [boolean]
+      --print-logs  print logs to stderr                                                   [boolean]
+      --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
+      --pure        run without external plugins                                           [boolean]"
+`;
+
+exports[`yukioshi CLI help-text snapshots every documented command emits stable help text: yukioshi schedule remove --help 1`] = `
+"yukioshi schedule remove <id>
+
+remove a scheduled job
+
+Positionals:
+  id  id of the job to remove                                                    [string] [required]
+
+Options:
+  -h, --help        show help                                                              [boolean]
+  -v, --version     show version number                                                    [boolean]
+      --print-logs  print logs to stderr                                                   [boolean]
+      --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
+      --pure        run without external plugins                                           [boolean]"
+`;
+
+exports[`yukioshi CLI help-text snapshots every documented command emits stable help text: yukioshi schedule run --help 1`] = `
+"yukioshi schedule run <id>
+
+run a scheduled job immediately
+
+Positionals:
+  id  id of the job to run                                                       [string] [required]
+
+Options:
+  -h, --help        show help                                                              [boolean]
+  -v, --version     show version number                                                    [boolean]
+      --print-logs  print logs to stderr                                                   [boolean]
+      --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
+      --pure        run without external plugins                                           [boolean]"
+`;
+
+exports[`yukioshi CLI help-text snapshots every documented command emits stable help text: yukioshi schedule logs --help 1`] = `
+"yukioshi schedule logs <id>
+
+view logs of past runs for a scheduled job
+
+Positionals:
+  id  id of the job                                                              [string] [required]
+
+Options:
+  -h, --help        show help                                                              [boolean]
+  -v, --version     show version number                                                    [boolean]
+      --print-logs  print logs to stderr                                                   [boolean]
+      --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
+      --pure        run without external plugins                                           [boolean]
+      --last        show only the output of the most recent run           [boolean] [default: false]"
+`;
+
+exports[`yukioshi CLI help-text snapshots every documented command emits stable help text: yukioshi schedule enable --help 1`] = `
+"yukioshi schedule enable <id>
+
+enable a scheduled job
+
+Positionals:
+  id  id of the job to enable                                                    [string] [required]
+
+Options:
+  -h, --help        show help                                                              [boolean]
+  -v, --version     show version number                                                    [boolean]
+      --print-logs  print logs to stderr                                                   [boolean]
+      --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
+      --pure        run without external plugins                                           [boolean]"
+`;
+
+exports[`yukioshi CLI help-text snapshots every documented command emits stable help text: yukioshi schedule disable --help 1`] = `
+"yukioshi schedule disable <id>
+
+disable a scheduled job
+
+Positionals:
+  id  id of the job to disable                                                   [string] [required]
 
 Options:
   -h, --help        show help                                                              [boolean]
