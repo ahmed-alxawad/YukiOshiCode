@@ -185,6 +185,9 @@ const env = LayerNode.compile(
 )
 
 const it = testEffect(env)
+// Retry tests sleep the real 2-2.5s back-off (it.live uses the live clock), so the
+// default 5s timeout is too tight on loaded CI runners.
+const RETRY_TEST_TIMEOUT = 30_000
 
 const providerErrorLLM = Layer.succeed(
   LLM.Service,
@@ -603,6 +606,7 @@ it.live("session.processor effect tests retry recognized structured json errors"
       }),
     { config: (url) => providerCfg(url) },
   ),
+  RETRY_TEST_TIMEOUT,
 )
 
 it.live("session.processor effect tests retry OpenAI-compatible midstream server errors", () =>
@@ -650,6 +654,7 @@ it.live("session.processor effect tests retry OpenAI-compatible midstream server
       }),
     { config: (url) => providerCfg(url) },
   ),
+  RETRY_TEST_TIMEOUT,
 )
 
 it.live("session.processor effect tests retry network_error finish reasons", () =>
@@ -707,6 +712,7 @@ it.live("session.processor effect tests retry network_error finish reasons", () 
       }),
     { config: (url) => providerCfg(url) },
   ),
+  RETRY_TEST_TIMEOUT,
 )
 
 it.live("session.processor effect tests publish retry status updates", () =>
@@ -761,6 +767,7 @@ it.live("session.processor effect tests publish retry status updates", () =>
       }),
     { config: (url) => providerCfg(url) },
   ),
+  RETRY_TEST_TIMEOUT,
 )
 
 it.live("session.processor effect tests compact on structured context overflow", () =>
