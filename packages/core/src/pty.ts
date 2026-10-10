@@ -180,65 +180,71 @@ const layer = Layer.effect(
       }
       yield* Effect.logInfo("creating session", { id, cmd: command, args, cwd })
       const { spawn } = yield* Effect.promise(() => pty())
-      const proc = yield* Effect.sync(() => spawn(command, args, { name: "xterm-256color", cwd, env }))
-      const info: Info = {
-        id,
-        title: input.title || `Terminal ${id.slice(-4)}`,
-        command,
-        args,
-        cwd,
-        status: "running",
-        pid: proc.pid,
-      }
-      const session: Active = {
-        info,
-        process: proc,
-        buffer: "",
-        bufferCursor: 0,
-        cursor: 0,
-        subscribers: new Map(),
-        listeners: [],
-      }
-      sessions.set(id, session)
-      session.listeners.push(
-        proc.onData((chunk) => {
-          session.cursor += chunk.length
-          for (const [token, subscriber] of session.subscribers.entries()) {
-            if (!subscriber.active) {
-              subscriber.pending.push(chunk)
-              continue
-            }
-            try {
-              subscriber.onData(chunk)
-            } catch {
-              session.subscribers.delete(token)
-            }
-          }
-          session.buffer += chunk
-          if (session.buffer.length <= BUFFER_LIMIT) return
-          const excess = session.buffer.length - BUFFER_LIMIT
-          session.buffer = session.buffer.slice(excess)
-          session.bufferCursor += excess
-        }),
-        proc.onExit(({ exitCode }) => {
-          if (session.info.status === "exited") return
-          session.info.status = "exited"
-          session.info.exitCode = exitCode
-          notifyEnd(session, { exitCode })
-          exitOrder.push(id)
-          runFork(
-            Effect.gen(function* () {
-              yield* Effect.logInfo("session exited", { id, exitCode })
-              yield* events.publish(Event.Exited, { id, exitCode })
-              while (exitOrder.length > EXITED_LIMIT) {
-                const oldest = exitOrder[0]
-                if (!oldest) break
-                yield* removeSession(oldest)
+      // Spawn and register the data/exit listeners in one synchronous step. If the fiber yielded
+      // between them, a process that exits immediately could finish before onExit is attached and
+      // the session would be reported as running forever.
+      const info = yield* Effect.sync(() => {
+        const proc = spawn(command, args, { name: "xterm-256color", cwd, env })
+        const info: Info = {
+          id,
+          title: input.title || `Terminal ${id.slice(-4)}`,
+          command,
+          args,
+          cwd,
+          status: "running",
+          pid: proc.pid,
+        }
+        const session: Active = {
+          info,
+          process: proc,
+          buffer: "",
+          bufferCursor: 0,
+          cursor: 0,
+          subscribers: new Map(),
+          listeners: [],
+        }
+        sessions.set(id, session)
+        session.listeners.push(
+          proc.onData((chunk) => {
+            session.cursor += chunk.length
+            for (const [token, subscriber] of session.subscribers.entries()) {
+              if (!subscriber.active) {
+                subscriber.pending.push(chunk)
+                continue
               }
-            }),
-          )
-        }),
-      )
+              try {
+                subscriber.onData(chunk)
+              } catch {
+                session.subscribers.delete(token)
+              }
+            }
+            session.buffer += chunk
+            if (session.buffer.length <= BUFFER_LIMIT) return
+            const excess = session.buffer.length - BUFFER_LIMIT
+            session.buffer = session.buffer.slice(excess)
+            session.bufferCursor += excess
+          }),
+          proc.onExit(({ exitCode }) => {
+            if (session.info.status === "exited") return
+            session.info.status = "exited"
+            session.info.exitCode = exitCode
+            notifyEnd(session, { exitCode })
+            exitOrder.push(id)
+            runFork(
+              Effect.gen(function* () {
+                yield* Effect.logInfo("session exited", { id, exitCode })
+                yield* events.publish(Event.Exited, { id, exitCode })
+                while (exitOrder.length > EXITED_LIMIT) {
+                  const oldest = exitOrder[0]
+                  if (!oldest) break
+                  yield* removeSession(oldest)
+                }
+              }),
+            )
+          }),
+        )
+        return info
+      })
       yield* events.publish(Event.Created, { info })
       return info
     })
