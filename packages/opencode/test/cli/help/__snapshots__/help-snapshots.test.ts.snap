@@ -294,6 +294,21 @@ Options:
       --project     filter by project (default: all projects, empty string: current project)[string]"
 `;
 
+exports[`yukioshi CLI help-text snapshots every documented command emits stable help text: yukioshi tasks --help 1`] = `
+"yukioshi tasks
+
+list the background jobs and background subagents of a session (read-only)
+
+Options:
+  -h, --help        show help                                                              [boolean]
+  -v, --version     show version number                                                    [boolean]
+      --print-logs  print logs to stderr                                                   [boolean]
+      --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
+      --pure        run without external plugins                                           [boolean]
+  -s, --session     session id (default: the latest session of this project)                [string]
+      --format      output format             [string] [choices: "table", "json"] [default: "table"]"
+`;
+
 exports[`yukioshi CLI help-text snapshots every documented command emits stable help text: yukioshi export --help 1`] = `
 "yukioshi export [sessionID]
 

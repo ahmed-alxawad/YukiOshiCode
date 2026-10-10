@@ -55,6 +55,7 @@ const TOP_LEVEL = [
   "serve",
   "models",
   "stats",
+  "tasks",
   "export",
   "import",
   "pr",
