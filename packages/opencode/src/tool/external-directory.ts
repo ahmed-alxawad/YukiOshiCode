@@ -1,4 +1,5 @@
 import path from "path"
+import { realpathSync } from "fs"
 import { Effect } from "effect"
 import { InstanceState } from "@/effect/instance-state"
 import type * as Tool from "./tool"
@@ -12,6 +13,27 @@ type Options = {
   kind?: Kind
 }
 
+/** Real path of the deepest existing ancestor, with the missing tail re-attached. */
+function realTarget(target: string): string {
+  const missing: string[] = []
+  let current = path.resolve(target)
+  for (;;) {
+    try {
+      return path.join(realpathSync(current), ...missing.reverse())
+    } catch {
+      const parent = path.dirname(current)
+      if (parent === current) return path.resolve(target)
+      missing.push(path.basename(current))
+      current = parent
+    }
+  }
+}
+
+function realContext(ins: { directory: string; worktree: string }) {
+  const real = (dir: string) => (dir === "/" ? dir : realTarget(dir))
+  return { directory: real(ins.directory), worktree: real(ins.worktree) } as Parameters<typeof containsPath>[1]
+}
+
 export const assertExternalDirectoryEffect = Effect.fn("Tool.assertExternalDirectory")(function* (
   ctx: Tool.Context,
   target?: string,
@@ -22,8 +44,13 @@ export const assertExternalDirectoryEffect = Effect.fn("Tool.assertExternalDirec
   if (options?.bypass) return false
 
   const ins = yield* InstanceState.context
-  const full = process.platform === "win32" ? FSUtil.normalizePath(target) : target
-  if (containsPath(full, ins)) return false
+  let full = process.platform === "win32" ? FSUtil.normalizePath(target) : target
+  if (containsPath(full, ins)) {
+    // A symlink inside the project can point anywhere. Judge the place the path really lands on.
+    const real = realTarget(full)
+    if (containsPath(real, realContext(ins))) return false
+    full = real
+  }
 
   const kind = options?.kind ?? "file"
   const dir = kind === "directory" ? full : path.dirname(full)
