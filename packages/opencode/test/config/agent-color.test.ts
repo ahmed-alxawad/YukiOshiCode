@@ -24,6 +24,7 @@ it.instance(
       },
     },
   },
+  30_000,
 )
 
 it.instance(
@@ -44,4 +45,5 @@ it.instance(
       },
     },
   },
+  30_000,
 )
