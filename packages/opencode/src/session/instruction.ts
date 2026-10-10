@@ -1,6 +1,7 @@
 import { LayerNode } from "@yukioshi/core/effect/layer-node"
 import { httpClient } from "@yukioshi/core/effect/app-node-platform"
 import path from "path"
+import { realpathSync } from "fs"
 import { SessionV1 } from "@yukioshi/core/v1/session"
 import { Effect, Layer, Context } from "effect"
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/unstable/http"
@@ -88,6 +89,23 @@ const layer: Layer.Layer<
         .pipe(Effect.catch(() => Effect.succeed([] as string[])))
     })
 
+    // A repository can commit AGENTS.md as a symlink to any file the user can read (an SSH key, a token
+    // file). Project instruction files are only used when they really live inside the project.
+    const inProject = Effect.fnUntraced(function* (file: string) {
+      const ctx = yield* InstanceState.context
+      const real = (target: string) => {
+        try {
+          return realpathSync(target)
+        } catch {
+          return path.resolve(target)
+        }
+      }
+      const target = real(file)
+      return (
+        FSUtil.contains(real(ctx.directory), target) || (ctx.worktree !== "/" && FSUtil.contains(real(ctx.worktree), target))
+      )
+    })
+
     const read = Effect.fnUntraced(function* (filepath: string) {
       return yield* fs.readFileString(filepath).pipe(Effect.catch(() => Effect.succeed("")))
     })
@@ -125,8 +143,9 @@ const layer: Layer.Layer<
           const matches = yield* fs
             .findUp(file, ctx.directory, ctx.worktree)
             .pipe(Effect.catch(() => Effect.succeed([])))
-          if (matches.length > 0) {
-            matches.forEach((item) => paths.add(path.resolve(item)))
+          const safe = yield* Effect.filter(matches, inProject)
+          if (safe.length > 0) {
+            safe.forEach((item) => paths.add(path.resolve(item)))
             break
           }
         }
@@ -145,7 +164,8 @@ const layer: Layer.Layer<
                 })
               : relative(instruction)
           ).pipe(Effect.catch(() => Effect.succeed([] as string[])))
-          matches.forEach((item) => paths.add(path.resolve(item)))
+          const kept = path.isAbsolute(instruction) ? matches : yield* Effect.filter(matches, inProject)
+          kept.forEach((item) => paths.add(path.resolve(item)))
         }
       }
 
@@ -193,7 +213,7 @@ const layer: Layer.Layer<
       // Walk upward from the file being read and attach nearby instruction files once per message.
       while (current.startsWith(root) && current !== root) {
         const found = yield* find(current)
-        if (!found || found === target || sys.has(found) || already.has(found)) {
+        if (!found || found === target || sys.has(found) || already.has(found) || !(yield* inProject(found))) {
           current = path.dirname(current)
           continue
         }
