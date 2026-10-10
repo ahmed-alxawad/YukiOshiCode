@@ -18,8 +18,9 @@ function formatter(id: string = runID) {
     ]
       .map(([key, value]) => `${key}=${format(value)}`)
       .join(" ")
-    // A provider can echo the Authorization header in an error body that ends up in the log.
-    return Redact.scrubKnown(line)
+    // A provider can echo the Authorization header in an error body, and errors can carry keys, URL passwords
+    // or key=value pairs: mask by format as well as by known value.
+    return Redact.scrubKnown(Redact.mask(line))
   })
 }
 
