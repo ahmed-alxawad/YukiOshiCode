@@ -5,6 +5,7 @@ import os from "os"
 import path from "path"
 import { planSpawn, quoteCmdArg } from "../../src/delegate/spawn"
 import { cronToTaskXml } from "../../src/schedule/windows"
+import { tmpdir } from "../fixture/fixture"
 
 describe("Windows platform verification: .cmd shim launch and schtasks XML", () => {
   it("quoteCmdArg escapes cmd metacharacters and handles spaces, quotes, &, %, ^", () => {
@@ -186,6 +187,17 @@ node "%dp0%\\echo-script.js" %*
       expect(deleteCode === 0, `schtasks /Delete failed (code ${deleteCode})`)
     } finally {
       await fs.promises.rm(xmlFile, { force: true })
+    }
+  })
+
+  it("tmpdir canonicalizes Windows paths via native realpath", async () => {
+    await using tmp = await tmpdir()
+    if (process.platform === "win32") {
+      expect(tmp.path).toBe(fs.realpathSync.native(tmp.path))
+      expect(tmp.path).not.toMatch(/~[0-9]/)
+    } else {
+      expect(typeof tmp.path).toBe("string")
+      expect(tmp.path.length).toBeGreaterThan(0)
     }
   })
 })
