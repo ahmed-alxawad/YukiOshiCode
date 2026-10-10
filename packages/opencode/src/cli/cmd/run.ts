@@ -29,6 +29,7 @@ import { INTERACTIVE_INPUT_ERROR, resolveInteractiveStdin } from "./run/runtime.
 import { readPipedInput } from "../stdin"
 import { executePostTurnVerification } from "./run/verification"
 import { EXIT, dollars, goalExitCode, readOutputSchema } from "./run/outcome"
+import { schemaViolation } from "./run/schema"
 import { combineFileChanges, formatFileChanges, type FileChange } from "@yukioshi/core/files-changed-summary"
 
 type ModelInput = Parameters<OpencodeClient["session"]["prompt"]>[0]["model"]
@@ -1037,6 +1038,10 @@ export const RunCommand = effectCmd({
               code = EXIT.error
               reason = "invalid_output"
               note = "The model did not give an answer matching --output-schema."
+            } else if (code === EXIT.ok && outputSchema && schemaViolation(outputSchema, info?.structured)) {
+              code = EXIT.error
+              reason = "invalid_output"
+              note = `The model's answer does not match --output-schema: ${schemaViolation(outputSchema, info?.structured)}.`
             } else if (code === EXIT.ok && !args.attach) {
               const { SessionGoal } = await import("@/session/goal")
               const goal = await SessionGoal.get(sessionID)
