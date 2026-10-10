@@ -28,7 +28,7 @@ import { FormatError, FormatUnknownError, explainSessionError } from "../error"
 import { INTERACTIVE_INPUT_ERROR, resolveInteractiveStdin } from "./run/runtime.stdin"
 import { readPipedInput } from "../stdin"
 import { executePostTurnVerification } from "./run/verification"
-import { EXIT, dollars, goalExitCode, readOutputSchema } from "./run/outcome"
+import { EXIT, dollars, goalExitCode, readOutputSchema, unknownCommandMessage } from "./run/outcome"
 import { schemaViolation } from "./run/schema"
 import { combineFileChanges, formatFileChanges, type FileChange } from "@yukioshi/core/files-changed-summary"
 
@@ -209,7 +209,7 @@ export const RunCommand = effectCmd({
       .option("username", {
         alias: ["u"],
         type: "string",
-        describe: "basic auth username (defaults to YUKIOSHI_SERVER_USERNAME or 'yukioshi')",
+        describe: "basic auth username (defaults to YUKIOSHI_SERVER_USERNAME or 'opencode')",
       })
       .option("dir", {
         type: "string",
@@ -1100,6 +1100,18 @@ export const RunCommand = effectCmd({
           const verificationOut = outputSchema ? (line: string) => process.stderr.write(line + EOL) : undefined
 
           if (args.command) {
+            const known = await client.command
+              .list()
+              .then((list) => (list.data ?? []).map((item) => item.name))
+              .catch(() => undefined)
+            const unknown = known ? unknownCommandMessage(args.command, known) : undefined
+            if (unknown) {
+              reported = true
+              if (!emit("error", { error: { name: "UnknownError", data: { message: unknown } } })) UI.error(unknown)
+              process.exitCode = 1
+              emit("result", { exit_code: EXIT.error, reason: "error", turns, cost: spent() })
+              return
+            }
             const result = await client.session.command({
               sessionID,
               agent,

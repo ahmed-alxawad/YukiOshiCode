@@ -91,3 +91,17 @@ export async function readOutputSchema(value: string, cwd = process.cwd()): Prom
 export function dollars(value: number) {
   return `$${value.toFixed(value < 1 ? 4 : 2)}`
 }
+
+/** Commands the session handles itself, before looking one up in the command list. */
+const SESSION_COMMANDS = new Set(["goal", "loop"])
+
+/**
+ * The message for `yukioshi run --command <name>` when no such command exists, or undefined when it does. The
+ * server's own "Command not found" error is hidden behind a generic one, so the run checks first. Commands that
+ * only exist in the terminal UI (such as /usage) are not slash commands of the server.
+ */
+export function unknownCommandMessage(name: string, available: readonly string[]): string | undefined {
+  if (SESSION_COMMANDS.has(name) || available.includes(name)) return undefined
+  const hint = available.length ? ` Available commands: ${[...available].sort().join(", ")}.` : ""
+  return `Command not found: "${name}".${hint} Some slash commands, such as /usage, only exist in the terminal UI.`
+}
