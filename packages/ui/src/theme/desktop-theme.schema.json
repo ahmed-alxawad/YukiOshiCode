@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://opencode.ai/desktop-theme.json",
+  "$id": "https://yukioshi.com/desktop-theme.json",
   "title": "YukiOshi Desktop Theme",
   "description": "A theme definition for the YukiOshi desktop application",
   "type": "object",
