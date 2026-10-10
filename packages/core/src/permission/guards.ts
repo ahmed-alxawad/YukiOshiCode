@@ -77,9 +77,16 @@ function isGcloudCredentialPath(segments: string[]): boolean {
   return rest.length === 1 && /^(?:credentials|access_tokens)\.db$/.test(rest[0]!)
 }
 
+// Windows and macOS resolve names case-insensitively, and Windows drops trailing dots and
+// spaces (`.ssh.` and `.SSH ` are `.ssh`), so compare on a canonical form of each segment.
+function canonicalSegment(segment: string): string {
+  if (/^\.+$/.test(segment)) return segment
+  return segment.replace(/[. ]+$/, "").toLowerCase()
+}
+
 function isProtectedPath(resource: string): boolean {
   const normalized = resource.replace(/\\/g, "/")
-  const segments = normalized.split("/").filter(Boolean)
+  const segments = normalized.split("/").map(canonicalSegment).filter(Boolean)
   if (segments.some((segment) => PROTECTED_PATH_SEGMENTS.has(segment))) return true
   const base = segments[segments.length - 1] ?? normalized
   if (ENV_FILE.test(base)) return !ENV_TEMPLATE.test(base)
@@ -291,18 +298,39 @@ function programName(word: ShellWord | undefined): string | undefined {
   return word.value.replace(/\\/g, "/").split("/").pop()?.toLowerCase()
 }
 
+const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/
+// Wrappers that run the next word as a program without changing what it does.
+const TRANSPARENT_WRAPPERS = new Set(["env", "command", "nohup", "time", "exec", "nice"])
+
 function executable(command: ShellCommand): { name: string; index: number } | undefined {
   let index = 0
-  let name = programName(command[index])
-  if (name === "sudo") {
-    const sudoIndex = sudoCommandIndex(command)
-    if (sudoIndex === undefined) return undefined
-    index = sudoIndex
-    name = programName(command[index])
+  // Leading `VAR=value` assignments and transparent wrappers do not change the real program.
+  for (let guard = 0; guard < 16 && index < command.length; guard++) {
+    const word = command[index].value
+    if (ASSIGNMENT.test(word)) {
+      index++
+      continue
+    }
+    const wrapper = programName(command[index])
+    if (wrapper === "sudo") {
+      const sudoIndex = sudoCommandIndex(command.slice(index))
+      if (sudoIndex === undefined) return undefined
+      index += sudoIndex
+      continue
+    }
+    if (wrapper && TRANSPARENT_WRAPPERS.has(wrapper)) {
+      index++
+      while (index < command.length && (command[index].value.startsWith("-") || ASSIGNMENT.test(command[index].value)))
+        index++
+      continue
+    }
+    break
   }
+  const name = programName(command[index])
   return name ? { name, index } : undefined
 }
 
+const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh"])
 const POWER_COMMANDS = new Set(["shutdown", "reboot", "halt", "poweroff"])
 const DANGEROUS_RM_LITERAL_TARGETS = new Set(["/", ".", "./"])
 const DANGEROUS_RM_EXPANDING_TARGETS = new Set(["/*", "~", "~/", "~/*", "$HOME", "${HOME}", "$HOME/", "*"])
@@ -332,12 +360,15 @@ function isDangerousRm(command: ShellCommand, programIndex: number): boolean {
   }
 
   if (!destructiveFlag) return false
-  return targets.some(
-    (target) =>
-      DANGEROUS_RM_LITERAL_TARGETS.has(target.value) ||
-      (target.plain && DANGEROUS_RM_EXPANDING_TARGETS.has(target.value)) ||
-      (!target.singleQuoted && DANGEROUS_RM_HOME_TARGETS.has(target.value)),
-  )
+  return targets.some((target) => {
+    // `//`, `/.` and `/./` all name the filesystem root.
+    const value = /^\/(?:\.?\/)*\.?$/.test(target.value) ? "/" : target.value
+    return (
+      DANGEROUS_RM_LITERAL_TARGETS.has(value) ||
+      (target.plain && DANGEROUS_RM_EXPANDING_TARGETS.has(value)) ||
+      (!target.singleQuoted && DANGEROUS_RM_HOME_TARGETS.has(value))
+    )
+  })
 }
 
 function isProtectedBranch(value: string): boolean {
@@ -346,6 +377,11 @@ function isProtectedBranch(value: string): boolean {
 
 function isDestructiveGit(command: ShellCommand, programIndex: number): boolean {
   const args = command.slice(programIndex + 1).map((word) => word.value)
+  // Skip git's global options (`git -C dir push ...`, `git -c k=v push ...`).
+  while (args.length > 0 && args[0].startsWith("-")) {
+    const takesValue = ["-C", "-c", "--git-dir", "--work-tree", "--namespace"].includes(args[0])
+    args.splice(0, takesValue ? 2 : 1)
+  }
   if (args[0] === "push") {
     // `-f`, `--force`, `--force-with-lease`, or a `+branch` refspec all force the update.
     const forced = args.some((arg) => /^--force(?:-with-lease)?(?:=|$)/.test(arg) || /^-[a-zA-Z]*f[a-zA-Z]*$/.test(arg))
@@ -396,6 +432,11 @@ function isDestructiveCommand(command: string): boolean {
     const program = executable(shellCommand)
     if (!program) continue
     if (POWER_COMMANDS.has(program.name)) return true
+    if (SHELLS.has(program.name)) {
+      const rest = shellCommand.slice(program.index + 1).map((word) => word.value)
+      const flag = rest.findIndex((arg) => /^-[a-zA-Z]*c[a-zA-Z]*$/.test(arg))
+      if (flag !== -1 && rest[flag + 1] !== undefined && isDestructiveCommand(rest[flag + 1])) return true
+    }
     if (program.name === "rm" && isDangerousRm(shellCommand, program.index)) return true
     if (/^mkfs(?:\.|$)/.test(program.name)) return true
     if (
