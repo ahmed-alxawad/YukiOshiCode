@@ -128,6 +128,9 @@ Keep API keys out of checked-in config files: use `{env:…}` or
 | `subagents`            | background subagents (`background`) and the `task_parallel` tool (`parallel`), both off by default | [Features](features.md#subagents) |
 | `share`, `enterprise.url` | session sharing (`manual`, `auto`, `disabled`) and the share server it needs | [Features](features.md) |
 | `triggers`             | authenticated HTTP trigger endpoint on `yukioshi serve` (global only) | [Features](features.md#triggers) |
+| `default_agent`        | the primary agent used when none is chosen (default `build`)       |                                             |
+| `subagent_depth`       | how deep subagents may nest (default 1: no subagents of subagents) | [Features](features.md#subagents)           |
+| `snapshot`             | file snapshots for undo (default true)                             |                                             |
 | `autoupdate`           | update behaviour                                                    | [Installation](installation.md)             |
 
 In a repository you have not trusted, `hooks`, `plugin`, `delegate`, `webhooks`,
@@ -238,6 +241,15 @@ When search mode is active, the model receives a `tool_search` tool listing avai
 | `YUKIOSHI_DISABLE_KEYCHAIN`           | store credentials in a file instead of the OS keychain    |
 | `YUKIOSHI_DISABLE_CLAUDE_CODE_SKILLS` | do not read skills from `.claude/` folders                |
 | `YUKIOSHI_SKIP_VERIFY`                | turn post-turn verification off                           |
+| `YUKIOSHI_PERMISSION`                 | inline JSON merged into `permission`                      |
+| `YUKIOSHI_TUI_CONFIG`                 | path of the `tui.json` file to load                       |
+| `YUKIOSHI_DB`                         | database file name (relative to the data folder), an absolute path, or `:memory:` |
+| `YUKIOSHI_DISABLE_SHARE`              | turn session sharing off                                  |
+| `YUKIOSHI_DISABLE_PRUNE`              | do not prune old tool output                              |
+| `YUKIOSHI_DISABLE_AUTOCOMPACT`        | do not compact long conversations automatically           |
+| `YUKIOSHI_DISABLE_MODELS_FETCH`       | do not fetch the model catalog from models.dev            |
+| `YUKIOSHI_DISABLE_MOUSE`              | turn mouse support in the terminal UI off                 |
+| `YUKIOSHI_DISABLE_TERMINAL_TITLE`     | do not set the terminal title                             |
 | `YUKIOSHI_EXPERIMENTAL_PARALLEL_TASKS` | enable the `task_parallel` tool (same as `subagents.parallel`) |
 | `YUKIOSHI_EXPERIMENTAL_BACKGROUND_SUBAGENTS` | enable background subagents (same as `subagents.background`) |
 | `YUKIOSHI_SERVER_PASSWORD`, `YUKIOSHI_SERVER_USERNAME` | protect `yukioshi serve` with a password ([details](permissions-and-safety.md#the-headless-server)) |
