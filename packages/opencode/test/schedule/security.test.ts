@@ -155,7 +155,7 @@ describe("scheduled tasks security checks", () => {
     await expect(acquireJobLock(jobId)).rejects.toThrow("symbolic link")
     expect(await fs.readdir(outside)).toEqual([])
 
-    await fs.rm(logDir, { force: true })
+    await fs.rm(logDir, { recursive: true, force: true })
     await fs.rm(outside, { recursive: true, force: true })
   })
 

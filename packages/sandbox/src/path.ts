@@ -102,11 +102,13 @@ export function hasDeniedName(
 }
 
 export function matches(rule: PathRule, target: string, platform: NodeJS.Platform = process.platform) {
+  const p = platform === "win32" ? path.win32 : path.posix
   const fold = foldsCase(platform)
   const relative = fold
-    ? path.relative(rule.path.toLowerCase(), target.toLowerCase())
-    : path.relative(rule.path, target)
+    ? p.relative(rule.path.toLowerCase(), target.toLowerCase())
+    : p.relative(rule.path, target)
   if (relative === "") return true
   if (rule.kind === "literal") return false
-  return relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)
+  return relative !== ".." && !relative.startsWith(`..${p.sep}`) && !p.isAbsolute(relative)
 }
+
