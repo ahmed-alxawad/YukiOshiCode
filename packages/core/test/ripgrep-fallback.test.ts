@@ -16,7 +16,15 @@ const failingBinaryLayer = Layer.succeed(
   }),
 )
 
+const dyingBinaryLayer = Layer.succeed(
+  RipgrepBinary.Service,
+  RipgrepBinary.Service.of({
+    filepath: Effect.die(new Error("binary download failed with defect")),
+  }),
+)
+
 const it = testEffect(LayerNode.compile(Ripgrep.node, [[RipgrepBinary.node, failingBinaryLayer]]))
+const itDying = testEffect(LayerNode.compile(Ripgrep.node, [[RipgrepBinary.node, dyingBinaryLayer]]))
 
 describe("Ripgrep Pure-JS Fallback", () => {
   it.live("keeps ignored files out of catch-all find results", () =>
@@ -148,6 +156,26 @@ describe("Ripgrep Pure-JS Fallback", () => {
       expect(RipgrepBinary.isAllowedHost(new URL("http://github.com/file.tar.gz"))).toBe(false) // non-https
       expect(RipgrepBinary.isAllowedHost(new URL("https://github.com.attacker.com/file.tar.gz"))).toBe(false)
     }),
+  )
+
+  itDying.live("falls back to built-in search when ripgrep binary dies with defect", () =>
+    Effect.acquireUseRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) =>
+        Effect.gen(function* () {
+          yield* Effect.promise(() => fs.writeFile(path.join(tmp.path, "test.txt"), "hello world\n"))
+
+          const ripgrep = yield* Ripgrep.Service
+
+          const matches = yield* ripgrep.grep({ cwd: tmp.path, pattern: "hello", limit: 10 })
+          expect(matches.length).toBe(1)
+          expect(matches[0]?.text).toContain("hello world")
+
+          const found = yield* ripgrep.find({ cwd: tmp.path, pattern: "*", limit: 10 })
+          expect(found.some((f) => f.path.includes("test.txt"))).toBe(true)
+        }),
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ),
   )
 
   it.live("has pinned SHA-256 hashes for all 7 supported platforms", () =>

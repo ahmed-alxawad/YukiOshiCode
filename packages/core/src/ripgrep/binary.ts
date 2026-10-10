@@ -167,7 +167,7 @@ export namespace RipgrepBinary {
                 throw new Error(`ripgrep download redirected to disallowed host: ${currentUrl.hostname}`)
               }
               const response: Response = yield* Effect.tryPromise({
-                try: () => fetch(currentUrl.toString(), { redirect: "manual" }),
+                try: () => fetch(currentUrl.toString(), { redirect: "manual", signal: AbortSignal.timeout(15_000) }),
                 catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
               })
               if (response.status >= 300 && response.status < 400) {

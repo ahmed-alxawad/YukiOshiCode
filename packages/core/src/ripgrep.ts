@@ -4,7 +4,7 @@ import nodeFs from "node:fs/promises"
 import type { Dirent } from "node:fs"
 import path from "node:path"
 import ignore from "ignore"
-import { Context, Effect, Fiber, Layer, Schema, Stream } from "effect"
+import { Cause, Context, Effect, Fiber, Layer, Schema, Stream } from "effect"
 import { ChildProcess } from "effect/unstable/process"
 import { Entry, Match } from "@yukioshi/schema/filesystem"
 import { makeGlobalNode } from "./effect/app-node"
@@ -93,7 +93,7 @@ const failure = (message: string, cause?: unknown) => new Error({ message, cause
 const isInvalidPattern = (stderr: string) =>
   stderr.includes("regex parse error") || stderr.includes("error parsing regex")
 
-const layer = Layer.effect(
+export const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const process = yield* AppProcess.Service
@@ -111,6 +111,13 @@ const layer = Layer.effect(
           Effect.logWarning("ripgrep binary is not available; falling back to built-in search", { error: cause }),
         ),
       )
+
+    const findInvalidPattern = (cause: Cause.Cause<unknown>) => {
+      for (const r of cause.reasons) {
+        if (Cause.isFailReason(r) && r.error instanceof InvalidPatternError) return r.error
+      }
+      return undefined
+    }
 
     const matchesGlob = (pattern: string, relPath: string): boolean => {
       if (pattern === "*" || pattern === "**/*") return true
@@ -429,8 +436,9 @@ const layer = Layer.effect(
               }),
             ),
           ),
-          Effect.catchTag("Ripgrep.InvalidPatternError", (cause) => Effect.fail(failure(cause.message, cause))),
-          Effect.catch((cause) => {
+          Effect.catchCause((cause) => {
+            const invalid = findInvalidPattern(cause)
+            if (invalid) return Effect.fail(failure(invalid.message, invalid))
             ripgrepUnavailable = true
             return warnFallback(cause).pipe(Effect.flatMap(() => fallbackGlob(input)))
           }),
@@ -466,8 +474,9 @@ const layer = Layer.effect(
           onItem: input.onEntry,
         }).pipe(
           Effect.map((result) => result.items),
-          Effect.catchTag("Ripgrep.InvalidPatternError", (cause) => Effect.fail(failure(cause.message, cause))),
-          Effect.catch((cause) => {
+          Effect.catchCause((cause) => {
+            const invalid = findInvalidPattern(cause)
+            if (invalid) return Effect.fail(failure(invalid.message, invalid))
             ripgrepUnavailable = true
             return warnFallback(cause).pipe(Effect.flatMap(() => fallbackFind(input)))
           }),
@@ -535,9 +544,10 @@ const layer = Layer.effect(
               })
             }),
           ),
-          Effect.catch((cause) => {
-            if (cause instanceof InvalidPatternError) {
-              return Effect.fail(cause)
+          Effect.catchCause((cause) => {
+            const invalid = findInvalidPattern(cause)
+            if (invalid) {
+              return Effect.fail(invalid)
             }
             ripgrepUnavailable = true
             return warnFallback(cause).pipe(Effect.flatMap(() => fallbackGrep(input)))
