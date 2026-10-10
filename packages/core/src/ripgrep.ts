@@ -22,6 +22,10 @@ import { RipgrepBinary } from "./ripgrep/binary"
 const ERROR_BYTES = 8 * 1024
 const MAX_RECORD_BYTES = 64 * 1024
 const MAX_SUBMATCHES = 100
+// Limits for the built-in (non-ripgrep) search so it can never hang or exhaust memory.
+const FALLBACK_MAX_FILE_BYTES = 2 * 1024 * 1024
+const FALLBACK_MAX_MILLIS = 15_000
+const FALLBACK_MAX_FILES = 200_000
 
 const RawMatch = Schema.Struct({
   type: Schema.Literal("match"),
@@ -100,11 +104,19 @@ export const layer = Layer.effect(
     const binary = yield* RipgrepBinary.Service
 
     let warned = false
+    const describe = (cause: unknown) => {
+      try {
+        if (Cause.isCause(cause)) return Cause.pretty(cause).split("\n").slice(0, 6).join("\n")
+        return cause instanceof globalThis.Error ? cause.message : String(cause)
+      } catch {
+        return "unknown"
+      }
+    }
     const warnFallback = (cause?: unknown) =>
       Effect.sync(() => {
         if (!warned) {
           warned = true
-          console.warn("yukioshi: ripgrep binary is not available; falling back to built-in search")
+          console.warn(`yukioshi: ripgrep binary is not available; falling back to built-in search (${describe(cause)})`)
         }
       }).pipe(
         Effect.flatMap(() =>
@@ -129,10 +141,11 @@ export const layer = Layer.effect(
       return new Bun.Glob(pattern).match(norm) || new Bun.Glob(`**/${pattern}`).match(norm)
     }
 
-    const loadGitignore = async (cwd: string) => {
-      const ig = ignore().add(".git")
+    type IgnoreScope = { readonly base: string; readonly ig: ReturnType<typeof ignore> }
+
+    const readIgnoreFile = async (dir: string, base: string, ig: ReturnType<typeof ignore>) => {
       try {
-        const content = await nodeFs.readFile(path.join(cwd, ".gitignore"), "utf8")
+        const content = await nodeFs.readFile(path.join(dir, ".gitignore"), "utf8")
         ig.add(
           content
             .split(/\r?\n/)
@@ -140,17 +153,44 @@ export const layer = Layer.effect(
             .filter((line) => line.length > 0 && !line.startsWith("#")),
         )
       } catch {
-        // No .gitignore, ignore
+        // No .gitignore
       }
-      return ig
+      return { base, ig }
+    }
+
+    const loadGitignore = async (cwd: string): Promise<IgnoreScope[]> => [
+      await readIgnoreFile(cwd, "", ignore().add(".git")),
+    ]
+
+    const isIgnored = (scopes: readonly IgnoreScope[], relPath: string, isDir: boolean) =>
+      scopes.some((scope) => {
+        const rel = scope.base ? relPath.slice(scope.base.length) : relPath
+        if (scope.base && !relPath.startsWith(scope.base)) return false
+        return scope.ig.ignores(isDir ? rel + "/" : rel)
+      })
+
+    // True when `real` is `root` or inside it. Used so followed symlinks cannot leave the project.
+    const isInside = (root: string, real: string) => {
+      const rel = path.relative(root, real)
+      return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel))
     }
 
     async function* walk(
       cwd: string,
       dir: string,
-      options: { hidden?: boolean; follow?: boolean; signal?: AbortSignal; ig: ReturnType<typeof ignore> },
+      options: {
+        hidden?: boolean
+        follow?: boolean
+        signal?: AbortSignal
+        scopes: readonly IgnoreScope[]
+        root?: string
+        deadline?: number
+        visited?: { files: number }
+      },
     ): AsyncGenerator<{ relPath: string; fullPath: string }> {
       if (options.signal?.aborted) return
+      if (options.deadline !== undefined && Date.now() > options.deadline) return
+      const root = options.root ?? (await nodeFs.realpath(cwd).catch(() => cwd))
 
       let entries: Dirent[]
       try {
@@ -159,8 +199,15 @@ export const layer = Layer.effect(
         return
       }
 
+      const descend = async function* (fullPath: string, relPath: string) {
+        const scope = await readIgnoreFile(fullPath, relPath + "/", ignore())
+        yield* walk(cwd, fullPath, { ...options, root, scopes: [...options.scopes, scope] })
+      }
+
       for (const dirent of entries) {
         if (options.signal?.aborted) return
+        if (options.deadline !== undefined && Date.now() > options.deadline) return
+        if (options.visited && ++options.visited.files > FALLBACK_MAX_FILES) return
         const name = dirent.name
         if (name === ".git") continue
         if (!options.hidden && name.startsWith(".")) continue
@@ -169,19 +216,23 @@ export const layer = Layer.effect(
         const relPath = path.relative(cwd, fullPath).replaceAll("\\", "/")
 
         if (dirent.isDirectory()) {
-          if (options.ig.ignores(relPath + "/") || options.ig.ignores(relPath)) continue
-          yield* walk(cwd, fullPath, options)
+          if (isIgnored(options.scopes, relPath, true)) continue
+          yield* descend(fullPath, relPath)
         } else if (dirent.isFile()) {
-          if (options.ig.ignores(relPath)) continue
+          if (isIgnored(options.scopes, relPath, false)) continue
           yield { relPath, fullPath }
         } else if (dirent.isSymbolicLink() && options.follow) {
           try {
+            const real = await nodeFs.realpath(fullPath)
+            // Never follow a link out of the project (also avoids cycles through parents).
+            if (!isInside(root, real)) continue
             const stat = await nodeFs.stat(fullPath)
             if (stat.isDirectory()) {
-              if (options.ig.ignores(relPath + "/") || options.ig.ignores(relPath)) continue
-              yield* walk(cwd, fullPath, options)
+              if (isIgnored(options.scopes, relPath, true)) continue
+              if (isInside(real, dir)) continue
+              yield* descend(fullPath, relPath)
             } else if (stat.isFile()) {
-              if (options.ig.ignores(relPath)) continue
+              if (isIgnored(options.scopes, relPath, false)) continue
               yield { relPath, fullPath }
             }
           } catch {
@@ -199,7 +250,9 @@ export const layer = Layer.effect(
           hidden: input.hidden,
           follow: input.follow,
           signal: input.signal,
-          ig,
+          scopes: ig,
+          deadline: Date.now() + FALLBACK_MAX_MILLIS,
+          visited: { files: 0 },
         })
         while (true) {
           const next = yield* Effect.promise(() => walker.next())
@@ -229,7 +282,9 @@ export const layer = Layer.effect(
           hidden: input.hidden,
           follow: input.follow,
           signal: input.signal,
-          ig,
+          scopes: ig,
+          deadline: Date.now() + FALLBACK_MAX_MILLIS,
+          visited: { files: 0 },
         })
         while (true) {
           const next = yield* Effect.promise(() => walker.next())
@@ -267,10 +322,13 @@ export const layer = Layer.effect(
         }
 
         const matches: Match[] = []
+        const deadline = Date.now() + FALLBACK_MAX_MILLIS
 
         const searchFile = function* (relPath: string, fullPath: string) {
           let contentBuffer: Buffer
           try {
+            const stat = yield* Effect.promise(() => nodeFs.stat(fullPath))
+            if (!stat.isFile() || stat.size > FALLBACK_MAX_FILE_BYTES) return
             contentBuffer = yield* Effect.promise(() => nodeFs.readFile(fullPath))
           } catch {
             return
@@ -321,6 +379,9 @@ export const layer = Layer.effect(
 
         if (input.file) {
           const fullPath = path.resolve(input.cwd, input.file)
+          const real = yield* Effect.promise(() => nodeFs.realpath(fullPath).catch(() => undefined))
+          const root = yield* Effect.promise(() => nodeFs.realpath(input.cwd).catch(() => input.cwd))
+          if (!real || !isInside(root, real)) return matches
           const relPath = path.relative(input.cwd, fullPath).replaceAll("\\", "/")
           yield* searchFile(relPath, fullPath)
           return matches
@@ -328,16 +389,18 @@ export const layer = Layer.effect(
 
         const ig = yield* Effect.promise(() => loadGitignore(input.cwd))
         const walker = walk(input.cwd, input.cwd, {
+          deadline,
           hidden: true,
           follow: false,
           signal: input.signal,
-          ig,
+          scopes: ig,
+          visited: { files: 0 },
         })
 
         while (true) {
           const next = yield* Effect.promise(() => walker.next())
           if (next.done) break
-          if (input.signal?.aborted || matches.length >= input.limit) break
+          if (input.signal?.aborted || matches.length >= input.limit || Date.now() > deadline) break
           const { relPath, fullPath } = next.value
           if (input.include && !matchesGlob(input.include, relPath)) continue
           yield* searchFile(relPath, fullPath)
@@ -442,6 +505,10 @@ export const layer = Layer.effect(
             ripgrepUnavailable = true
             return warnFallback(cause).pipe(Effect.flatMap(() => fallbackGlob(input)))
           }),
+          Effect.catchCause((cause) => {
+            ripgrepUnavailable = true
+            return warnFallback(cause).pipe(Effect.flatMap(() => fallbackGlob(input)))
+          }),
         )
       },
       find: (input) => {
@@ -477,6 +544,10 @@ export const layer = Layer.effect(
           Effect.catchCause((cause) => {
             const invalid = findInvalidPattern(cause)
             if (invalid) return Effect.fail(failure(invalid.message, invalid))
+            ripgrepUnavailable = true
+            return warnFallback(cause).pipe(Effect.flatMap(() => fallbackFind(input)))
+          }),
+          Effect.catchCause((cause) => {
             ripgrepUnavailable = true
             return warnFallback(cause).pipe(Effect.flatMap(() => fallbackFind(input)))
           }),
@@ -549,6 +620,10 @@ export const layer = Layer.effect(
             if (invalid) {
               return Effect.fail(invalid)
             }
+            ripgrepUnavailable = true
+            return warnFallback(cause).pipe(Effect.flatMap(() => fallbackGrep(input)))
+          }),
+          Effect.catchCause((cause) => {
             ripgrepUnavailable = true
             return warnFallback(cause).pipe(Effect.flatMap(() => fallbackGrep(input)))
           }),

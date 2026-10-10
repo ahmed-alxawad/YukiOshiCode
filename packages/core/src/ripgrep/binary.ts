@@ -50,6 +50,8 @@ export namespace RipgrepBinary {
     },
   } as const
 
+  export const DOWNLOAD_TIMEOUT_MS = 60_000
+
   export const isAllowedHost = (u: URL): boolean => {
     if (u.protocol !== "https:") return false
     const host = u.hostname.toLowerCase()
@@ -128,6 +130,8 @@ export namespace RipgrepBinary {
       }, Effect.scoped)
 
       return Service.of({
+        // Any problem while locating/downloading/verifying/extracting ripgrep must surface as a typed
+        // failure (never a defect) so callers can fall back to the built-in search.
         filepath: yield* Effect.cached(
           Effect.gen(function* () {
             const dataBin = path.join(Global.Path.data, "bin")
@@ -145,7 +149,7 @@ export namespace RipgrepBinary {
               }
               return null
             })
-            if (system && (yield* fs.isFile(system).pipe(Effect.orDie))) return system
+            if (system && (yield* fs.isFile(system).pipe(Effect.orElseSucceed(() => false)))) return system
 
             const platformKey = `${process.arch}-${process.platform}` as keyof typeof PLATFORM
             const config = PLATFORM[platformKey]
@@ -158,6 +162,7 @@ export namespace RipgrepBinary {
             yield* Effect.logInfo("downloading ripgrep", { url, sha256: config.sha256 })
             yield* fs.ensureDir(dataBin).pipe(Effect.orDie)
 
+            const signal = AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS)
             let currentUrl = new URL(url)
             let hops = 0
             let finalResponse: Response | null = null
@@ -167,7 +172,7 @@ export namespace RipgrepBinary {
                 throw new Error(`ripgrep download redirected to disallowed host: ${currentUrl.hostname}`)
               }
               const response: Response = yield* Effect.tryPromise({
-                try: () => fetch(currentUrl.toString(), { redirect: "manual", signal: AbortSignal.timeout(15_000) }),
+                try: () => fetch(currentUrl.toString(), { redirect: "manual", signal }),
                 catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
               })
               if (response.status >= 300 && response.status < 400) {
@@ -206,7 +211,11 @@ export namespace RipgrepBinary {
             yield* extract(archive, config, target)
             yield* fs.remove(archive, { force: true }).pipe(Effect.ignore)
             return target
-          }),
+          }).pipe(
+            Effect.catchDefect((defect) =>
+              Effect.fail(defect instanceof Error ? defect : new Error(`ripgrep unavailable: ${String(defect)}`)),
+            ),
+          ),
         ),
       })
     }),
