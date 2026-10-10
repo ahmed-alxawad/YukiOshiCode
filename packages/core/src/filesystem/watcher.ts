@@ -1,6 +1,6 @@
 export * as Watcher from "./watcher"
 
-// @ts-ignore
+// @ts-ignore @parcel/watcher/wrapper subpath lacks type declarations
 import { createWrapper } from "@parcel/watcher/wrapper"
 import type ParcelWatcher from "@parcel/watcher"
 import { makeLocationNode } from "../effect/app-node"

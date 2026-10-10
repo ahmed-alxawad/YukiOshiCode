@@ -67,7 +67,7 @@ import { LLMEvent } from "@yukioshi/llm"
 import { Budget } from "@/budget"
 import { Checkpoint } from "@/checkpoint"
 
-// @ts-ignore
+// @ts-ignore global needed to suppress ai-sdk warning spam to stdout
 globalThis.AI_SDK_LOG_WARNINGS = false
 
 const decodeMessageInfo = Schema.decodeUnknownExit(SessionV1.Info)
