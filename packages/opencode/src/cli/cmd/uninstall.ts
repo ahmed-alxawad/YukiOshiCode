@@ -64,6 +64,14 @@ export const UninstallCommand = {
 
     await showRemovalSummary(targets, method)
 
+    if (!args.force && !args.dryRun && !process.stdin.isTTY) {
+      prompts.log.error(
+        "Uninstalling asks for confirmation, but input is not a terminal. Run it in a terminal, add --force to skip the question, or add --dry-run to only list what would be removed.",
+      )
+      process.exitCode = 1
+      return
+    }
+
     if (!args.force && !args.dryRun) {
       const confirm = await prompts.confirm({
         message: "Are you sure you want to uninstall?",

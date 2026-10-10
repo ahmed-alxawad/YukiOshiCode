@@ -1,9 +1,10 @@
 import type { Argv } from "yargs"
 import { spawn } from "child_process"
 import { Database } from "@yukioshi/core/database/database"
-import { Effect } from "effect"
+import { Cause, Effect } from "effect"
 import { sql } from "drizzle-orm"
-import { effectCmd } from "../effect-cmd"
+import { effectCmd, fail } from "../effect-cmd"
+import { errorMessage } from "../../util/error"
 
 const QueryCommand = effectCmd({
   command: "$0 [query]",
@@ -26,7 +27,15 @@ const QueryCommand = effectCmd({
     const query = args.query as string | undefined
     if (query) {
       const { db } = yield* Database.Service
-      const result = yield* db.all<Record<string, unknown>>(sql.raw(query)).pipe(Effect.orDie)
+      const result = yield* db
+        .all<Record<string, unknown>>(sql.raw(query))
+        .pipe(
+          Effect.catchCause((cause) =>
+            fail(
+              `The SQL statement failed: ${errorMessage(Cause.squash(cause))}. Check the statement; \`yukioshi db path\` prints the database file so you can look at the tables with sqlite3.`,
+            ),
+          ),
+        )
       if (args.format === "json") console.log(JSON.stringify(result, null, 2))
       else if (result.length > 0) {
         const keys = Object.keys(result[0])
@@ -38,7 +47,17 @@ const QueryCommand = effectCmd({
     const child = spawn("sqlite3", [Database.path()], {
       stdio: "inherit",
     })
-    yield* Effect.promise(() => new Promise((resolve) => child.on("close", resolve)))
+    const started = yield* Effect.promise(
+      () =>
+        new Promise<boolean>((resolve) => {
+          child.on("error", () => resolve(false))
+          child.on("close", () => resolve(true))
+        }),
+    )
+    if (!started)
+      return yield* fail(
+        'The sqlite3 program is not installed or not on your PATH. Install it, or pass a statement instead: `yukioshi db "select count(*) from session"`.',
+      )
   }),
 })
 

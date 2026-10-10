@@ -6,7 +6,7 @@ import { Effect } from "effect"
 const options = {
   port: {
     type: "number" as const,
-    describe: "port to listen on",
+    describe: "port to listen on (0 tries 4096, then any free port)",
     default: 0,
   },
   hostname: {

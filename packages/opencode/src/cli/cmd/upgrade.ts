@@ -29,6 +29,13 @@ export const UpgradeCommand = {
     const method = (args.method as Installation.Method) ?? detectedMethod
     if (method === "unknown") {
       prompts.log.error(`yukioshi is installed to ${process.execPath} and may be managed by a package manager`)
+      if (!process.stdin.isTTY) {
+        prompts.log.error(
+          "YukiOshi could not tell how it was installed, and it cannot ask because input is not a terminal. Name the method with `yukioshi upgrade --method <curl|npm|pnpm|bun|brew|choco|scoop>`, or upgrade with the tool you installed it with.",
+        )
+        process.exitCode = 1
+        return
+      }
       const install = await prompts.select({
         message: "Install anyways?",
         options: [
@@ -43,7 +50,14 @@ export const UpgradeCommand = {
       }
     }
     prompts.log.info("Using method: " + method)
-    const target = args.target ? args.target.replace(/^v/, "") : await Installation.latest()
+    const target = args.target ? args.target.replace(/^v/, "") : await Installation.latest().catch(() => undefined)
+    if (!target) {
+      prompts.log.error(
+        "Could not look up the latest version (no network, or the release server is unreachable). Check your connection and try again, or name a version: `yukioshi upgrade 1.2.3`.",
+      )
+      process.exitCode = 1
+      return
+    }
 
     if (InstallationVersion === target) {
       prompts.log.warn(`yukioshi upgrade skipped: ${target} is already installed`)
@@ -65,7 +79,11 @@ export const UpgradeCommand = {
           prompts.log.error(err.stderr)
         }
       } else if (err instanceof Error) prompts.log.error(err.message)
+      prompts.log.info(
+        `Check that version ${target} exists and that you can write to the install location, or pick another method with --method.`,
+      )
       prompts.outro("Done")
+      process.exitCode = 1
       return
     }
     spinner.stop("Upgrade complete")

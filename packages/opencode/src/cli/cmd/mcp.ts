@@ -1,6 +1,7 @@
 import { cmd } from "./cmd"
 import { ConfigV1 } from "@yukioshi/core/v1/config/config"
-import { effectCmd } from "../effect-cmd"
+import { effectCmd, fail } from "../effect-cmd"
+import { requireTerminal } from "../needs-terminal"
 import { Cause } from "effect"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
@@ -178,6 +179,11 @@ export const McpAuthCommand = effectCmd({
       })
       .command(McpAuthListCommand),
   handler: Effect.fn("Cli.mcp.auth")(function* (args) {
+    if (!args.name)
+      yield* requireTerminal(
+        "Choosing an MCP server",
+        "Name it instead: `yukioshi mcp auth <name>` (see `yukioshi mcp list`).",
+      )
     UI.empty()
     prompts.intro("MCP OAuth Authentication")
 
@@ -226,7 +232,7 @@ export const McpAuthCommand = effectCmd({
 
     const serverConfig = mcpServers[serverName]
     if (!serverConfig) {
-      prompts.log.error(`MCP server not found: ${serverName}`)
+      prompts.log.error(`MCP server not found: ${serverName}. Run \`yukioshi mcp list\` to see the configured servers.`)
       prompts.outro("Done")
       return
     }
@@ -342,6 +348,11 @@ export const McpLogoutCommand = effectCmd({
       type: "string",
     }),
   handler: Effect.fn("Cli.mcp.logout")(function* (args) {
+    if (!args.name)
+      yield* requireTerminal(
+        "Choosing an MCP server",
+        "Name it instead: `yukioshi mcp logout <name>` (see `yukioshi mcp list`).",
+      )
     UI.empty()
     prompts.intro("MCP OAuth Logout")
 
@@ -433,6 +444,8 @@ export const McpAddCommand = effectCmd({
         describe: "name of the MCP server",
         type: "string",
       })
+      .example("$0 mcp add docs --url https://example.com/mcp", "add a remote server without prompts")
+      .example("$0 mcp add files -- npx -y some-mcp-server", "add a local server: its start command goes after --")
       .option("url", {
         describe: "URL for a remote MCP server",
         type: "string",
@@ -451,25 +464,35 @@ export const McpAddCommand = effectCmd({
     const maybeCtx = yield* InstanceRef
     if (!maybeCtx) return yield* Effect.die("InstanceRef not provided")
     const ctx = maybeCtx
+    const command = args["--"] ?? []
+    if (!args.name && (args.url || args.env?.length || args.header?.length || command.length))
+      return yield* fail(
+        "A server name is required when adding an MCP server without prompts. Example: `yukioshi mcp add my-server --url https://example.com/mcp` or `yukioshi mcp add my-server -- npx some-mcp-server`.",
+      )
+    if (args.name) {
+      if (!!args.url === !!command.length)
+        return yield* fail(
+          "Say where the MCP server runs: either --url <url> for a remote server, or the command after -- for a local one (`yukioshi mcp add my-server -- npx some-mcp-server`).",
+        )
+      if (args.url && !URL.canParse(args.url))
+        return yield* fail(`Invalid URL: ${args.url}. Use a full address such as https://example.com/mcp.`)
+      if (args.url && args.env?.length)
+        return yield* fail(
+          "--env only applies to local MCP servers (started with a command after --). Use --header for a remote server.",
+        )
+      if (command.length && args.header?.length)
+        return yield* fail("--header only applies to remote MCP servers (--url). Use --env for a local server.")
+      const badPair = [...(args.env ?? []), ...(args.header ?? [])].find((entry) => entry.indexOf("=") < 1)
+      if (badPair !== undefined)
+        return yield* fail(`Invalid --env or --header value: "${badPair}". Write it as KEY=VALUE.`)
+    } else {
+      yield* requireTerminal(
+        "Adding an MCP server with prompts",
+        "Pass the details instead: `yukioshi mcp add <name> --url <url>` or `yukioshi mcp add <name> -- <command>`.",
+      )
+    }
     yield* Effect.promise(async () => {
-      const command = args["--"] ?? []
-      if (!args.name && (args.url || args.env?.length || args.header?.length || command.length)) {
-        throw new Error("A server name is required for non-interactive MCP configuration")
-      }
       if (args.name) {
-        if (!!args.url === !!command.length) {
-          throw new Error("Provide either --url <url> or a command after --")
-        }
-        if (args.url && !URL.canParse(args.url)) {
-          throw new Error(`Invalid URL: ${args.url}`)
-        }
-        if (args.url && args.env?.length) {
-          throw new Error("--env is only valid for local MCP servers")
-        }
-        if (command.length && args.header?.length) {
-          throw new Error("--header is only valid for remote MCP servers")
-        }
-
         const entries = (values: string[], kind: string) =>
           Object.fromEntries(
             values.map((entry) => {
@@ -682,7 +705,9 @@ export const McpDebugCommand = effectCmd({
       const serverName = args.name
 
       if (!serverConfig) {
-        prompts.log.error(`MCP server not found: ${serverName}`)
+        prompts.log.error(
+          `MCP server not found: ${serverName}. Run \`yukioshi mcp list\` to see the configured servers.`,
+        )
         prompts.outro("Done")
         return
       }

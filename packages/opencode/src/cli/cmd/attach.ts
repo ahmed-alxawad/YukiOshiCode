@@ -11,7 +11,7 @@ export const AttachCommand = cmd({
     yargs
       .positional("url", {
         type: "string",
-        describe: "http://localhost:4096",
+        describe: "address of a running server, for example http://localhost:4096 (start one with `yukioshi serve`)",
         demandOption: true,
       })
       .option("dir", {
@@ -60,6 +60,13 @@ export const AttachCommand = cmd({
         describe: "cap visible mini replay to the newest N messages",
       }),
   handler: async (args) => {
+    // Without a terminal nothing interactive can start, and the commands below report that themselves.
+    const unreachable = process.stdout.isTTY ? await serverUnreachableMessage(args.url) : undefined
+    if (unreachable) {
+      UI.error(unreachable)
+      process.exitCode = 1
+      return
+    }
     if (args.replay === true) {
       UI.error("--replay is not supported; replay is enabled by default")
       process.exitCode = 1
@@ -146,3 +153,27 @@ export const AttachCommand = cmd({
     )
   },
 })
+
+/**
+ * Fails fast, in words, when nothing answers at the attach URL. Any HTTP answer, even a refusal, means a server is
+ * there; the interactive screens would otherwise start first and show a raw connection error.
+ */
+export async function serverUnreachableMessage(
+  url: string,
+  fetcher: (url: string, init?: RequestInit) => Promise<Response> = fetch,
+): Promise<string | undefined> {
+  let host: string
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error("protocol")
+    host = parsed.host
+  } catch {
+    return `"${url}" is not a server address. Use a full URL such as http://localhost:4096 (start a server with \`yukioshi serve\`).`
+  }
+  try {
+    await fetcher(url, { signal: AbortSignal.timeout(5000) })
+    return undefined
+  } catch {
+    return `Could not reach a YukiOshi server at ${host}. Start one with \`yukioshi serve\` (it prints its address), check that the URL and port are right, and check any firewall or VPN in between.`
+  }
+}

@@ -10,6 +10,7 @@ import { EOL } from "os"
 import type { Argv } from "yargs"
 import { Effect } from "effect"
 import { effectCmd } from "../effect-cmd"
+import { requireTerminal } from "../needs-terminal"
 
 type AgentMode = "all" | "primary" | "subagent"
 
@@ -76,6 +77,11 @@ const AgentCreateCommand = effectCmd({
     const agentSvc = yield* Agent.Service
     const runLocalEffect = <A, E>(effect: Effect.Effect<A, E>) =>
       Effect.runPromise(effect.pipe(Effect.provideService(InstanceRef, ctx)))
+    if (!(args.path && args.description && args.mode && args.permissions !== undefined))
+      yield* requireTerminal(
+        "Creating an agent with prompts",
+        'Pass every detail instead: `yukioshi agent create --path <dir> --description "<what it does>" --mode primary --permissions <list>` (see `yukioshi agent create --help`).',
+      )
     yield* Effect.promise(async () => {
       const cliPath = args.path
       const cliDescription = args.description
@@ -142,7 +148,10 @@ const AgentCreateCommand = effectCmd({
       spinner.start("Generating agent configuration...")
       const model = args.model ? Provider.parseModel(args.model) : undefined
       const generated = await runLocalEffect(agentSvc.generate({ description, model })).catch((error) => {
-        spinner.stop(`LLM failed to generate agent: ${error.message}`, 1)
+        spinner.stop(
+          `Could not generate the agent: ${error.message}. Check that a provider is set up (\`yukioshi providers list\`, \`yukioshi providers login\`) or choose a model with --model provider/model.`,
+          1,
+        )
         if (isFullyNonInteractive) process.exit(1)
         throw new UI.CancelledError()
       })

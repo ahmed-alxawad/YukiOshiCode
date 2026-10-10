@@ -25,9 +25,14 @@ export const WorktreeCommand = effectCmd({
   describe: "create, list, locate, or remove git worktrees for parallel sessions",
   builder: (yargs: Argv) =>
     yargs
-      .positional("action", { choices: ["new", "list", "path", "remove"] as const })
+      .positional("action", {
+        choices: ["new", "list", "path", "remove"] as const,
+        describe: "create a worktree, list them, print one's path, or remove one",
+      })
       .positional("name", { type: "string", describe: "worktree name" })
-      .option("yes", { type: "boolean", default: false, describe: "remove even with uncommitted changes" }),
+      .option("yes", { type: "boolean", default: false, describe: "remove even with uncommitted changes" })
+      .example("$0 worktree new fix-login", "create a worktree to work on in parallel")
+      .example('cd "$($0 worktree path fix-login)"', "go to it"),
   handler: Effect.fn("Cli.worktree")(function* (args: Args) {
     const worktrees = yield* Worktree.Service
 
@@ -69,7 +74,9 @@ export const WorktreeCommand = effectCmd({
       const parts = [
         ...(changes.length ? [`${changes.length} uncommitted change${changes.length === 1 ? "" : "s"}`] : []),
         ...(unmerged.length
-          ? [`${unmerged.length} commit${unmerged.length === 1 ? "" : "s"} on ${found.branch} not on your current branch`]
+          ? [
+              `${unmerged.length} commit${unmerged.length === 1 ? "" : "s"} on ${found.branch} not on your current branch`,
+            ]
           : []),
       ]
       return yield* fail(

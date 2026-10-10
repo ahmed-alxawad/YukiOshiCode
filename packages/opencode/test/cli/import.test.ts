@@ -21,7 +21,7 @@ test("formats import file errors", () => {
         }),
       ),
     ),
-  ).toBe("File not found: test.json")
+  ).toStartWith("File not found: test.json. ")
   expect(
     formatImportFileError(
       "test.json",
@@ -33,13 +33,13 @@ test("formats import file errors", () => {
         }),
       ),
     ),
-  ).toBe("Failed to read file: Permission denied")
+  ).toStartWith("Cannot read test.json: permission denied.")
   expect(
     formatImportFileError(
       "test.json",
       new FSUtil.FileSystemError({ method: "readJson", cause: new SyntaxError("Unexpected token") }),
     ),
-  ).toBe("Invalid JSON in test.json: Unexpected token")
+  ).toStartWith("Invalid JSON in test.json: Unexpected token. ")
 })
 
 // parseShareUrl tests

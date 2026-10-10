@@ -42,13 +42,17 @@ export function shouldAttachShareAuthHeaders(shareUrl: string, accountBaseUrl: s
 
 export function formatImportFileError(file: string, error: FSUtil.Error) {
   if (error._tag === "PlatformError") {
-    if (error.reason._tag === "NotFound") return `File not found: ${file}`
-    if (error.reason._tag === "PermissionDenied") return `Failed to read file: Permission denied`
-    return `Failed to read file: ${error.message}`
+    if (error.reason._tag === "NotFound")
+      return `File not found: ${file}. Check the path, or export a session first with \`yukioshi export <sessionID> > session.json\`.`
+    if (error.reason._tag === "PermissionDenied")
+      return `Cannot read ${file}: permission denied. Fix the file permissions or copy it somewhere you can read.`
+    if (error.reason._tag === "BadResource")
+      return `${file} is not a file (it may be a directory). Pass the path of an exported session .json file or a .jsonl conversation.`
+    return `Cannot read ${file}. Check that it is a readable file and try again.`
   }
 
   const detail = error.cause instanceof Error ? error.cause.message : error.message
-  return `Invalid JSON in ${file}: ${detail}`
+  return `Invalid JSON in ${file}: ${detail}. Import expects a file made by \`yukioshi export\`; re-export it or fix the JSON.`
 }
 
 /**
@@ -102,6 +106,8 @@ export const ImportCommand = effectCmd({
         describe: "exported JSON file, share URL, or Claude Code or Codex .jsonl transcript",
         type: "string",
       })
+      .example("$0 import session.json", "restore a session made by `yukioshi export`")
+      .example("$0 import --from claude", "continue the newest Claude Code conversation held in this folder")
       .option("from", {
         type: "string",
         choices: ["claude", "codex"] as const,
@@ -113,7 +119,10 @@ export const ImportCommand = effectCmd({
     const conflict = importArgsError(args.from, args.file)
     if (conflict) return yield* fail(conflict)
     if (args.from) return yield* runTranscriptImport(args.from, undefined, ctx)
-    if (!args.file) return yield* fail("Name a file to import, or use --from claude or --from codex.")
+    if (!args.file)
+      return yield* fail(
+        "Name something to import: `yukioshi import session.json` (made by `yukioshi export`), a share URL, a .jsonl conversation, or use --from claude / --from codex for the newest one in this folder.",
+      )
     if (args.file.endsWith(".jsonl")) return yield* runTranscriptImport(undefined, args.file, ctx)
     return yield* runImport(args.file, ctx)
   }),
@@ -121,7 +130,8 @@ export const ImportCommand = effectCmd({
 
 /** `--from` picks the newest conversation itself, so it cannot be combined with a file. */
 export function importArgsError(from: string | undefined, file: string | undefined) {
-  if (from && file) return "Use --from or a file, not both."
+  if (from && file)
+    return "Use --from or a file, not both. --from picks the newest conversation in this folder by itself; drop the file name, or drop --from."
 }
 
 const NAMES: Record<Source, string> = { claude: "Claude Code", codex: "Codex" }
@@ -133,9 +143,12 @@ const runTranscriptImport = Effect.fn("Cli.import.transcript")(function* (
   ctx: InstanceContext,
 ) {
   const transcript = from ? yield* Effect.promise(() => latest(from, ctx.directory)) : file
-  if (!transcript) return yield* fail(`No ${NAMES[from!]} conversation found for ${ctx.directory}.`)
+  if (!transcript)
+    return yield* fail(
+      `No ${NAMES[from!]} conversation found for ${ctx.directory}. Run this from the folder you used ${NAMES[from!]} in, or pass the conversation file (.jsonl) yourself: \`yukioshi import <file>.jsonl\`.`,
+    )
   if (!from && !(yield* Effect.promise(() => Bun.file(transcript).exists())))
-    return yield* fail(`File not found: ${transcript}`)
+    return yield* fail(`File not found: ${transcript}. Check the path to the .jsonl conversation file.`)
   const conversation = yield* Effect.tryPromise({
     try: () => readTranscript(transcript),
     catch: (error) =>
@@ -143,9 +156,14 @@ const runTranscriptImport = Effect.fn("Cli.import.transcript")(function* (
         message: `Failed to read ${transcript}: ${error instanceof Error ? error.message : String(error)}`,
       }),
   })
-  if (!conversation) return yield* fail(`${transcript} is not a Claude Code or Codex conversation.`)
+  if (!conversation)
+    return yield* fail(
+      `${transcript} is not a Claude Code or Codex conversation. Pass a .jsonl file from ~/.claude/projects or ~/.codex/sessions, or use --from claude / --from codex.`,
+    )
   if (!conversation.turns.some((turn) => turn.role === "user"))
-    return yield* fail(`${transcript} has no messages to import.`)
+    return yield* fail(
+      `${transcript} has no messages from you to import, so there is nothing to continue. Pick a conversation that has at least one prompt.`,
+    )
 
   // Imported messages carry your configured model, so continuing the session uses it.
   const configured = (yield* (yield* Config.Service).get()).model
@@ -177,14 +195,22 @@ const runImport = Effect.fn("Cli.import.body")(function* (file: string | ExportD
   } else if (isUrl) {
     const slug = parseShareUrl(file)
     if (!slug) {
-      const baseUrl = yield* Effect.orDie(share.url())
-      process.stdout.write(`Invalid URL format. Expected: ${baseUrl}/share/<slug>`)
-      process.stdout.write(EOL)
-      return
+      const baseUrl = yield* share.url().pipe(Effect.catchCause(() => Effect.succeed("https://<your-share-server>")))
+      return yield* fail(
+        `Not a share URL: ${file}. Expected ${baseUrl}/share/<slug>. To import a local session instead, pass the path of a file made by \`yukioshi export\`.`,
+      )
     }
 
     const baseUrl = new URL(file).origin
-    const req = yield* Effect.orDie(share.request())
+    const req = yield* share
+      .request()
+      .pipe(
+        Effect.catchCause(() =>
+          fail(
+            'Importing from a share URL needs a share server, and none is configured. Set "enterprise": { "url": "..." } in yukioshi.json, or import a local file made by `yukioshi export` instead.',
+          ),
+        ),
+      )
     const headers = shouldAttachShareAuthHeaders(file, req.baseUrl) ? req.headers : {}
 
     const tryFetch = (url: string) =>
@@ -192,7 +218,7 @@ const runImport = Effect.fn("Cli.import.body")(function* (file: string | ExportD
         try: () => fetch(url, { headers }),
         catch: (e) =>
           new CliError({
-            message: `Failed to fetch share data: ${e instanceof Error ? e.message : String(e)}`,
+            message: `Could not reach ${new URL(url).host} to fetch the shared session (${e instanceof Error ? e.message : String(e)}). Check your network connection and the URL, then try again.`,
           }),
       })
 
@@ -204,9 +230,9 @@ const runImport = Effect.fn("Cli.import.body")(function* (file: string | ExportD
     }
 
     if (!response.ok) {
-      process.stdout.write(`Failed to fetch share data: ${response.statusText}`)
-      process.stdout.write(EOL)
-      return
+      return yield* fail(
+        `The share server at ${baseUrl} answered ${response.status} ${response.statusText}. Check that the share URL is correct and still exists.`,
+      )
     }
 
     const shareData = yield* Effect.tryPromise({
@@ -216,9 +242,7 @@ const runImport = Effect.fn("Cli.import.body")(function* (file: string | ExportD
     const transformed = transformShareData(shareData)
 
     if (!transformed) {
-      process.stdout.write(`Share not found or empty: ${slug}`)
-      process.stdout.write(EOL)
-      return
+      return yield* fail(`The shared session ${slug} is empty or no longer exists. Ask the owner to share it again.`)
     }
 
     exportData = transformed
@@ -229,17 +253,27 @@ const runImport = Effect.fn("Cli.import.body")(function* (file: string | ExportD
   }
 
   if (!exportData) {
-    process.stdout.write(`Failed to read session data`)
-    process.stdout.write(EOL)
-    return
+    return yield* fail("The file holds no session data. Import expects a file made by `yukioshi export`.")
   }
+  if (typeof exportData !== "object" || !("info" in exportData) || !Array.isArray((exportData as ExportData).messages))
+    return yield* fail(
+      `${typeof file === "string" ? file : "The input"} is valid JSON but not a YukiOshi session export (it needs "info" and "messages"). Create one with \`yukioshi export <sessionID>\`.`,
+    )
 
-  const info = Schema.decodeUnknownSync(Session.Info)({
-    ...exportData.info,
-    projectID: ctx.project.id,
-    directory: ctx.directory,
-    path: path.relative(path.resolve(ctx.worktree), ctx.directory).replaceAll("\\", "/"),
-  }) as Session.Info
+  const info = (yield* Effect.try({
+    try: () =>
+      Schema.decodeUnknownSync(Session.Info)({
+        ...exportData.info,
+        projectID: ctx.project.id,
+        directory: ctx.directory,
+        path: path.relative(path.resolve(ctx.worktree), ctx.directory).replaceAll("\\", "/"),
+      }),
+    catch: () =>
+      new CliError({
+        message:
+          "The session in this file is not in a format this version understands. Re-export it with `yukioshi export <sessionID>` from the same or a newer version.",
+      }),
+  })) as Session.Info
   const row = Session.toRow(info)
   yield* db
     .insert(SessionTable)

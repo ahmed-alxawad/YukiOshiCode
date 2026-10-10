@@ -39,8 +39,13 @@ export const ScheduleAddCommand = effectCmd({
       .positional("cron", {
         type: "string",
         demandOption: true,
-        describe: "standard 5-field cron expression",
+        describe: "5-field cron expression in local time: minute hour day-of-month month day-of-week",
       })
+      .example('$0 schedule add "0 9 * * 1-5" "summarize recent commits"', "every weekday at 09:00")
+      .example(
+        '$0 schedule add "*/30 * * * *" "check the build" --dir ~/code/app',
+        "every 30 minutes in a given folder",
+      )
       .positional("prompt", {
         type: "string",
         demandOption: true,
@@ -82,16 +87,39 @@ export const ScheduleAddCommand = effectCmd({
     auto: boolean
     review: boolean
   }) {
-    if (args.auto && args.review) return yield* fail("Use either --auto or --review, not both.")
+    if (args.auto && args.review)
+      return yield* fail(
+        "Use either --auto or --review, not both. --auto approves everything; --review lets a small model decide.",
+      )
+    if (!args.prompt.trim())
+      return yield* fail(
+        'The prompt is empty, so there is nothing to run. Give the text to send, for example `yukioshi schedule add "0 9 * * 1-5" "summarize recent commits"`.',
+      )
+    if (args.model && !/^[^/\s]+\/\S+$/.test(args.model))
+      return yield* fail(
+        `Invalid --model "${args.model}". Use provider/model, for example anthropic/claude-sonnet-4-5; \`yukioshi models\` lists them.`,
+      )
     // 1. Validate cron expression
     let parsedCron
     try {
       parsedCron = validateCron(args.cron)
     } catch (err: any) {
-      return yield* fail(err.message)
+      return yield* fail(
+        `${err.message}. Write the schedule as 5 fields, minute hour day-of-month month day-of-week, for example "0 9 * * 1-5" (09:00 on weekdays) or "*/30 * * * *" (every 30 minutes), in quotes.`,
+      )
     }
 
     const targetDir = path.resolve(args.dir ?? process.cwd())
+    const isDirectory = yield* Effect.promise(() =>
+      fs.stat(targetDir).then(
+        (stat) => stat.isDirectory(),
+        () => false,
+      ),
+    )
+    if (!isDirectory)
+      return yield* fail(
+        `The directory ${targetDir} does not exist, so the job could not run there. Pass an existing folder with --dir, or run the command from inside the project.`,
+      )
     const id = generateId()
     const name = args.name?.trim() || args.prompt.trim().slice(0, 30) || `job-${id}`
 
@@ -172,7 +200,7 @@ export const ScheduleRemoveCommand = effectCmd({
     const jobs = yield* cliTry("Failed to load jobs: ", () => loadJobs())
     const index = jobs.findIndex((j) => j.id === args.id || (args.id.length >= 6 && j.id.startsWith(args.id)))
     if (index === -1) {
-      return yield* fail(`Scheduled job not found: ${args.id}`)
+      return yield* fail(`Scheduled job not found: ${args.id}. Run \`yukioshi schedule list\` to see the job IDs.`)
     }
 
     const removed = jobs.splice(index, 1)[0]
@@ -196,7 +224,7 @@ export const ScheduleRunCommand = effectCmd({
   handler: Effect.fn("Cli.schedule.run")(function* (args: { id: string }) {
     const job = yield* cliTry("Failed to find job: ", () => findJob(args.id))
     if (!job) {
-      return yield* fail(`Scheduled job not found: ${args.id}`)
+      return yield* fail(`Scheduled job not found: ${args.id}. Run \`yukioshi schedule list\` to see the job IDs.`)
     }
 
     const result = yield* cliTry("Job execution failed: ", () => runJob(job.id))
@@ -208,7 +236,9 @@ export const ScheduleRunCommand = effectCmd({
     } else if (result.status === "skipped: disabled") {
       UI.println("Job is disabled. Skipped.")
     } else if (result.status === "failed") {
-      return yield* fail(`Job failed: ${result.error ?? "unknown error"}`)
+      return yield* fail(
+        `Job failed: ${result.error ?? "unknown error"}. Run \`yukioshi schedule logs ${job.id}\` to see the full output.`,
+      )
     } else {
       UI.println(`Job ${job.id} (${job.name}) finished successfully.`)
     }
@@ -234,7 +264,7 @@ export const ScheduleLogsCommand = effectCmd({
   handler: Effect.fn("Cli.schedule.logs")(function* (args: { id: string; last: boolean }) {
     const job = yield* cliTry("Failed to find job: ", () => findJob(args.id))
     if (!job) {
-      return yield* fail(`Scheduled job not found: ${args.id}`)
+      return yield* fail(`Scheduled job not found: ${args.id}. Run \`yukioshi schedule list\` to see the job IDs.`)
     }
 
     const logs = yield* cliTry("Failed to load logs: ", () => getRunLogs(job.id))
@@ -273,7 +303,7 @@ export const ScheduleEnableCommand = effectCmd({
     const jobs = yield* cliTry("Failed to load jobs: ", () => loadJobs())
     const job = jobs.find((j) => j.id === args.id || (args.id.length >= 6 && j.id.startsWith(args.id)))
     if (!job) {
-      return yield* fail(`Scheduled job not found: ${args.id}`)
+      return yield* fail(`Scheduled job not found: ${args.id}. Run \`yukioshi schedule list\` to see the job IDs.`)
     }
 
     job.enabled = true
@@ -298,7 +328,7 @@ export const ScheduleDisableCommand = effectCmd({
     const jobs = yield* cliTry("Failed to load jobs: ", () => loadJobs())
     const job = jobs.find((j) => j.id === args.id || (args.id.length >= 6 && j.id.startsWith(args.id)))
     if (!job) {
-      return yield* fail(`Scheduled job not found: ${args.id}`)
+      return yield* fail(`Scheduled job not found: ${args.id}. Run \`yukioshi schedule list\` to see the job IDs.`)
     }
 
     job.enabled = false

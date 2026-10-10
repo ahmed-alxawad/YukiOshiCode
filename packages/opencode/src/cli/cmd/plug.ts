@@ -185,6 +185,23 @@ function userFacing<A>(run: () => Promise<A>) {
   })
 }
 
+/** Words people type as a plugin action that would otherwise be installed from npm as a package of that name. */
+export const NOT_PACKAGE_NAMES = new Set([
+  "install",
+  "uninstall",
+  "delete",
+  "update",
+  "upgrade",
+  "ls",
+  "search",
+  "info",
+  "enable",
+  "disable",
+  "init",
+  "new",
+  "create",
+])
+
 export type PlugCmdArgs = {
   action?: string
   target?: string
@@ -202,7 +219,9 @@ export const PluginCommand = effectCmd({
   aliases: ["plug"],
   describe: "install, list, or remove plugins (npm packages, or Claude Code plugins/marketplaces from git)",
   instance: (args: PlugCmdArgs) => {
-    const act = String(args.action ?? "").toLowerCase().trim()
+    const act = String(args.action ?? "")
+      .toLowerCase()
+      .trim()
     return !["add", "list", "remove", "rm"].includes(act)
   },
   builder: (yargs: Argv) =>
@@ -255,8 +274,13 @@ export const PluginCommand = effectCmd({
     }
 
     if (action === "add") {
-      if (!args.target) return yield* fail("plugin add needs a git URL or marketplace repository")
-      const result = yield* userFacing(() => ClaudePlugin.add({ url: args.target!, plugin: args.extra, name: args.name }))
+      if (!args.target)
+        return yield* fail(
+          "plugin add needs a git URL or marketplace repository. Example: `yukioshi plugin add https://github.com/owner/repo`.",
+        )
+      const result = yield* userFacing(() =>
+        ClaudePlugin.add({ url: args.target!, plugin: args.extra, name: args.name }),
+      )
       if (result.type === "marketplace") {
         UI.println(`Marketplace: ${result.name} (${result.url})`)
         if (result.description) UI.println(result.description)
@@ -295,7 +319,10 @@ export const PluginCommand = effectCmd({
     }
 
     if (action === "remove" || action === "rm") {
-      if (!args.target) return yield* fail("plugin remove needs a plugin name; see yukioshi plugin list")
+      if (!args.target)
+        return yield* fail(
+          "plugin remove needs a plugin name. Run `yukioshi plugin list` to see what is installed, then `yukioshi plugin remove <name>`.",
+        )
       yield* userFacing(() => ClaudePlugin.remove(args.target!))
       UI.println(`Removed ${args.target}`)
       return
@@ -303,8 +330,14 @@ export const PluginCommand = effectCmd({
 
     // Default: treat as npm module name (existing yukioshi plugin <module> behavior)
     const mod = rawAction || String(args.module ?? "").trim()
+    if (NOT_PACKAGE_NAMES.has(mod.toLowerCase()))
+      return yield* fail(
+        `"${mod}" is not a plugin package. Use \`yukioshi plugin add <git-url>\` to install from git, \`yukioshi plugin list\` to see what is installed, \`yukioshi plugin remove <name>\` to remove one, or \`yukioshi plugin <npm-package>\` for an npm package.`,
+      )
     if (!mod) {
-      UI.error("module is required")
+      UI.error(
+        "Say what to do: `yukioshi plugin list`, `yukioshi plugin add <git-url>`, `yukioshi plugin remove <name>`, or `yukioshi plugin <npm-package>` to install a plugin from npm.",
+      )
       process.exitCode = 1
       return
     }

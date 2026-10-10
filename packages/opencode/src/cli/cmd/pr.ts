@@ -15,10 +15,17 @@ export const PrCommand = effectCmd({
       demandOption: true,
     }),
   handler: Effect.fn("Cli.pr")(function* (args) {
+    if (!Number.isInteger(args.number) || args.number < 1)
+      return yield* fail(
+        `"${String(args.number)}" is not a pull request number. Pass the number, for example \`yukioshi pr 123\`.`,
+      )
     const ctx = yield* InstanceRef
-    if (!ctx) return yield* fail("Could not load instance context")
+    if (!ctx)
+      return yield* fail("Could not load the project. Run this from inside the repository the pull request belongs to.")
     if (ctx.project.vcs !== "git") {
-      return yield* fail("Could not find git repository. Please run this command from a git repository.")
+      return yield* fail(
+        "This folder is not a git repository. `yukioshi pr` checks out a GitHub pull request, so run it from inside a clone of the repository (cd into it first).",
+      )
     }
 
     const git = yield* Git.Service
@@ -32,7 +39,9 @@ export const PrCommand = effectCmd({
       Process.run(["gh", "pr", "checkout", `${prNumber}`, "--branch", localBranchName, "--force"], { nothrow: true }),
     )
     if (checkout.code !== 0) {
-      return yield* fail(`Failed to checkout PR #${prNumber}. Make sure you have gh CLI installed and authenticated.`)
+      return yield* fail(
+        `Could not check out PR #${prNumber}. This needs the GitHub CLI: install it from https://cli.github.com, run \`gh auth login\`, and check that the PR number exists in this repository (\`gh pr list\`).`,
+      )
     }
 
     const prInfoResult = yield* Effect.promise(() =>
@@ -108,8 +117,10 @@ export const PrCommand = effectCmd({
           cwd: process.cwd(),
         }).exited,
     )
-    // Match legacy throw semantics — propagate as a defect so the top-level
-    // index.ts catch handles it identically (exit 1, "Unexpected error" banner).
-    if (code !== 0) return yield* Effect.die(new Error(`yukioshi exited with code ${code}`))
+    if (code !== 0)
+      return yield* fail(
+        `yukioshi exited with code ${code} after checking out PR #${prNumber}. The branch ${localBranchName} is checked out; run \`yukioshi\` to continue, or \`yukioshi --print-logs\` to see why it stopped.`,
+        code,
+      )
   }),
 })

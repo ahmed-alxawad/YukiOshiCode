@@ -19,9 +19,16 @@ export const SkillCommand = effectCmd({
   instance: false,
   builder: (yargs: Argv) =>
     yargs
-      .positional("action", { choices: ["add", "list", "remove"] as const })
+      .positional("action", {
+        choices: ["add", "list", "remove"] as const,
+        describe: "add a skill repository, list installed ones, or remove one",
+      })
       .positional("target", { type: "string", describe: "git URL (add) or installed name (remove)" })
-      .option("name", { type: "string", describe: "folder name to install under (add); defaults to the repository name" }),
+      .option("name", {
+        type: "string",
+        describe: "folder name to install under (add); defaults to the repository name",
+      })
+      .example("$0 skill add https://github.com/owner/skills-repo", "install the skills in a git repository"),
   handler: Effect.fn("Cli.skill")(function* (args: Args) {
     if (args.action === "list") {
       const items = yield* userFacing(() => SkillInstall.list())
@@ -34,7 +41,10 @@ export const SkillCommand = effectCmd({
     }
 
     if (args.action === "add") {
-      if (!args.target) return yield* fail("skill add needs a git URL")
+      if (!args.target)
+        return yield* fail(
+          "skill add needs a git URL. Example: `yukioshi skill add https://github.com/owner/skills-repo`.",
+        )
       const target = args.target
       const installed = yield* userFacing(() => SkillInstall.add({ url: target, name: args.name }))
       UI.println(`Installed ${installed.name} from ${installed.url}`)
@@ -43,7 +53,10 @@ export const SkillCommand = effectCmd({
       return
     }
 
-    if (!args.target) return yield* fail("skill remove needs a name; see yukioshi skill list")
+    if (!args.target)
+      return yield* fail(
+        "skill remove needs a name. Run `yukioshi skill list` to see what is installed, then `yukioshi skill remove <name>`.",
+      )
     const target = args.target
     yield* userFacing(() => SkillInstall.remove(target))
     UI.println(`Removed ${target}`)
