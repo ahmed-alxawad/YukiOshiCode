@@ -6,7 +6,7 @@ import { PositiveInt } from "../../schema"
 export const Info = Schema.Struct({
   enabled: Schema.optional(Schema.Boolean).annotate({
     description:
-      "Let the agent start shell commands in the background (shell with background: true) and follow them with the monitor, job_list and job_stop tools. Off by default.",
+      "Let the agent start shell commands in the background (the bash tool with background: true) and follow them with the monitor, job_list and job_stop tools. Off by default.",
   }),
   max_jobs: Schema.optional(PositiveInt).annotate({
     description: "Most background jobs that may run at once in one session. Defaults to 4.",
