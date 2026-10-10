@@ -21,6 +21,9 @@ const LOW: ReadonlySet<string> = new Set([
   "code_search",
   "code_graph",
   "session_search",
+  "monitor",
+  "job_list",
+  "job_stop",
 ])
 const MEDIUM: ReadonlySet<string> = new Set(["webfetch", "websearch", "external_directory"])
 const HIGH: ReadonlySet<string> = new Set(["bash", "edit", "write", "apply_patch", "memory_save", "skill_save", "delegate"])

@@ -5,6 +5,7 @@ import { SessionV1 } from "@yukioshi/core/v1/session"
 import { serviceUse } from "@yukioshi/core/effect/service-use"
 import path from "path"
 import { BackgroundJob } from "@/background/job"
+import { BackgroundShell } from "@/background/shell"
 import { Decimal } from "decimal.js"
 import type { ProviderMetadata, Usage } from "@yukioshi/llm"
 import { InstallationVersion } from "@yukioshi/core/installation/version"
@@ -614,6 +615,7 @@ const layer: Layer.Layer<
         )
 
         if (hasInstance) yield* cancelBackgroundJobs(background, sessionID)
+        yield* Effect.promise(() => BackgroundShell.killSession(sessionID))
         const kids = yield* children(sessionID)
         for (const child of kids) {
           yield* remove(child.id)

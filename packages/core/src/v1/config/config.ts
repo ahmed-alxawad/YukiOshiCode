@@ -36,6 +36,7 @@ import { ConfigAuditV1 } from "./audit"
 import { ConfigTriggersV1 } from "./triggers"
 import { ConfigWebSearchV1 } from "./web-search"
 import { ConfigBrowserV1 } from "./browser"
+import { ConfigBackgroundShellV1 } from "./background-shell"
 
 export type Layout = ConfigLayoutV1.Layout
 
@@ -80,6 +81,9 @@ export const Info = Schema.Struct({
   }),
   browser: Schema.optional(ConfigBrowserV1.Info).annotate({
     description: "Browser automation through Playwright MCP (off by default)",
+  }),
+  background_shell: Schema.optional(ConfigBackgroundShellV1.Info).annotate({
+    description: "Background shell commands with the monitor, job_list and job_stop tools (off by default)",
   }),
   webhooks: Schema.optional(Schema.Array(ConfigWebhookV1.Info)).annotate({
     description: "Outgoing notifications for turn, permission, and question events (off by default)",

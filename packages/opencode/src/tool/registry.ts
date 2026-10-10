@@ -20,6 +20,7 @@ import { MemoryRecallTool } from "./memory-recall"
 import { MemorySaveTool } from "./memory-save"
 import { TaskParallelTool } from "./task-parallel"
 import { parallelSubagents } from "./subagents"
+import { JobListTool, JobStopTool, MonitorTool, backgroundShell } from "./background-shell"
 import { SessionSearchTool } from "./session-search"
 import { SkillSaveTool } from "./skill-save"
 import { DelegateTool } from "./delegate"
@@ -136,6 +137,9 @@ const layer = Layer.effect(
     const codeSearchTool = yield* CodeSearchTool
     const codeGraphTool = yield* CodeGraphTool
     const delegateTool = yield* DelegateTool
+    const monitorTool = yield* MonitorTool
+    const jobListTool = yield* JobListTool
+    const jobStopTool = yield* JobStopTool
     const agent = yield* Agent.Service
     const codeMode = flags.experimentalCodeMode ? yield* Effect.promise(() => import("./code-mode")) : undefined
     const codeModeTool = codeMode ? yield* codeMode.CodeModeTool : undefined
@@ -233,6 +237,7 @@ const layer = Layer.effect(
         const indexingEnabled = (indexingParsed.success && indexingParsed.data.enabled) ?? false
         const codeGraphEnabled = cfg.code_graph?.enabled ?? false
         const learnEnabled = LearnedSkills.settings(cfg.skills?.learn).enabled
+        const backgroundShellEnabled = backgroundShell(flags, cfg)
         const delegateConfig = cfg.delegate
         const delegateEnabled = Boolean(
           delegateConfig?.enabled &&
@@ -263,6 +268,9 @@ const layer = Layer.effect(
           ...(codeGraphEnabled ? { codeGraph: Tool.init(codeGraphTool) } : {}),
           ...(learnEnabled ? { skillSave: Tool.init(skillSaveTool) } : {}),
           ...(delegateEnabled ? { delegate: Tool.init(delegateTool) } : {}),
+          ...(backgroundShellEnabled
+            ? { monitor: Tool.init(monitorTool), jobList: Tool.init(jobListTool), jobStop: Tool.init(jobStopTool) }
+            : {}),
           question: Tool.init(question),
           lsp: Tool.init(lsptool),
           plan: Tool.init(plan),
@@ -294,6 +302,7 @@ const layer = Layer.effect(
             ...(tool.codeGraph ? [tool.codeGraph] : []),
             ...(tool.skillSave ? [tool.skillSave] : []),
             ...(tool.delegate ? [tool.delegate] : []),
+            ...(tool.monitor && tool.jobList && tool.jobStop ? [tool.monitor, tool.jobList, tool.jobStop] : []),
             ...(tool.execute ? [tool.execute] : []),
             ...(flags.experimentalLspTool || (cfg.lsp_tool === true && Boolean(cfg.lsp)) ? [tool.lsp] : []),
             ...(flags.experimentalPlanMode && flags.client === "cli" ? [tool.plan] : []),

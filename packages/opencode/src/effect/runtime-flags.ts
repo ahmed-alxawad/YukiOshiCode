@@ -37,6 +37,7 @@ export class Service extends ConfigService.Service<Service>()("@yukioshi/Runtime
     enabled: bool("YUKIOSHI_ENABLE_PARALLEL"),
     legacy: bool("YUKIOSHI_EXPERIMENTAL_PARALLEL"),
   }).pipe(Config.map((flags) => flags.enabled || flags.legacy)),
+  backgroundShell: bool("YUKIOSHI_BACKGROUND_SHELL"),
   enableExperimentalModels: bool("YUKIOSHI_ENABLE_EXPERIMENTAL_MODELS"),
   enableQuestionTool: bool("YUKIOSHI_ENABLE_QUESTION_TOOL"),
   experimentalReferences: enabledByExperimental("YUKIOSHI_EXPERIMENTAL_REFERENCES"),

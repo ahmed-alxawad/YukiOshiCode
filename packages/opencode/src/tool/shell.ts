@@ -1,4 +1,4 @@
-import { Effect, Stream } from "effect"
+import { Effect, Schema, Stream } from "effect"
 import os from "os"
 import { createWriteStream } from "node:fs"
 import * as Tool from "./tool"
@@ -23,6 +23,9 @@ import { ChildProcess } from "effect/unstable/process"
 import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner"
 import { ShellPrompt, type Parameters } from "./shell/prompt"
 import { BashArity } from "@/permission/arity"
+import { Redact } from "@yukioshi/core/redact"
+import { BackgroundShell } from "@/background/shell"
+import { auditJob, backgroundShell } from "./background-shell"
 
 export { Parameters } from "./shell/prompt"
 
@@ -262,7 +265,12 @@ const parse = Effect.fn("ShellTool.parse")(function* (command: string, ps: boole
   return tree
 })
 
-const ask = Effect.fn("ShellTool.ask")(function* (ctx: Tool.Context, scan: Scan, input: { command: string }) {
+const ask = Effect.fn("ShellTool.ask")(function* (
+  ctx: Tool.Context,
+  scan: Scan,
+  input: { command: string },
+  background = false,
+) {
   if (scan.dirs.size > 0) {
     const directories = Array.from(scan.dirs)
     const globs = directories.map((dir) => {
@@ -277,6 +285,7 @@ const ask = Effect.fn("ShellTool.ask")(function* (ctx: Tool.Context, scan: Scan,
         command: input.command,
         directories,
         patterns: globs,
+        ...(background ? { background: true } : {}),
       },
     })
   }
@@ -288,6 +297,7 @@ const ask = Effect.fn("ShellTool.ask")(function* (ctx: Tool.Context, scan: Scan,
     always: Array.from(scan.always),
     metadata: {
       command: input.command,
+      ...(background ? { background: true } : {}),
     },
   })
 })
@@ -604,6 +614,64 @@ export const ShellTool = Tool.define(
       }
     })
 
+    /**
+     * Starts the command as a background job: same permission check (done by the caller), sandbox, environment and
+     * secret masking as `run`. Returns at once with the job id.
+     */
+    const startBackground = Effect.fn("ShellTool.startBackground")(function* (
+      input: { shell: string; command: string; cwd: string; env: NodeJS.ProcessEnv },
+      ctx: Tool.Context,
+      instance: InstanceContext,
+    ) {
+      const cfg = yield* config.get()
+      const settings = cfg.background_shell
+      const sandbox = cfg.sandbox?.enabled ? sandboxProfile(instance, cfg.sandbox) : undefined
+      const services = yield* Effect.context<never>()
+      const launch = (io: BackgroundShell.Io) => {
+        const spawnEffect = Effect.gen(function* () {
+          const command = sandbox
+            ? yield* Sandbox.prepareCommand(cmd(input.shell, input.command, input.cwd, input.env), input.cwd, input.env)
+            : cmd(input.shell, input.command, input.cwd, input.env)
+          const handle = yield* spawner.spawn(command)
+          io.setPid(Number(handle.pid))
+          yield* Effect.forkScoped(Stream.runForEach(Stream.decodeText(handle.all), (chunk) => Effect.sync(() => io.push(chunk))))
+          const abort = Effect.callback<void>((resume) => {
+            if (io.signal.aborted) return resume(Effect.void)
+            const handler = () => resume(Effect.void)
+            io.signal.addEventListener("abort", handler, { once: true })
+            return Effect.sync(() => io.signal.removeEventListener("abort", handler))
+          })
+          const exit = yield* Effect.raceAll([
+            handle.exitCode.pipe(Effect.map((code) => ({ aborted: false, code: code as number | null }))),
+            abort.pipe(Effect.map(() => ({ aborted: true, code: null as number | null }))),
+          ])
+          if (exit.aborted) yield* handle.kill({ forceKillAfter: "3 seconds" }).pipe(Effect.orDie)
+          return exit.code
+        })
+        return Effect.runPromiseWith(services)(
+          Effect.scoped(sandbox ? Sandbox.run(sandbox, spawnEffect) : spawnEffect).pipe(Effect.orDie),
+        )
+      }
+      const job = BackgroundShell.start({
+        sessionID: ctx.sessionID,
+        command: input.command,
+        cwd: input.cwd,
+        launch,
+        maxJobs: settings?.max_jobs,
+        maxMs: settings?.max_minutes === undefined ? undefined : settings.max_minutes * 60_000,
+        bufferChars: settings?.buffer_kb === undefined ? undefined : settings.buffer_kb * 1024,
+        waitMs: settings?.run_wait_seconds === undefined ? undefined : settings.run_wait_seconds * 1000,
+        mask: (text) => Redact.mask(text, cfg.redact),
+        onEnd: (ended) => void auditJob("exit", ended, cfg),
+      })
+      yield* Effect.promise(() => auditJob("start", job, cfg))
+      return {
+        title: input.command,
+        metadata: { background: true, job: job.id, output: "", exit: null, truncated: false },
+        output: `Started background job ${job.id}. Use monitor with this id to read its output or wait for a line or the exit, job_list to see jobs and job_stop to stop it.`,
+      }
+    })
+
     return () =>
       Effect.gen(function* () {
         const cfg = yield* config.get()
@@ -611,12 +679,25 @@ export const ShellTool = Tool.define(
         const name = Shell.name(shell)
         const limits = yield* trunc.limits()
         const prompt = ShellPrompt.render(name, process.platform, limits, defaultTimeoutMs)
+        const bg = backgroundShell(flags, cfg)
+        const parameters = bg
+          ? Schema.Struct({
+              ...prompt.parameters.fields,
+              background: Schema.optional(Schema.Boolean).annotate({
+                description:
+                  "Start the command in the background and return a job id at once. Use it for servers, watchers and long builds. Read its output with monitor, list jobs with job_list, stop it with job_stop. Jobs are killed when the session ends.",
+              }),
+            })
+          : prompt.parameters
         yield* Effect.logInfo("shell tool using shell", { shell })
 
         return {
-          description: prompt.description,
-          parameters: prompt.parameters,
-          execute: (params: Parameters, ctx: Tool.Context) =>
+          description: bg
+            ? prompt.description +
+              "\n\nBackground jobs: set background to true to start a long-running command without waiting for it. It returns a job id. Follow it with monitor, job_list and job_stop. The timeout does not apply to a background job."
+            : prompt.description,
+          parameters: parameters as typeof prompt.parameters,
+          execute: (params: Parameters & { background?: boolean }, ctx: Tool.Context) =>
             Effect.gen(function* () {
               const instanceCtx = yield* InstanceState.context
               const cwd = params.workdir
@@ -627,6 +708,9 @@ export const ShellTool = Tool.define(
               }
               const timeout = params.timeout ?? defaultTimeoutMs
               const ps = Shell.ps(shell)
+              if (params.background === true && !bg) {
+                throw new Error('Background shell is off. Turn it on with "background_shell": { "enabled": true } in the config.')
+              }
               yield* Effect.scoped(
                 Effect.gen(function* () {
                   const tree = yield* Effect.acquireRelease(parse(params.command, ps), (tree) =>
@@ -634,9 +718,17 @@ export const ShellTool = Tool.define(
                   )
                   const scan = yield* collect(tree.rootNode, cwd, ps, shell, instanceCtx)
                   if (!containsPath(cwd, instanceCtx)) scan.dirs.add(cwd)
-                  yield* ask(ctx, scan, params)
+                  yield* ask(ctx, scan, params, params.background === true)
                 }),
               )
+
+              if (params.background === true) {
+                return yield* startBackground(
+                  { shell, command: params.command, cwd, env: yield* shellEnv(ctx, cwd) },
+                  ctx,
+                  instanceCtx,
+                )
+              }
 
               return yield* run(
                 {
