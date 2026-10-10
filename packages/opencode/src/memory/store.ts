@@ -110,6 +110,8 @@ export namespace MemoryStore {
 
   export function forget(input: { root: string; query: string }): Promise<{ removed: number; files: MemorySchema.Source[] }> {
     const needle = input.query.trim().toLowerCase()
+    // An empty query would match (and delete) every entry.
+    if (!needle) return Promise.resolve({ removed: 0, files: [] })
     return queue(input.root, async () => {
       await ensureDir(input.root)
       let removed = 0
