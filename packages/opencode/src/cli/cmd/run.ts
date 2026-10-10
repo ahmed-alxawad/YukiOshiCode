@@ -1040,6 +1040,9 @@ export const RunCommand = effectCmd({
           // Sets the exit code for how the run ended (EXIT in ./run/outcome) and says why on stderr, or in a
           // final "result" event with --format json. With --output-schema the answer goes to stdout as JSON.
           async function outcome(info: { structured?: unknown } | undefined) {
+            // Background shell jobs: wait for them up to background_shell.run_wait_seconds, then kill what is left.
+            const { BackgroundShell } = await import("@/background/shell")
+            const jobs = await BackgroundShell.settle()
             let code: number = process.exitCode ? EXIT.error : EXIT.ok
             let reason = code ? "error" : "done"
             let note: string | undefined
@@ -1075,9 +1078,15 @@ export const RunCommand = effectCmd({
             process.exitCode = code
             const answer = code === EXIT.ok && outputSchema ? info?.structured : undefined
             const result = { exit_code: code, reason, turns, cost: spent() }
+            if (jobs && args.format !== "json") {
+              process.stderr.write(
+                `Background jobs: ${jobs.started} started, ${jobs.finished} finished, ${jobs.killed} killed.` + EOL,
+              )
+            }
             if (
               emit("result", {
                 ...result,
+                ...(jobs ? { background_jobs: jobs } : {}),
                 ...(note ? { message: note } : {}),
                 ...(answer !== undefined ? { structured: answer } : {}),
               })

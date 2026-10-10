@@ -14,6 +14,7 @@ import { FormatError, FormatUnexpectedError, debugRequested } from "./cli/error"
 import { ServeCommand } from "./cli/cmd/serve"
 import { DebugCommand } from "./cli/cmd/debug"
 import { StatsCommand } from "./cli/cmd/stats"
+import { TasksCommand } from "./cli/cmd/tasks"
 import { McpCommand } from "./cli/cmd/mcp"
 import { ExportCommand } from "./cli/cmd/export"
 import { ImportCommand } from "./cli/cmd/import"
@@ -95,6 +96,7 @@ const cli = yargs(args)
   .command(ServeCommand)
   .command(ModelsCommand)
   .command(StatsCommand)
+  .command(TasksCommand)
   .command(ExportCommand)
   .command(ImportCommand)
   .command(PrCommand)
