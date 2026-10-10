@@ -3,6 +3,7 @@ import { SessionV1 } from "@yukioshi/core/v1/session"
 import { MessageV2 } from "../../session/message-v2"
 import { SessionID } from "../../session/schema"
 import { effectCmd, fail } from "../effect-cmd"
+import { requireTerminal } from "../needs-terminal"
 import { UI } from "../ui"
 import * as prompts from "@clack/prompts"
 import { EOL } from "os"
@@ -234,9 +235,10 @@ export const ExportCommand = effectCmd({
   builder: (yargs) =>
     yargs
       .positional("sessionID", {
-        describe: "session id to export",
+        describe: "session id to export (leave out to pick one in a terminal; `yukioshi session list` shows the ids)",
         type: "string",
       })
+      .example("$0 export ses_abc123 > session.json", "save a session to a file you can import later")
       .option("sanitize", {
         describe: "redact sensitive transcript and file data",
         type: "boolean",
@@ -252,15 +254,19 @@ const run = Effect.fn("Cli.export.body")(function* (args: { sessionID?: string; 
   process.stderr.write(`Exporting session: ${sessionID ?? "latest"}\n`)
 
   if (!sessionID) {
+    yield* requireTerminal(
+      "Choosing a session",
+      "Pass the session ID instead: `yukioshi export <sessionID>` (see `yukioshi session list`).",
+    )
     UI.empty()
     prompts.intro("Export session", { output: process.stderr })
 
     const sessions = yield* svc.list()
 
     if (sessions.length === 0) {
-      prompts.log.error("No sessions found", { output: process.stderr })
-      prompts.outro("Done", { output: process.stderr })
-      return
+      return yield* fail(
+        'No sessions to export in this project. Run `yukioshi run "<message>"` to create one, or `yukioshi session list` to check.',
+      )
     }
 
     sessions.sort((a, b) => b.time.updated - a.time.updated)
@@ -297,5 +303,9 @@ const run = Effect.fn("Cli.export.body")(function* (args: { sessionID?: string; 
 
     process.stdout.write(JSON.stringify(exportOutput(exportData, args.sanitize), null, 2))
     process.stdout.write(EOL)
-  }).pipe(Effect.catchCause(() => fail(`Session not found: ${sessionID!}`)))
+  }).pipe(
+    Effect.catchCause(() =>
+      fail(`Session not found: ${sessionID!}. Run \`yukioshi session list\` to see the available session IDs.`),
+    ),
+  )
 })

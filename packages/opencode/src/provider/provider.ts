@@ -1274,7 +1274,7 @@ export class InitError extends Schema.TaggedErrorClass<InitError>()("ProviderIni
 
 export class NoProvidersError extends Schema.TaggedErrorClass<NoProvidersError>()("ProviderNoProvidersError", {}) {
   override get message() {
-    return "No providers are available"
+    return "No providers are available. Run `yukioshi providers login` to add one, or set a provider API key in your environment."
   }
 
   static isInstance(input: unknown): input is NoProvidersError {
@@ -1299,7 +1299,7 @@ export class NoModelSelectedError extends Schema.TaggedErrorClass<NoModelSelecte
   {},
 ) {
   override get message() {
-    return 'No model selected. Choose one with /models, pass --model provider/model, or set "model" in yukioshi.json'
+    return 'No model selected. Choose one with /models, pass --model provider/model, or set "model" in yukioshi.json. If you have not added a provider yet, run `yukioshi providers login` first.'
   }
 
   static isInstance(input: unknown): input is NoModelSelectedError {
@@ -2068,9 +2068,7 @@ const layer = Layer.effect(
               .map((m) => m.target)
         // An unknown provider in an untrusted project is often one the project defines itself.
         const ctx = yield* InstanceState.context
-        const trusted = yield* Effect.promise(() =>
-          ProjectTrust.isTrusted(ProjectTrust.root(ctx)).catch(() => true),
-        )
+        const trusted = yield* Effect.promise(() => ProjectTrust.isTrusted(ProjectTrust.root(ctx)).catch(() => true))
         return yield* new ModelNotFoundError({ providerID, modelID, suggestions, untrustedProject: !trusted })
       }
 

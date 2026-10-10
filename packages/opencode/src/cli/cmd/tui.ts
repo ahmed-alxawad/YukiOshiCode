@@ -234,7 +234,10 @@ export const TuiThreadCommand = cmd({
       try {
         process.chdir(next)
       } catch {
-        UI.error("Failed to change directory to " + next)
+        UI.error(
+          `Directory not found: ${next}. If you meant a command, run \`yukioshi --help\` to list them; otherwise pass the path of an existing project folder.`,
+        )
+        process.exitCode = 1
         return
       }
       const cwd = Filesystem.resolve(process.cwd())

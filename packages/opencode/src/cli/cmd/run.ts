@@ -24,7 +24,7 @@ import { CliError, effectCmd, fail } from "../effect-cmd"
 import { EOL } from "os"
 import { Filesystem } from "@/util/filesystem"
 import { createOpencodeClient, type OpencodeClient, type ToolPart } from "@yukioshi/sdk/v2"
-import { FormatError, FormatUnknownError } from "../error"
+import { FormatError, FormatUnknownError, explainSessionError } from "../error"
 import { INTERACTIVE_INPUT_ERROR, resolveInteractiveStdin } from "./run/runtime.stdin"
 import { readPipedInput } from "../stdin"
 import { executePostTurnVerification } from "./run/verification"
@@ -146,6 +146,10 @@ export const RunCommand = effectCmd({
         array: true,
         default: [],
       })
+      .example('$0 run "explain what this repo does"', "send one message and print the answer")
+      .example('$0 run -c "now add tests"', "continue the last session")
+      .example('$0 run -m anthropic/claude-sonnet-4-5 "fix the failing test"', "pick the model for this run")
+      .example('git diff | $0 run "review this change"', "pipe text in as extra context")
       .option("command", {
         describe: "the command to run, use message for args",
         type: "string",
@@ -416,7 +420,9 @@ export const RunCommand = effectCmd({
           process.chdir(path.isAbsolute(args.dir) ? args.dir : path.join(root, args.dir))
           return process.cwd()
         } catch {
-          UI.error("Failed to change directory to " + args.dir)
+          UI.error(
+            `Directory not found: ${args.dir}. Pass an existing directory to --dir, or omit --dir to use the current one.`,
+          )
           process.exit(1)
         }
       })()
@@ -438,7 +444,9 @@ export const RunCommand = effectCmd({
         for (const filePath of list) {
           const resolvedPath = path.resolve(args.attach ? root : (directory ?? root), filePath)
           if (!(await Filesystem.exists(resolvedPath))) {
-            UI.error(`File not found: ${filePath}`)
+            UI.error(
+              `File not found: ${filePath}. Check the path passed to --file (relative paths start from the project directory).`,
+            )
             process.exit(1)
           }
 
@@ -495,7 +503,9 @@ export const RunCommand = effectCmd({
       const initialInput = resolveRunInput(rawMessage, piped)
 
       if (message.trim().length === 0 && !args.command && !interactive) {
-        UI.error("You must provide a message or a command")
+        UI.error(
+          'No message to run. Pass one, for example `yukioshi run "explain this repo"`, pipe text on stdin, or use --command. Run `yukioshi` with no arguments to open the interactive UI.',
+        )
         process.exit(1)
       }
 
@@ -541,7 +551,9 @@ export const RunCommand = effectCmd({
             .catch(() => undefined)
 
           if (!current?.data) {
-            UI.error("Session not found")
+            UI.error(
+              `Session not found: ${args.session}. Run \`yukioshi session list\` to see the available session IDs.`,
+            )
             process.exit(1)
           }
 
@@ -663,7 +675,9 @@ export const RunCommand = effectCmd({
           return next
         }
 
-        UI.error("Failed to resolve remote directory")
+        UI.error(
+          `Could not read the project directory from ${args.attach}. Check that the server is running (yukioshi serve) and the URL, --username and --password are right.`,
+        )
         process.exit(1)
       }
 
@@ -673,7 +687,9 @@ export const RunCommand = effectCmd({
         reason = "Agent not found",
       ): never {
         const names = agents.filter((a) => a.mode !== "subagent" && !a.hidden).map((a) => a.name)
-        UI.error(`${reason}: "${name}".${names.length ? ` Available: ${names.join(", ")}` : ""}`)
+        UI.error(
+          `${reason}: "${name}".${names.length ? ` Available: ${names.join(", ")}.` : ""} Run \`yukioshi agent list\` to see all agents, or pass one of these to --agent.`,
+        )
         process.exit(1)
       }
 
@@ -739,7 +755,11 @@ export const RunCommand = effectCmd({
       async function execute(sdk: OpencodeClient) {
         const sess = await session(sdk)
         if (!sess?.id) {
-          UI.error("Session not found")
+          UI.error(
+            args.continue
+              ? 'There is no earlier session in this project to continue. Start a new one with `yukioshi run "<message>"`, or pick an ID from `yukioshi session list`.'
+              : "Could not open or create a session. Run again with --print-logs to see why.",
+          )
           process.exit(1)
         }
         const sessionID = sess.id
@@ -936,7 +956,7 @@ export const RunCommand = effectCmd({
                 budgetBlocked = true
               let err = String(props.error.name)
               if ("data" in props.error && props.error.data && "message" in props.error.data) {
-                err = String(props.error.data.message)
+                err = explainSessionError(props.error as never, String(props.error.data.message))
               }
               error = error ? error + EOL + err : err
               if (emit("error", { error: props.error })) continue

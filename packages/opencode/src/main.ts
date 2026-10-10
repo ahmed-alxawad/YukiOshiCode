@@ -10,7 +10,7 @@ import { UninstallCommand } from "./cli/cmd/uninstall"
 import { ModelsCommand } from "./cli/cmd/models"
 import { UI } from "./cli/ui"
 import { InstallationVersion } from "@yukioshi/core/installation/version"
-import { FormatError } from "./cli/error"
+import { FormatError, FormatUnexpectedError, debugRequested } from "./cli/error"
 import { ServeCommand } from "./cli/cmd/serve"
 import { DebugCommand } from "./cli/cmd/debug"
 import { StatsCommand } from "./cli/cmd/stats"
@@ -24,7 +24,6 @@ import { EOL } from "os"
 import { PrCommand } from "./cli/cmd/pr"
 import { SessionCommand } from "./cli/cmd/session"
 import { DbCommand } from "./cli/cmd/db"
-import { errorMessage } from "./util/error"
 import { PluginCommand } from "./cli/cmd/plug"
 import { Heap } from "./cli/heap"
 import { TrustCommand } from "./cli/cmd/trust"
@@ -117,6 +116,18 @@ const cli = yargs(args)
       cli.showHelp(show)
     }
     if (err) throw err
+    // Say what was wrong after the help text, so the reason is the last thing on screen.
+    if (msg)
+      process.stderr.write(
+        EOL +
+          UI.Style.TEXT_DANGER_BOLD +
+          "Error: " +
+          UI.Style.TEXT_NORMAL +
+          msg +
+          EOL +
+          "Run the command again with --help to see its usage." +
+          EOL,
+      )
     process.exit(1)
   })
   .strict()
@@ -147,8 +158,7 @@ try {
   const formatted = FormatError(e)
   if (formatted) UI.error(formatted)
   if (formatted === undefined) {
-    UI.error("Unexpected error" + EOL)
-    process.stderr.write(errorMessage(e) + EOL)
+    UI.error(FormatUnexpectedError(e, debugRequested(args)))
   }
   process.exitCode = 1
 } finally {

@@ -1,6 +1,6 @@
 import { Redact } from "@yukioshi/core/redact"
 import { NamedError } from "@yukioshi/core/util/error"
-import { errorFormat } from "@/util/error"
+import { errorFormat, errorMessage } from "@/util/error"
 import { isRecord } from "@/util/record"
 
 type ConfigIssue = { message: string; path: string[] }
@@ -85,7 +85,16 @@ function formatError(input: unknown): string | undefined {
   const configJson = configData(input, "ConfigJsonError")
   if (configJson) {
     const message = stringField(configJson, "message")
-    return `Config file at ${stringField(configJson, "path")} is not valid JSON(C)` + (message ? `: ${message}` : "")
+    const errors = message?.includes("--- Errors ---")
+      ? message
+          .slice(message.indexOf("--- Errors ---") + "--- Errors ---".length)
+          .split("--- End ---")[0]!
+          .trim()
+      : message
+    return [
+      `Config file at ${stringField(configJson, "path")} is not valid JSON(C)` + (errors ? `: ${errors}` : ""),
+      "Fix the syntax in that file (a missing comma, quote or bracket is the usual cause), then run the command again.",
+    ].join("\n")
   }
 
   // ConfigDirectoryTypoError: { dir: string, path: string, suggestion: string }
@@ -120,7 +129,12 @@ function formatError(input: unknown): string | undefined {
     const issues = configIssues(configInvalid)
     return [
       `Configuration is invalid${path && path !== "config" ? ` at ${path}` : ""}` + (message ? `: ${message}` : ""),
-      ...issues.map((issue) => "↳ " + issue.message + " " + issue.path.join(".")),
+      ...issues.map((issue) => "↳ " + (issue.path.length ? issue.path.join(".") + ": " : "") + issue.message),
+      ...(issues.length || message
+        ? [
+            `Fix the key${issues.length === 1 ? "" : "s"} above${path && path !== "config" ? ` in ${path}` : ""}, then run the command again. \`yukioshi debug config\` shows the settings YukiOshi reads.`,
+          ]
+        : []),
     ].join("\n")
   }
 
@@ -139,4 +153,54 @@ function formatError(input: unknown): string | undefined {
 
 export function FormatUnknownError(input: unknown): string {
   return errorFormat(input)
+}
+
+/** True when the user asked for debug output on the command line (`--log-level DEBUG`). */
+export function debugRequested(argv: readonly string[]) {
+  return argv.some((arg, i) => arg === "--log-level=DEBUG" || (arg === "--log-level" && argv[i + 1] === "DEBUG"))
+}
+
+/**
+ * Text for an error nothing recognised. It names what failed in plain words and says how to get more detail,
+ * and carries a stack only when debugging was asked for. Secrets are masked.
+ */
+export function FormatUnexpectedError(input: unknown, debug = false): string {
+  const detail = Redact.scrubKnown(Redact.mask(debug ? errorFormat(input) : errorMessage(input)))
+  return [
+    "YukiOshi hit an error it has no specific advice for:",
+    detail,
+    debug
+      ? ""
+      : "Run the same command again with `--print-logs --log-level DEBUG` for details. If it keeps happening, report it with that output (API keys are masked in it).",
+  ]
+    .filter((line) => line !== "")
+    .join("\n")
+}
+
+type SessionErrorLike = { name?: string; data?: { statusCode?: number; metadata?: Record<string, string> } }
+
+function hostOf(url: string | undefined) {
+  if (!url) return undefined
+  try {
+    return new URL(url).host
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Adds the next step to a model-call failure that `yukioshi run` reports: which host could not be reached or
+ * refused the key, and what to do. Only the host is named, never the full URL, and the key is never printed.
+ */
+export function explainSessionError(error: SessionErrorLike, message: string): string {
+  const status = error.data?.statusCode
+  const host = hostOf(error.data?.metadata?.url)
+  const text = Redact.scrubKnown(Redact.mask(message))
+  if (error.name === "ProviderAuthError" || status === 401 || status === 403)
+    return `${text}\nThe provider${host ? ` at ${host}` : ""} did not accept your credentials. Run \`yukioshi providers login\` to add or replace the key, or fix the API key in your environment or yukioshi.json.`
+  if (status === 429)
+    return `${text}\nThe provider${host ? ` at ${host}` : ""} is rate limiting you or your quota is used up. Wait a moment and run again, or pick another model with --model provider/model.`
+  if (status === undefined && host)
+    return `${text}\nYukiOshi could not reach ${host}. Check your internet connection, VPN or proxy, and the provider's baseURL. Your API key is only sent to that host and is never written to the logs.`
+  return text
 }

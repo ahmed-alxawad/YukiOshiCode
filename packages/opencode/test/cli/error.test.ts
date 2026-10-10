@@ -15,7 +15,8 @@ describe("cli.error", () => {
       {
         tag: "ConfigJsonError",
         data: { path: "/tmp/opencode.jsonc", message: "Unexpected token" },
-        expected: "Config file at /tmp/opencode.jsonc is not valid JSON(C): Unexpected token",
+        expected:
+          "Config file at /tmp/opencode.jsonc is not valid JSON(C): Unexpected token\nFix the syntax in that file (a missing comma, quote or bracket is the usual cause), then run the command again.",
       },
       {
         tag: "ConfigDirectoryTypoError",
@@ -35,7 +36,8 @@ describe("cli.error", () => {
           message: "schema mismatch",
           issues: [{ message: "Expected string", path: ["provider", "id"] }],
         },
-        expected: "Configuration is invalid at /tmp/opencode.jsonc: schema mismatch\n↳ Expected string provider.id",
+        expected:
+          "Configuration is invalid at /tmp/opencode.jsonc: schema mismatch\n↳ provider.id: Expected string\nFix the key above in /tmp/opencode.jsonc, then run the command again. `yukioshi debug config` shows the settings YukiOshi reads.",
       },
     ]
 
@@ -51,8 +53,14 @@ describe("cli.error", () => {
       message:
         '\n--- JSONC Input ---\n{\n  "model": \n}\n--- Errors ---\nValueExpected at line 3, column 1\n   Line 3: }\n          ^\n--- End ---',
     }
-    const expected = `Config file at ${data.path} is not valid JSON(C): ${data.message}`
+    const expected = [
+      `Config file at ${data.path} is not valid JSON(C): ValueExpected at line 3, column 1`,
+      "   Line 3: }",
+      "          ^",
+      "Fix the syntax in that file (a missing comma, quote or bracket is the usual cause), then run the command again.",
+    ].join("\n")
 
+    // The echoed file contents are dropped: they can hold keys, and the diagnostics already point at the line.
     expect(FormatError({ name: "ConfigJsonError", data })).toBe(expected)
     expect(FormatError({ _tag: "ConfigJsonError", ...data })).toBe(expected)
   })

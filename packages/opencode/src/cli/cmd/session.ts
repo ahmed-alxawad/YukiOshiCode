@@ -62,7 +62,11 @@ export const SessionDeleteCommand = effectCmd({
     const sessionID = SessionID.make(args.sessionID)
     yield* svc
       .remove(sessionID)
-      .pipe(Effect.catchIf(NotFoundError.isInstance, () => fail(`Session not found: ${args.sessionID}`)))
+      .pipe(
+        Effect.catchIf(NotFoundError.isInstance, () =>
+          fail(`Session not found: ${args.sessionID}. Run \`yukioshi session list\` to see the available session IDs.`),
+        ),
+      )
     UI.println(UI.Style.TEXT_SUCCESS_BOLD + `Session ${args.sessionID} deleted` + UI.Style.TEXT_NORMAL)
   }),
 })

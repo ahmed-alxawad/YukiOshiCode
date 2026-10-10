@@ -48,7 +48,10 @@ export const ModelsCommand = effectCmd({
 
     if (args.provider) {
       const providerID = ProviderV2.ID.make(args.provider)
-      if (!providers[providerID]) return yield* fail(`Provider not found: ${args.provider}`)
+      if (!providers[providerID])
+        return yield* fail(
+          `Provider not found: ${args.provider}. Run \`yukioshi models\` without an argument to list every model with its provider, or \`yukioshi providers login\` to add one.`,
+        )
       print(providerID, args.verbose)
       return
     }

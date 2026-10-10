@@ -2,6 +2,7 @@ import type { Argv } from "yargs"
 import { Auth } from "../../auth"
 import { cmd } from "./cmd"
 import { CliError, effectCmd, fail } from "../effect-cmd"
+import { requireTerminal } from "../needs-terminal"
 import { UI } from "../ui"
 import * as Prompt from "../effect/prompt"
 import { ModelsDev } from "@yukioshi/core/models-dev"
@@ -347,7 +348,8 @@ export const ProvidersLoginCommand = effectCmd({
   builder: (yargs: Argv) =>
     yargs
       .positional("url", {
-        describe: "yukioshi auth provider",
+        describe:
+          "address of a server that publishes its sign-in command; leave empty to pick a provider from the list",
         type: "string",
       })
       .option("provider", {
@@ -365,6 +367,10 @@ export const ProvidersLoginCommand = effectCmd({
 
     UI.empty()
     yield* Prompt.intro("Add credential")
+    if (args.url && !/^https?:\/\//i.test(args.url))
+      return yield* fail(
+        `"${args.url}" is not a server address. To log in to a provider by name, use \`yukioshi providers login --provider ${args.url}\` (\`yukioshi models\` lists the provider IDs).`,
+      )
     if (args.url) {
       const url = args.url.replace(/\/+$/, "")
       const wellknown = (yield* cliTry(`Failed to load auth provider metadata from ${url}: `, () =>
@@ -429,10 +435,16 @@ export const ProvidersLoginCommand = effectCmd({
       const byName = options.find((x) => x.label.toLowerCase() === input.toLowerCase())
       const match = byID ?? byName
       if (!match) {
-        return yield* fail(`Unknown provider "${input}"`)
+        return yield* fail(
+          `Unknown provider "${input}". Run \`yukioshi models\` to see the provider IDs, then try again with one of them.`,
+        )
       }
       provider = match.value
     } else {
+      yield* requireTerminal(
+        "Choosing a provider",
+        "Name the provider instead, for example `yukioshi providers login --provider anthropic`, or run this in a terminal.",
+      )
       provider = yield* promptValue(
         yield* Prompt.autocomplete({
           message: "Select provider",
@@ -497,7 +509,9 @@ export const ProvidersLogoutCommand = effectCmd({
     const credentials: Array<[string, Auth.Info]> = Object.entries(yield* Effect.orDie(authSvc.all()))
     yield* Prompt.intro("Remove credential")
     if (credentials.length === 0) {
-      yield* Prompt.log.error("No credentials found")
+      yield* Prompt.log.error(
+        "No saved credentials, so there is nothing to remove. Run `yukioshi providers login` to add one.",
+      )
       return
     }
     const database = yield* modelsDev.get()
@@ -505,6 +519,11 @@ export const ProvidersLogoutCommand = effectCmd({
       label: (database[key]?.name || key) + UI.Style.TEXT_DIM + " (" + value.type + ")",
       value: key,
     }))
+    if (!args.provider)
+      yield* requireTerminal(
+        "Choosing a credential to remove",
+        "Name the provider instead, for example `yukioshi providers logout anthropic` (see `yukioshi providers list`), or run this in a terminal.",
+      )
     const provider = args.provider
       ? options.find(
           (option) =>
@@ -518,7 +537,10 @@ export const ProvidersLogoutCommand = effectCmd({
             options,
           }),
         )
-    if (!provider) return yield* fail(`Unknown configured provider "${args.provider}"`)
+    if (!provider)
+      return yield* fail(
+        `No saved credential for "${args.provider}". Run \`yukioshi providers list\` to see which providers you are logged in to.`,
+      )
     yield* Effect.orDie(authSvc.remove(provider))
     yield* Prompt.outro("Logout successful")
   }),
