@@ -19,14 +19,31 @@ ln -s "$(pwd)/packages/opencode/bin/yukioshi-dev" ~/.local/bin/yukioshi
 
 ## Layout
 
-| Folder              | Contains                                               |
-| ------------------- | ------------------------------------------------------ |
-| `packages/opencode` | the `yukioshi` command, agent loop, tools, providers, built-in skills |
-| `packages/tui`      | the terminal UI, themes, and logo                      |
-| `packages/core`     | configuration, permissions, guards, provider catalog, storage |
-| `packages/plugin`   | the plugin and auth-hook API                           |
-| `packages/sdk`      | the client SDK                                         |
-| `packages/sandbox`  | the OS-level sandbox                                   |
+| Folder                           | Contains                                                               |
+| -------------------------------- | ---------------------------------------------------------------------- |
+| `packages/cli`                   | CLI framework, entrypoint commands, and terminal runner services       |
+| `packages/client`                | generated API client and Effect-based HTTP contract schemas            |
+| `packages/code-graph`            | repository structure signals and dependency graph analysis             |
+| `packages/codemode`              | confined code execution and interpreter runtime over schema tools      |
+| `packages/core`                  | configuration, permissions, security guards, provider catalog, storage |
+| `packages/effect-drizzle-sqlite` | Drizzle ORM SQLite database integration for Effect-TS                  |
+| `packages/effect-sqlite-node`    | Node.js SQLite driver layer and database service for Effect-TS         |
+| `packages/http-recorder`         | cassette recorder and replayer for deterministic HTTP testing          |
+| `packages/httpapi-codegen`       | OpenAPI codegen generator for Effect HTTP API endpoints                |
+| `packages/indexing`              | semantic code search, chunking, and local symbol indexing engine       |
+| `packages/llm`                   | low-level LLM provider adapters, protocols, streaming, and tool runners|
+| `packages/opencode`              | the `yukioshi` command, agent loop, tools, providers, built-in skills  |
+| `packages/plugin`                | plugin runtime, manifest parsing, and auth hook interfaces             |
+| `packages/protocol`              | HTTP API contract definitions, route endpoints, and shared middleware  |
+| `packages/sandbox`               | OS-level sandbox profiles, bubblewrap runner, and path confinement     |
+| `packages/schema`                | shared domain types, Effect schemas, and system event definitions      |
+| `packages/script`                | repository automation scripts, build helpers, and maintenance tooling  |
+| `packages/sdk`                   | TypeScript client SDK for external programmatic integrations           |
+| `packages/sdk-next`              | next-generation typed client SDK and tool definitions                  |
+| `packages/server`                | HTTP API server, route handlers, authentication, and PTY environment   |
+| `packages/session-ui`            | session viewing components, diff rendering, and web message UI         |
+| `packages/tui`                   | terminal user interface, themes, keyboard interaction, and logo        |
+| `packages/ui`                    | shared design system, frontend components, fonts, and provider icons   |
 
 ## Checks
 
