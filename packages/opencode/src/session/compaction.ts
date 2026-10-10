@@ -10,6 +10,7 @@ import { SessionProcessor } from "./processor"
 import { Agent } from "@/agent/agent"
 import { Plugin } from "@/plugin"
 import { Config } from "@/config/config"
+import { Redact } from "@yukioshi/core/redact"
 import { NotFoundError } from "@/storage/storage"
 
 import { Effect, Layer, Context } from "effect"
@@ -82,6 +83,11 @@ const serialize = (message: SessionV1.WithParts) => {
       return [call]
     })
     .join("\n")
+}
+
+/** The history sent to the model to be summarized: masked like any other prompt, since it leaves the machine. */
+export function serializeConversation(messages: SessionV1.WithParts[], redact?: ConfigV1.Info["redact"]) {
+  return Redact.mask(messages.map(serialize).filter(Boolean).join("\n\n"), redact)
 }
 
 function summaryText(message: SessionV1.WithParts) {
@@ -377,7 +383,7 @@ const layer = Layer.effect(
       )
       const msgs = structuredClone(selected.head)
       yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
-      const conversation = msgs.map(serialize).filter(Boolean).join("\n\n")
+      const conversation = serializeConversation(msgs, cfg.redact)
       const nextPrompt =
         compacting.prompt ??
         [
