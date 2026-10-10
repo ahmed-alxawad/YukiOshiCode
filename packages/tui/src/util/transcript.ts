@@ -1,4 +1,5 @@
 import type { AssistantMessage, Part, Provider, UserMessage } from "@yukioshi/sdk/v2"
+import { Redact } from "@yukioshi/core/redact"
 import { Locale } from "./locale"
 import * as Model from "./model"
 
@@ -42,7 +43,8 @@ export function formatTranscript(
     transcript += `---\n\n`
   }
 
-  return transcript
+  // The transcript is copied to the clipboard or written to a file: keep credentials out of it.
+  return Redact.scrubKnown(Redact.mask(transcript))
 }
 
 export function formatMessage(
@@ -63,7 +65,7 @@ export function formatMessage(
     result += formatPart(part, options)
   }
 
-  return result
+  return Redact.scrubKnown(Redact.mask(result))
 }
 
 export function formatAssistantHeader(
