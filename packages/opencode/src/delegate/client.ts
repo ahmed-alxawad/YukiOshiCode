@@ -122,6 +122,9 @@ export function sanitizeDelegateEnv(baseEnv: NodeJS.ProcessEnv): Record<string, 
     // agent signs in with its own login; if it needs another variable, the agent's `env` setting passes it.
     if (SECRET_NAME.test(upper) || upper === "SSH_AUTH_SOCK" || upper === "DATABASE_URL") continue
     if (upper.startsWith("YUKIOSHI_")) continue
+    // Whatever the variable is called, a value that is itself a credential (a token, a key, a URL with a
+    // password) is not handed to the delegated agent.
+    if (Redact.mask(value) !== value) continue
     if (
       upper.startsWith("ANTHROPIC_") ||
       upper.startsWith("OPENAI_") ||
