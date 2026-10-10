@@ -60,10 +60,21 @@ describe("file HttpApi", () => {
       request(FilePaths.findText, tmp.path, { pattern: "needle" }),
       request(FilePaths.findSymbol, tmp.path, { query: "hello" }),
     ])
+
+    expect(text.status).toBe(200)
+    expect(await text.json()).toContainEqual(expect.objectContaining({ line_number: 1 }))
+
+    expect(symbols.status).toBe(200)
+    expect(await symbols.json()).toEqual([])
+
     const files = await Effect.runPromise(
       pollWithTimeout(
         Effect.promise(async () => {
           const response = await request(FilePaths.findFile, tmp.path, { query: "hello", type: "file" })
+          if (response.status !== 200) {
+            const bodyText = await response.text()
+            throw new Error(`findFile returned HTTP ${response.status}: ${bodyText}`)
+          }
           const body = (await response.json()) as string[]
           return Array.isArray(body) && body.some((item) => item.includes("hello.txt"))
             ? { response, body }
@@ -74,13 +85,7 @@ describe("file HttpApi", () => {
       ),
     )
 
-    expect(text.status).toBe(200)
-    expect(await text.json()).toContainEqual(expect.objectContaining({ line_number: 1 }))
-
     expect(files.response.status).toBe(200)
     expect(files.body.some((item) => item.includes("hello.txt"))).toBe(true)
-
-    expect(symbols.status).toBe(200)
-    expect(await symbols.json()).toEqual([])
   }, 60_000)
 })

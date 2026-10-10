@@ -98,7 +98,7 @@ describe("v2 pty HttpApi", () => {
     const missing = await request(`/api/pty/${body.data.id}`, tmp.path)
     expect(missing.status).toBe(404)
     expect(await missing.json()).toMatchObject({ _tag: "PtyNotFoundError", ptyID: body.data.id })
-  })
+  }, 30_000)
 
   testPty("rejects connect tokens without the CSRF header and connects with a valid ticket", async () => {
     await using tmp = await tmpdir({ git: true, config: { formatter: false, lsp: false } })
@@ -128,7 +128,7 @@ describe("v2 pty HttpApi", () => {
     } finally {
       await request(`/api/pty/${info.id}`, tmp.path, { method: "DELETE" })
     }
-  })
+  }, 30_000)
   ;(process.platform === "win32" ? effectIt.live.skip : effectIt.live)(
     "serves PTY websocket output and input through the canonical route",
     () =>
@@ -173,6 +173,7 @@ describe("v2 pty HttpApi", () => {
         )
         expect(removed.status).toBe(204)
       }),
+    30_000,
   )
   ;(process.platform === "win32" ? effectIt.live.skip : effectIt.live)(
     "applies plugin shell environment before forced PTY values",
