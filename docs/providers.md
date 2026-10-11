@@ -227,3 +227,6 @@ in `yukioshi.json`. Give it an ID and list its models:
 For a server that needs a key, add `"options": { "apiKey": "{env:MY_SERVER_KEY}" }`.
 The ID is the first half of the model name, so the model above is
 `local/qwen2.5-coder`.
+
+The runtime catalog is fetched from [models.dev's API](https://models.dev/api.json), while each release also carries
+a bundled offline snapshot.

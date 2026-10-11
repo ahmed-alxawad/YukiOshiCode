@@ -158,10 +158,11 @@ const layer = Layer.effect(
       ),
     )
 
-    const source = Flag.YUKIOSHI_MODELS_URL || "https://models.opencode.ai"
+    const source = Flag.YUKIOSHI_MODELS_URL || "https://models.dev/api.json"
+    const apiUrl = source.endsWith("/api.json") ? source : `${source}/api.json`
     const filepath = path.join(
       Global.Path.cache,
-      source === "https://models.opencode.ai" ? "models.json" : `models-${Hash.fast(source)}.json`,
+      source === "https://models.dev/api.json" ? "models.json" : `models-${Hash.fast(source)}.json`,
     )
     const ttl = Duration.minutes(5)
     const lockKey = `models-dev:${filepath}`
@@ -185,7 +186,7 @@ const layer = Layer.effect(
     })
 
     const fetchApi = Effect.fn("ModelsDev.fetchApi")(function* () {
-      return yield* HttpClientRequest.get(`${source}/api.json`).pipe(
+      return yield* HttpClientRequest.get(apiUrl).pipe(
         HttpClientRequest.setHeader("User-Agent", USER_AGENT),
         http.execute,
         Effect.flatMap((res) => res.text),
