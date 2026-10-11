@@ -1,6 +1,8 @@
 // A small marker file per running turn, so another process (`yukioshi tasks --all`) can tell which sessions of this
 // machine are busy right now. Session status itself lives in memory of the process that runs the turn.
 // The marker holds the owner pid: a marker whose process is gone is stale and is ignored (and cleaned up on read).
+// Each process has its own file per session, so one process finishing cannot remove or replace the marker of another
+// process that is still running a turn on the same session.
 import fs from "fs"
 import path from "path"
 import { Global } from "@yukioshi/core/global"
@@ -15,8 +17,8 @@ export function dir() {
   return path.join(Global.Path.state, "running-turns")
 }
 
-function file(sessionID: string) {
-  return path.join(dir(), `${sessionID.replace(/[^A-Za-z0-9_-]/g, "_")}.json`)
+function file(sessionID: string, pid = process.pid) {
+  return path.join(dir(), `${sessionID.replace(/[^A-Za-z0-9_-]/g, "_")}.${pid}.json`)
 }
 
 function alive(pid: number) {
@@ -46,8 +48,11 @@ export function mark(sessionID: string) {
 export function clear(sessionID: string) {
   started.delete(sessionID)
   try {
-    const current = JSON.parse(fs.readFileSync(file(sessionID), "utf8")) as Marker
-    if (current.pid === process.pid) fs.rmSync(file(sessionID), { force: true })
+    fs.rmSync(file(sessionID), { force: true })
+    // A marker written by an older version, before there was one file per process.
+    const legacy = path.join(dir(), `${sessionID.replace(/[^A-Za-z0-9_-]/g, "_")}.json`)
+    const current = JSON.parse(fs.readFileSync(legacy, "utf8")) as Marker
+    if (current.pid === process.pid) fs.rmSync(legacy, { force: true })
   } catch {}
 }
 
