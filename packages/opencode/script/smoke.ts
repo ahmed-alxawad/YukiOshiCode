@@ -301,6 +301,80 @@ await check("serve accepts a trigger with the right token only", async () => {
   }
 })
 
+function findArchive(binPath: string): string | undefined {
+  const binDir = path.dirname(binPath)
+  const targetDir = path.dirname(binDir)
+  const distDir = path.dirname(targetDir)
+  const targetName = path.basename(targetDir)
+
+  const candidates = [
+    path.join(distDir, `${targetName}.tar.gz`),
+    path.join(distDir, `${targetName}.zip`),
+    path.join(targetDir, `${targetName}.tar.gz`),
+    path.join(targetDir, `${targetName}.zip`),
+    path.join(binDir, `${targetName}.tar.gz`),
+    path.join(binDir, `${targetName}.zip`),
+  ]
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate
+  }
+
+  if (fs.existsSync(distDir)) {
+    const entries = fs.readdirSync(distDir)
+    const match = entries.find(
+      (entry) =>
+        (entry.endsWith(".tar.gz") || entry.endsWith(".zip")) &&
+        (entry.startsWith(targetName) || entry.startsWith("yukioshi")),
+    )
+    if (match) return path.join(distDir, match)
+  }
+
+  if (fs.existsSync(binDir)) {
+    const entries = fs.readdirSync(binDir)
+    const match = entries.find((entry) => entry.endsWith(".tar.gz") || entry.endsWith(".zip"))
+    if (match) return path.join(binDir, match)
+  }
+
+  return undefined
+}
+
+await check("release archive contains THIRD-PARTY-NOTICES.md and LICENSE", async () => {
+  const archive = findArchive(bin!)
+  expect(archive && fs.existsSync(archive), `release archive for ${bin} not found: ${archive}`)
+
+  let stdout = ""
+  if (archive!.endsWith(".tar.gz")) {
+    const proc = Bun.spawnSync(["tar", "-tzf", archive!], { stdout: "pipe", stderr: "pipe" })
+    expect(proc.exitCode === 0, `tar -tzf failed for ${archive}: ${proc.stderr.toString()}`)
+    stdout = proc.stdout.toString()
+  } else if (archive!.endsWith(".zip")) {
+    const proc = Bun.spawnSync(["unzip", "-l", archive!], { stdout: "pipe", stderr: "pipe" })
+    expect(proc.exitCode === 0, `unzip -l failed for ${archive}: ${proc.stderr.toString()}`)
+    stdout = proc.stdout.toString()
+  } else {
+    throw new Error(`unsupported archive format: ${archive}`)
+  }
+
+  const lines = stdout.split(/\r?\n/)
+  const files = lines
+    .map((line) => {
+      const trimmed = line.trim()
+      if (archive!.endsWith(".zip")) {
+        const parts = trimmed.split(/\s+/)
+        return parts.slice(3).join(" ").replace(/^\.\//, "")
+      }
+      return trimmed.replace(/^\.\//, "")
+    })
+    .filter(Boolean)
+
+  const hasLicense = files.some((f) => f === "LICENSE" || f.endsWith("/LICENSE"))
+  const hasNotices = files.some((f) => f === "THIRD-PARTY-NOTICES.md" || f.endsWith("/THIRD-PARTY-NOTICES.md"))
+
+  expect(hasLicense, `release archive ${archive} missing LICENSE`)
+  expect(hasNotices, `release archive ${archive} missing THIRD-PARTY-NOTICES.md`)
+})
+
 server.stop(true)
 try {
   fs.rmSync(root, { recursive: true, force: true })
