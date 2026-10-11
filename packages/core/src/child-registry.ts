@@ -21,8 +21,8 @@ function reports() {
   try {
     channel = new BroadcastChannel("yukioshi.child-registry")
     if (isMainThread) {
-      channel.onmessage = (event: MessageEvent<Report>) => {
-        const report = event.data
+      channel.onmessage = (event: { data: unknown }) => {
+        const report = event.data as Report | undefined
         if (report?.op === "track" && typeof report.pid === "number") live.set(report.pid, { pid: report.pid, group: report.group })
         else if (report?.op === "untrack" && typeof report.pid === "number") live.delete(report.pid)
       }
