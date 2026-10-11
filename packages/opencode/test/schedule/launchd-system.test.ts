@@ -71,7 +71,8 @@ describe("macOS launchd scheduled jobs", () => {
     })
   })
 
-  it("constructs user-scoped launchctl arguments and rejects unsafe ids and paths", () => {
+  // LaunchAgents are a macOS feature and build POSIX paths; Windows path semantics do not apply.
+  it.skipIf(process.platform === "win32")("constructs user-scoped launchctl arguments and rejects unsafe ids and paths", () => {
     const plistPath = launchdPlistPath("/Users/alice", "daily_1")
     expect(plistPath).toBe("/Users/alice/Library/LaunchAgents/com.yukioshi.schedule.daily_1.plist")
     expect(launchctlBootstrapArgs(501, plistPath)).toEqual(["bootstrap", "gui/501", plistPath])
@@ -118,7 +119,7 @@ describe("macOS launchd scheduled jobs", () => {
     }
   })
 
-  it("falls back to cron after fake launchctl failure and clears legacy cron after launchd succeeds", async () => {
+  it.skipIf(process.platform === "win32")("falls back to cron after fake launchctl failure and clears legacy cron after launchd succeeds", async () => {
     const home = await fs.mkdtemp(path.join(os.tmpdir(), "yk-launchd-fallback-test-"))
     const crontab = path.join(home, "crontab")
     const plistPath = launchdPlistPath(home, job.id)

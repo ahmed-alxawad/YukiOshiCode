@@ -33,6 +33,8 @@ describe("security: hard blocks and permission patterns", () => {
     "rm -rf / and wrapped variants, and force pushes to a protected branch never run, even with every permission granted",
     ({ home, llm, opencode }) =>
       Effect.gen(function* () {
+        // The recording rm/git stubs are POSIX `sh` scripts first on PATH; Windows resolves commands differently.
+        if (process.platform === "win32") return
         const proj = makeProject(home)
         const stub = stubs(home)
         const env = plainEnv(home, llm.url)

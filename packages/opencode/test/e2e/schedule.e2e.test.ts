@@ -14,6 +14,8 @@ describe("scheduled tasks e2e", () => {
       Effect.gen(function* () {
         if (process.platform === "win32") return // crontab file verification is Unix-only; Windows uses schtasks
         const fakeCrontab = path.join(home, "fake-crontab")
+        // macOS installs LaunchAgents and only falls back to cron, so the crontab file is not written there.
+        const cronBacked = process.platform !== "darwin"
         const env = {
           ...runtimeEnv(home),
           YUKIOSHI_CONFIG_CONTENT: config(llm.url),
@@ -48,11 +50,13 @@ describe("scheduled tasks e2e", () => {
         const jobId = match![1]
 
         // Verify crontab file was created and contains the marked block
-        const crontabContent = yield* Effect.promise(() => fs.readFile(fakeCrontab, "utf8"))
-        expect(crontabContent).toContain("# BEGIN yukioshi schedule")
-        expect(crontabContent).toContain(`*/5 * * * *`)
-        expect(crontabContent).toContain(`schedule run ${jobId}`)
-        expect(crontabContent).toContain("# END yukioshi schedule")
+        if (cronBacked) {
+          const crontabContent = yield* Effect.promise(() => fs.readFile(fakeCrontab, "utf8"))
+          expect(crontabContent).toContain("# BEGIN yukioshi schedule")
+          expect(crontabContent).toContain(`*/5 * * * *`)
+          expect(crontabContent).toContain(`schedule run ${jobId}`)
+          expect(crontabContent).toContain("# END yukioshi schedule")
+        }
 
         // 2. List scheduled jobs
         const listResult = yield* opencode.spawn(["schedule", "list"], { env })

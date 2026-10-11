@@ -126,7 +126,8 @@ describe("security: schedule", () => {
     "job ids and cron expressions with newlines or spaces cannot inject a crontab line",
     ({ home, llm, opencode }) =>
       Effect.gen(function* () {
-        if (!posix) return
+        // macOS schedules through LaunchAgents and only falls back to cron, so the fake crontab is never used there.
+        if (!posix || process.platform === "darwin") return
         const proj = makeProject(home)
         const pwn = path.join(home, "pwned")
         const cron = fakeCrontab(home)

@@ -1,10 +1,11 @@
 import { afterAll, describe, expect, test } from "bun:test"
 import { execFileSync } from "node:child_process"
 import { readFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, openSync, ftruncateSync, closeSync, rmSync, writeFileSync } from "node:fs"
+import os from "node:os"
 import path from "node:path"
 import { createCheckpoint, listCheckpoints, restoreCheckpoint } from "../src/checkpoint"
 
-const base = mkdtempSync(path.join(process.env.TMPDIR ?? "/var/tmp", "yk-cpcorner-"))
+const base = mkdtempSync(path.join(process.env.TMPDIR ?? os.tmpdir(), "yk-cpcorner-"))
 afterAll(() => rmSync(base, { recursive: true, force: true }), 60_000)
 
 // Isolated git environment: no user/system config, so the host's identity or hooks never leak in.

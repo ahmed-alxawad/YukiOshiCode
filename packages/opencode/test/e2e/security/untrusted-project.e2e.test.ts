@@ -17,6 +17,8 @@ describe("security: untrusted project config", () => {
     "hooks, shell, webhooks and local MCP in project config do nothing until the project is trusted",
     ({ home, llm, opencode }) =>
       Effect.gen(function* () {
+        // The trusted-shell probe and stub binaries are POSIX `sh` scripts on PATH; not portable to Windows.
+        if (process.platform === "win32") return
         const proj = makeProject(home)
         const marks = path.join(home, "marks")
         fs.mkdirSync(marks)
