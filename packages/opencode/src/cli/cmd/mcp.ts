@@ -1,4 +1,5 @@
 import { cmd } from "./cmd"
+import { fetchWithTimeout } from "@/util/fetch-timeout"
 import { ConfigV1 } from "@yukioshi/core/v1/config/config"
 import { effectCmd, fail } from "../effect-cmd"
 import { requireTerminal } from "../needs-terminal"
@@ -756,7 +757,7 @@ export const McpDebugCommand = effectCmd({
 
       // Test basic HTTP connectivity first
       try {
-        const response = await fetch(serverConfig.url, {
+        const response = await fetchWithTimeout(serverConfig.url, {
           method: "POST",
           headers: {
             ...serverConfig.headers,

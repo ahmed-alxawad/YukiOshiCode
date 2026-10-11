@@ -31,7 +31,7 @@ export async function fetchWithTimeout(
     }, timeoutMs)
   }
   const failure = () =>
-    new Error(`No response from ${hostOf(input)} for ${Math.round(timeoutMs / 1000)}s; the download was stopped`)
+    new Error(`No response from ${hostOf(input)} for ${Math.round(timeoutMs / 1000)}s; the request was stopped`)
 
   arm()
   let response: Response

@@ -1,4 +1,5 @@
 import type { Session as SDKSession, Message, Part } from "@yukioshi/sdk/v2"
+import { fetchWithTimeout } from "@/util/fetch-timeout"
 import { SessionV1 } from "@yukioshi/core/v1/session"
 import { Session } from "@/session/session"
 import { MessageV2 } from "../../session/message-v2"
@@ -215,7 +216,7 @@ const runImport = Effect.fn("Cli.import.body")(function* (file: string | ExportD
 
     const tryFetch = (url: string) =>
       Effect.tryPromise({
-        try: () => fetch(url, { headers }),
+        try: () => fetchWithTimeout(url, { headers }),
         catch: (e) =>
           new CliError({
             message: `Could not reach ${new URL(url).host} to fetch the shared session (${e instanceof Error ? e.message : String(e)}). Check your network connection and the URL, then try again.`,

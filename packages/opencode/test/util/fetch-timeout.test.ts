@@ -56,8 +56,8 @@ describe("fetchWithTimeout", () => {
     }
   })
 
-  test("every download in the language server installer goes through it", async () => {
-    const source = await fs.readFile(path.join(import.meta.dir, "../../src/lsp/server.ts"), "utf8")
+  test.each(["lsp/server.ts", "cli/cmd/mcp.ts", "cli/cmd/import.ts"])("%s makes no unbounded fetch call", async (file) => {
+    const source = await fs.readFile(path.join(import.meta.dir, "../../src", file), "utf8")
     expect(source.match(/(?<![\w.])fetch\(/g) ?? []).toEqual([])
   })
 })
