@@ -1,0 +1,186 @@
+name: GitHub Action test
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - action.yml
+      - install
+      - .github/workflows/action-test.yml
+      - docs/github-action.md
+      - docs/features.md
+  pull_request:
+    paths:
+      - action.yml
+      - install
+      - .github/workflows/action-test.yml
+      - docs/github-action.md
+      - docs/features.md
+
+permissions:
+  contents: read
+
+concurrency:
+  group: action-test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  action:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      HOME: ${{ runner.temp }}/yukioshi-action-home
+      XDG_CONFIG_HOME: ${{ runner.temp }}/yukioshi-action-config
+      XDG_DATA_HOME: ${{ runner.temp }}/yukioshi-action-data
+      XDG_STATE_HOME: ${{ runner.temp }}/yukioshi-action-state
+      XDG_CACHE_HOME: ${{ runner.temp }}/yukioshi-action-cache
+      FAKE_MODEL_TOKEN: local-test-token
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start local fake model
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -u - <<'PY' > "$RUNNER_TEMP/fake-model.log" 2>&1 &
+          import json
+          import os
+          from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+          from pathlib import Path
+
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  if self.path == "/health":
+                      self.send_response(200)
+                      self.end_headers()
+                      return
+                  self.send_response(404)
+                  self.end_headers()
+
+              def do_POST(self):
+                  self.rfile.read(int(self.headers.get("Content-Length", "0")))
+                  self.send_response(200)
+                  self.send_header("Content-Type", "text/event-stream")
+                  self.send_header("Cache-Control", "no-cache")
+                  self.end_headers()
+                  chunks = [
+                      {"id": "chatcmpl-local", "object": "chat.completion.chunk", "created": 0,
+                       "model": "test-model", "choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}]},
+                      {"id": "chatcmpl-local", "object": "chat.completion.chunk", "created": 0,
+                       "model": "test-model", "choices": [{"index": 0, "delta": {"content": "local fake model result"}, "finish_reason": None}]},
+                      {"id": "chatcmpl-local", "object": "chat.completion.chunk", "created": 0,
+                       "model": "test-model", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]},
+                  ]
+                  for chunk in chunks:
+                      self.wfile.write(f"data: {json.dumps(chunk)}\n\n".encode())
+                  self.wfile.write(b"data: [DONE]\n\n")
+
+              def log_message(self, format, *args):
+                  pass
+
+          server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+          Path(os.environ["RUNNER_TEMP"]).joinpath("fake-model.port").write_text(str(server.server_address[1]))
+          server.serve_forever()
+          PY
+
+          for _ in {1..50}; do
+            if [[ -s "$RUNNER_TEMP/fake-model.port" ]] && curl --fail --silent "http://127.0.0.1:$(<"$RUNNER_TEMP/fake-model.port")/health" > /dev/null; then
+              exit 0
+            fi
+            sleep 0.1
+          done
+          echo "The local fake model did not start." >&2
+          exit 1
+
+      - name: Configure local fake provider
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$XDG_CONFIG_HOME/yukioshi"
+          python3 - "$XDG_CONFIG_HOME/yukioshi/yukioshi.json" "$(<"$RUNNER_TEMP/fake-model.port")" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          target = Path(sys.argv[1])
+          port = sys.argv[2]
+          config = {
+              "formatter": False,
+              "lsp": False,
+              "provider": {
+                  "test": {
+                      "name": "Test",
+                      "id": "test",
+                      "env": [],
+                      "npm": "@ai-sdk/openai-compatible",
+                      "models": {
+                          "test-model": {
+                              "id": "test-model",
+                              "name": "Test Model",
+                              "attachment": False,
+                              "reasoning": False,
+                              "temperature": False,
+                              "tool_call": True,
+                              "release_date": "2025-01-01",
+                              "limit": {"context": 100000, "output": 10000},
+                              "cost": {"input": 0, "output": 0},
+                              "options": {},
+                          }
+                      },
+                      "options": {
+                          "apiKey": "{env:FAKE_MODEL_TOKEN}",
+                          "baseURL": f"http://127.0.0.1:{port}/v1",
+                      },
+                  }
+              },
+          }
+          target.write_text(json.dumps(config))
+          PY
+
+      - name: Run the action against the local fake model
+        id: success
+        uses: ./
+        with:
+          prompt: Return the local fake model result.
+          model: test/test-model
+          mode: plan
+          max_turns: "2"
+          max_cost: "1"
+          provider_api_key_env: FAKE_MODEL_TOKEN
+          version: "0.3.6"
+          comment: "false"
+
+      - name: Validate successful result and exit code
+        shell: bash
+        env:
+          RESULT: ${{ steps.success.outputs.result }}
+          EXIT_CODE: ${{ steps.success.outputs.exit_code }}
+        run: |
+          set -euo pipefail
+          test "$EXIT_CODE" = "0"
+          grep -Fqx "local fake model result" <<< "$RESULT"
+
+      - name: Exercise a nonzero YukiOshi exit
+        id: failure
+        continue-on-error: true
+        uses: ./
+        with:
+          prompt: This model does not exist.
+          model: test/missing-model
+          mode: plan
+          max_turns: "2"
+          max_cost: "1"
+          provider_api_key_env: FAKE_MODEL_TOKEN
+          version: "0.3.6"
+          comment: "false"
+
+      - name: Validate propagated nonzero exit code
+        if: always()
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.failure.outcome }}
+          EXIT_CODE: ${{ steps.failure.outputs.exit_code }}
+        run: |
+          set -euo pipefail
+          test "$OUTCOME" = "failure"
+          test "$EXIT_CODE" = "1"

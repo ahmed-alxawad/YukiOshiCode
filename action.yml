@@ -1,0 +1,203 @@
+name: YukiOshi Code
+description: Run a bounded, headless YukiOshi review or plan from a GitHub Actions workflow.
+
+inputs:
+  prompt:
+    description: Prompt to send to YukiOshi.
+    required: true
+  model:
+    description: Model identifier, for example anthropic/claude-sonnet-5-5.
+    required: true
+  mode:
+    description: Permission mode for the run. Only review and plan are supported.
+    required: false
+    default: review
+  max_turns:
+    description: Maximum model turns for this run.
+    required: false
+    default: "30"
+  max_cost:
+    description: Maximum USD cost for this run.
+    required: false
+    default: "2"
+  provider_api_key_env:
+    description: Name of the already-set environment variable containing the provider API key.
+    required: true
+  output_schema:
+    description: Optional inline JSON Schema or path passed to yukioshi run --output-schema.
+    required: false
+    default: ""
+  version:
+    description: YukiOshi release version to install, or latest.
+    required: false
+    default: latest
+  comment:
+    description: Post the result as a pull request comment when a GitHub token is supplied.
+    required: false
+    default: "false"
+  github_token:
+    description: Optional token used only for a pull request comment.
+    required: false
+    default: ""
+
+outputs:
+  result:
+    description: The stdout produced by yukioshi run.
+    value: ${{ steps.run.outputs.result }}
+  exit_code:
+    description: The exit code produced by yukioshi run.
+    value: ${{ steps.run.outputs.exit_code }}
+
+runs:
+  using: composite
+  steps:
+    - name: Validate YukiOshi action inputs
+      shell: bash
+      env:
+        INPUT_PROMPT: ${{ inputs.prompt }}
+        INPUT_MODEL: ${{ inputs.model }}
+        INPUT_MODE: ${{ inputs.mode }}
+        INPUT_COMMENT: ${{ inputs.comment }}
+        INPUT_PROVIDER_API_KEY_ENV: ${{ inputs.provider_api_key_env }}
+      run: |
+        set -euo pipefail
+
+        if [[ -z "$INPUT_PROMPT" || -z "$INPUT_MODEL" ]]; then
+          echo "prompt and model are required." >&2
+          exit 1
+        fi
+
+        case "$INPUT_MODE" in
+          review|plan) ;;
+          *)
+            echo "mode must be review or plan." >&2
+            exit 1
+            ;;
+        esac
+
+        case "$INPUT_COMMENT" in
+          true|false) ;;
+          *)
+            echo "comment must be true or false." >&2
+            exit 1
+            ;;
+        esac
+
+        if [[ ! "$INPUT_PROVIDER_API_KEY_ENV" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+          echo "provider_api_key_env must be an environment variable name." >&2
+          exit 1
+        fi
+
+        if [[ ! -v "$INPUT_PROVIDER_API_KEY_ENV" || -z "${!INPUT_PROVIDER_API_KEY_ENV}" ]]; then
+          echo "The environment variable named by provider_api_key_env is not set." >&2
+          exit 1
+        fi
+
+    - name: Install YukiOshi Code with checksum verification
+      shell: bash
+      env:
+        INPUT_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+
+        release_url="https://github.com/ahmed-alxawad/YukiOshiCode/releases"
+        install_args=(--no-modify-path)
+        if [[ -z "$INPUT_VERSION" || "$INPUT_VERSION" == "latest" ]]; then
+          checksum_url="$release_url/latest/download/SHA256SUMS"
+        else
+          version="${INPUT_VERSION#v}"
+          if [[ ! "$version" =~ ^[0-9A-Za-z][0-9A-Za-z._-]*$ ]]; then
+            echo "version must be latest or a release version." >&2
+            exit 1
+          fi
+          checksum_url="$release_url/download/v${version}/SHA256SUMS"
+          install_args+=(--version "$version")
+        fi
+
+        checksum_file="$(mktemp "${RUNNER_TEMP:-/tmp}/yukioshi-sha256sums.XXXXXX")"
+        trap 'rm -f "$checksum_file"' EXIT
+        curl --fail --location --silent --show-error "$checksum_url" --output "$checksum_file"
+        if [[ ! -s "$checksum_file" ]]; then
+          echo "Release checksum manifest is empty." >&2
+          exit 1
+        fi
+
+        YUKIOSHI_INSTALL_SHA256SUMS_URL="file://${checksum_file}" \
+          bash "$GITHUB_ACTION_PATH/install" "${install_args[@]}"
+
+    - name: Run YukiOshi Code
+      id: run
+      shell: bash
+      env:
+        INPUT_PROMPT: ${{ inputs.prompt }}
+        INPUT_MODEL: ${{ inputs.model }}
+        INPUT_MODE: ${{ inputs.mode }}
+        INPUT_MAX_TURNS: ${{ inputs.max_turns }}
+        INPUT_MAX_COST: ${{ inputs.max_cost }}
+        INPUT_OUTPUT_SCHEMA: ${{ inputs.output_schema }}
+        YUKIOSHI_DISABLE_AUTOUPDATE: "1"
+      run: |
+        set -euo pipefail
+
+        result_file="$(mktemp "${RUNNER_TEMP:-/tmp}/yukioshi-result.XXXXXX")"
+        trap 'rm -f "$result_file"' EXIT
+        command=(
+          "$HOME/.yukioshi/bin/yukioshi" run
+          --model "$INPUT_MODEL"
+          --mode "$INPUT_MODE"
+          --max-turns "$INPUT_MAX_TURNS"
+          --max-cost "$INPUT_MAX_COST"
+        )
+        if [[ -n "$INPUT_OUTPUT_SCHEMA" ]]; then
+          command+=(--output-schema "$INPUT_OUTPUT_SCHEMA")
+        fi
+        command+=("$INPUT_PROMPT")
+
+        set +e
+        "${command[@]}" < /dev/null > "$result_file"
+        exit_code=$?
+        set -e
+
+        delimiter="YUKIOSHI_RESULT_${RANDOM}_${RANDOM}_$$"
+        while grep -Fqx "$delimiter" "$result_file"; do
+          delimiter="${delimiter}_"
+        done
+        {
+          printf 'result<<%s\n' "$delimiter"
+          cat "$result_file"
+          printf '\n%s\n' "$delimiter"
+          printf 'exit_code=%s\n' "$exit_code"
+        } >> "$GITHUB_OUTPUT"
+
+        {
+          printf '## YukiOshi Code\n\n'
+          printf -- '- Model: `%s`\n' "$INPUT_MODEL"
+          printf -- '- Permission mode: `%s`\n' "$INPUT_MODE"
+          printf -- '- Exit code: `%s`\n\n' "$exit_code"
+          printf '### Result\n\n```text\n'
+          cat "$result_file"
+          printf '\n```\n'
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Comment on pull request
+      if: ${{ inputs.comment == 'true' && inputs.github_token != '' && github.event.pull_request.number != '' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        RESULT: ${{ steps.run.outputs.result }}
+      run: |
+        set -euo pipefail
+
+        result_file="$(mktemp "${RUNNER_TEMP:-/tmp}/yukioshi-comment.XXXXXX")"
+        trap 'rm -f "$result_file"' EXIT
+        printf '%s\n' "$RESULT" > "$result_file"
+        if ! gh pr comment "$PR_NUMBER" --body-file "$result_file"; then
+          echo "::warning::YukiOshi could not post the pull request comment."
+        fi
+
+    - name: Return YukiOshi exit code
+      shell: bash
+      env:
+        YUKIOSHI_EXIT_CODE: ${{ steps.run.outputs.exit_code }}
+      run: exit "$YUKIOSHI_EXIT_CODE"

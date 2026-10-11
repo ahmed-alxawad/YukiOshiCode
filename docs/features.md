@@ -647,3 +647,11 @@ minute intervals or `StartCalendarInterval` for calendar schedules. YukiOshi
 bootstraps the agent with `launchctl` and removes its legacy crontab block once
 that succeeds; if launchctl cannot load the agent, scheduling falls back to the
 existing crontab integration.
+
+## GitHub Action
+
+The repository also ships a first-party composite action for bounded,
+headless `review` and `plan` runs. It is not a hosted bot: your workflow runs
+it on its own runner with a provider secret that you supply. See the
+[GitHub Action](github-action.md) guide for setup, outputs, checksum-verified
+installation, and optional pull-request comments.
