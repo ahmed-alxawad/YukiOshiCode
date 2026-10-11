@@ -162,3 +162,37 @@ describe("Git trees", () => {
     }),
   )
 })
+
+describe("Git time limit", () => {
+  it.live("a git command that never gets an answer is stopped and the error names the command", () =>
+    Effect.gen(function* () {
+      const root = yield* Effect.acquireRelease(
+        Effect.promise(() => tmpdir()),
+        (dir) => Effect.promise(() => dir[Symbol.asyncDispose]()),
+      )
+      // A server that accepts the connection and never says anything.
+      const server = Bun.listen({ hostname: "127.0.0.1", port: 0, socket: { data() {}, open() {} } })
+      const previous = process.env.YUKIOSHI_GIT_TIMEOUT_MS
+      process.env.YUKIOSHI_GIT_TIMEOUT_MS = "1500"
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => {
+          server.stop(true)
+          if (previous === undefined) delete process.env.YUKIOSHI_GIT_TIMEOUT_MS
+          else process.env.YUKIOSHI_GIT_TIMEOUT_MS = previous
+        }),
+      )
+      const git = yield* Git.Service
+      const started = Date.now()
+      const exit = yield* git.repo
+        .clone({
+          remote: `git://127.0.0.1:${server.port}/never.git`,
+          directory: AbsolutePath.make(path.join(root.path, "checkout")),
+        })
+        .pipe(Effect.flip)
+      expect(exit.message).toContain("git")
+      expect(exit.message).toContain("Timed out after")
+      expect(Date.now() - started).toBeLessThan(30_000)
+    }),
+    60_000,
+  )
+})

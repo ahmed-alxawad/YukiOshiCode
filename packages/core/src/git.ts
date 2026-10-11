@@ -11,6 +11,10 @@ import { makeGlobalNode } from "./effect/app-node"
 import { File } from "./file"
 import { KeyedMutex } from "./effect/keyed-mutex"
 
+// Every git command gets a time limit so a stuck remote or a lock cannot hang the app. Override with
+// YUKIOSHI_GIT_TIMEOUT_MS.
+const gitTimeout = () => AppProcess.envTimeout("YUKIOSHI_GIT_TIMEOUT_MS", 120_000)
+
 export class Repository extends Schema.Class<Repository>("Git.Repository")({
   worktree: AbsolutePath,
   gitDirectory: AbsolutePath,
@@ -334,7 +338,7 @@ const layer = Layer.effect(
             env: options?.env,
             extendEnv: true,
           }),
-          { stdin: options?.stdin },
+          { stdin: options?.stdin, timeout: gitTimeout() },
         )
         .pipe(
           Effect.mapError(
@@ -499,7 +503,7 @@ const layer = Layer.effect(
             cwd: input.repository.worktree,
             extendEnv: true,
           }),
-          { stdin: input.paths.join("\0") + "\0" },
+          { stdin: input.paths.join("\0") + "\0", timeout: gitTimeout() },
         )
         .pipe(
           Effect.mapError(
@@ -798,6 +802,7 @@ const layer = Layer.effect(
             extendEnv: true,
             stdin: Stream.make(new TextEncoder().encode(input.changes)),
           }),
+          { timeout: gitTimeout() },
         )
         .pipe(
           Effect.mapError(
@@ -860,7 +865,7 @@ const layer = Layer.effect(
       cwd = repository.worktree,
     ) {
       const result = yield* proc
-        .run(ChildProcess.make("git", args, { cwd, extendEnv: true, stdin: "ignore" }))
+        .run(ChildProcess.make("git", args, { cwd, extendEnv: true, stdin: "ignore" }), { timeout: gitTimeout() })
         .pipe(
           Effect.mapError(
             (cause) => new WorktreeError({ operation, directory: worktreeDirectory, message: cause.message, cause }),
@@ -965,6 +970,7 @@ function execute(cwd: string, proc: AppProcess.Interface) {
           extendEnv: true,
           stdin: "ignore",
         }),
+        { timeout: gitTimeout() },
       )
       .pipe(
         Effect.map(

@@ -3,7 +3,7 @@ import fs from "fs/promises"
 import { realpathSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
-import { Effect, Exit, Fiber, Stream } from "effect"
+import { Duration, Effect, Exit, Fiber, Stream } from "effect"
 import { ChildProcess } from "effect/unstable/process"
 import { LayerNode } from "@yukioshi/core/effect/layer-node"
 import { AppProcess } from "@yukioshi/core/process"
@@ -153,6 +153,34 @@ describe("AppProcess", () => {
         const svc = yield* AppProcess.Service
         const result = yield* svc.run(cmd("-e", "process.stdout.write('hi')"))
         expect(result.command).toBe(`${NODE} -e process.stdout.write('hi')`)
+      }),
+    )
+
+    it.live(
+      "a timeout error names the command and the limit",
+      Effect.gen(function* () {
+        const svc = yield* AppProcess.Service
+        const error = yield* svc.run(cmd("-e", "setInterval(()=>{},60000)"), { timeout: "300 millis" }).pipe(Effect.flip)
+        expect(error.message).toContain("Command failed")
+        expect(error.message).toContain(NODE)
+        expect(error.message).toContain("Timed out after")
+      }),
+      5_000,
+    )
+
+    it.effect(
+      "envTimeout reads the variable on every call and ignores junk",
+      Effect.sync(() => {
+        const name = "YUKIOSHI_TEST_ENV_TIMEOUT_MS"
+        delete process.env[name]
+        expect(Duration.toMillis(AppProcess.envTimeout(name, 1234))).toBe(1234)
+        process.env[name] = "50"
+        expect(Duration.toMillis(AppProcess.envTimeout(name, 1234))).toBe(50)
+        for (const bad of ["abc", "0", "-5", ""]) {
+          process.env[name] = bad
+          expect(Duration.toMillis(AppProcess.envTimeout(name, 1234))).toBe(1234)
+        }
+        delete process.env[name]
       }),
     )
 

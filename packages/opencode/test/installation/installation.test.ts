@@ -11,6 +11,8 @@ import { CrossSpawnSpawner } from "@yukioshi/core/cross-spawn-spawner"
 import { testEffect } from "../lib/effect"
 
 const encoder = new TextEncoder()
+// Exit code a mocked command never reports: the process never finishes.
+const HANG = -999
 
 function mockHttpClient(handler: (request: HttpClientRequest.HttpClientRequest) => Response) {
   const client = HttpClient.make((request) => Effect.succeed(HttpClientResponse.fromWeb(request, handler(request))))
@@ -28,7 +30,7 @@ function mockSpawner(
     return Effect.succeed(
       ChildProcessSpawner.makeHandle({
         pid: ChildProcessSpawner.ProcessId(0),
-        exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(output.code)),
+        exitCode: output.code === HANG ? Effect.never : Effect.succeed(ChildProcessSpawner.ExitCode(output.code)),
         isRunning: Effect.succeed(false),
         kill: () => Effect.void,
         stdin: { [Symbol.for("effect/Sink/TypeId")]: Symbol.for("effect/Sink/TypeId") } as any,
@@ -311,6 +313,29 @@ describe("installation", () => {
       Effect.gen(function* () {
         yield* Installation.use.upgrade("curl", "9.9.9")
       }),
+    )
+
+    testEffect(
+      testLayer(
+        () => jsonResponse({}),
+        (cmd) => (cmd === "npm" ? { code: HANG } : ""),
+      ),
+    ).live("stops an upgrade command that never finishes once the time limit passes", () =>
+      Effect.gen(function* () {
+        const previous = process.env.YUKIOSHI_UPGRADE_TIMEOUT_MS
+        process.env.YUKIOSHI_UPGRADE_TIMEOUT_MS = "400"
+        yield* Effect.addFinalizer(() =>
+          Effect.sync(() => {
+            if (previous === undefined) delete process.env.YUKIOSHI_UPGRADE_TIMEOUT_MS
+            else process.env.YUKIOSHI_UPGRADE_TIMEOUT_MS = previous
+          }),
+        )
+        const started = Date.now()
+        const error = yield* Effect.flip(Installation.use.upgrade("npm", "9.9.9"))
+        expect(error).toBeInstanceOf(Installation.UpgradeFailedError)
+        expect(Date.now() - started).toBeLessThan(20_000)
+      }),
+      30_000,
     )
   })
 })

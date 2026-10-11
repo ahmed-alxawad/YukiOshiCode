@@ -88,6 +88,10 @@ export class Service extends Context.Service<Service, Interface>()("@yukioshi/In
 
 export const use = serviceUse(Service)
 
+// Install and upgrade commands get a generous time limit so a stuck download cannot hang the app.
+// Override with YUKIOSHI_UPGRADE_TIMEOUT_MS.
+const upgradeTimeout = () => AppProcess.envTimeout("YUKIOSHI_UPGRADE_TIMEOUT_MS", 300_000)
+
 const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Service> = Layer.effect(
   Service,
   Effect.gen(function* () {
@@ -104,6 +108,7 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
             env: opts?.env,
             extendEnv: true,
           }),
+          { timeout: upgradeTimeout() },
         )
         return result.stdout.toString("utf8")
       },
@@ -118,6 +123,7 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
             env: opts?.env,
             extendEnv: true,
           }),
+          { timeout: upgradeTimeout() },
         )
         return {
           code: result.exitCode,
@@ -166,6 +172,7 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
             env: { VERSION: target },
             extendEnv: true,
           }),
+          { timeout: upgradeTimeout() },
         )
         return {
           code: result.exitCode,

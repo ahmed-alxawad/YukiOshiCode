@@ -19,6 +19,16 @@ export class AppProcessError extends Schema.TaggedErrorClass<AppProcessError>()(
   }
 }
 
+/**
+ * A time limit in milliseconds read from an environment variable, so an operator can raise or lower it.
+ * Falls back to `fallbackMs` when the variable is unset or not a positive number. Read on every call.
+ */
+export const envTimeout = (name: string, fallbackMs: number): Duration.Duration => {
+  const raw = process.env[name]
+  const parsed = raw === undefined ? NaN : Number(raw)
+  return Duration.millis(Number.isFinite(parsed) && parsed > 0 ? parsed : fallbackMs)
+}
+
 export interface RunOptions {
   readonly combineOutput?: boolean
   readonly maxOutputBytes?: number
@@ -183,7 +193,15 @@ const layer = Layer.effect(
       const timed = options?.timeout
         ? Effect.timeoutOrElse(collect, {
             duration: options.timeout,
-            orElse: () => Effect.fail(new AppProcessError({ command: description, cause: new Error("Timed out") })),
+            orElse: () =>
+              Effect.fail(
+                new AppProcessError({
+                  command: description,
+                  cause: new Error(
+                    `Timed out after ${Math.round(Duration.toMillis(Duration.fromInputUnsafe(options.timeout!)) / 1000)}s and was stopped`,
+                  ),
+                }),
+              ),
           })
         : collect
       const aborted = options?.signal

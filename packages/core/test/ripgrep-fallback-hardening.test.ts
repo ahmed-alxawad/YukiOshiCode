@@ -1,4 +1,4 @@
-import { describe, expect } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import fs from "fs/promises"
 import path from "path"
 import { Effect, Layer } from "effect"
@@ -131,4 +131,47 @@ describe("Ripgrep built-in search hardening", () => {
       }),
     ),
   )
+})
+
+// A ripgrep that starts but never answers must not hang the search: it is stopped after the time limit and
+// the built-in search answers instead.
+describe("Ripgrep time limit", () => {
+  const hangingScript = (pidFile: string) => `#!/bin/sh\necho $$ > '${pidFile}'\nsleep 60\n`
+  const fakeBinary = (file: string) =>
+    Layer.succeed(RipgrepBinary.Service, RipgrepBinary.Service.of({ filepath: Effect.succeed(file) }))
+
+  test("a hung ripgrep is killed after the limit and the built-in search answers", async () => {
+    const tmp = await tmpdir()
+    const prev = process.env.YUKIOSHI_RIPGREP_TIMEOUT_MS
+    process.env.YUKIOSHI_RIPGREP_TIMEOUT_MS = "800"
+    try {
+      const pidFile = path.join(tmp.path, "pid")
+      const fake = path.join(tmp.path, "rg")
+      await fs.writeFile(fake, hangingScript(pidFile), { mode: 0o755 })
+      await fs.writeFile(path.join(tmp.path, "a.txt"), "needle\n")
+      const started = Date.now()
+      const matches = await Effect.runPromise(
+        Effect.gen(function* () {
+          return yield* (yield* Ripgrep.Service).grep({ cwd: tmp.path, pattern: "needle", limit: 10 })
+        }).pipe(Effect.provide(LayerNode.compile(Ripgrep.node, [[RipgrepBinary.node, fakeBinary(fake)]]))),
+      )
+      expect(matches.map((m) => String(m.entry.path))).toEqual(["a.txt"])
+      expect(Date.now() - started).toBeLessThan(20_000)
+      const pid = Number((await fs.readFile(pidFile, "utf8")).trim())
+      let alive = true
+      for (let i = 0; i < 50 && alive; i++) {
+        try {
+          process.kill(pid, 0)
+          await new Promise((r) => setTimeout(r, 100))
+        } catch {
+          alive = false
+        }
+      }
+      expect(alive).toBe(false)
+    } finally {
+      if (prev === undefined) delete process.env.YUKIOSHI_RIPGREP_TIMEOUT_MS
+      else process.env.YUKIOSHI_RIPGREP_TIMEOUT_MS = prev
+      await tmp[Symbol.asyncDispose]()
+    }
+  }, 60_000)
 })

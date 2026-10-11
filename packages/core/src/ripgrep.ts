@@ -4,7 +4,7 @@ import nodeFs from "node:fs/promises"
 import type { Dirent } from "node:fs"
 import path from "node:path"
 import ignore from "ignore"
-import { Cause, Context, Effect, Fiber, Layer, Schema, Stream } from "effect"
+import { Cause, Context, Duration, Effect, Fiber, Layer, Schema, Stream } from "effect"
 import { ChildProcess } from "effect/unstable/process"
 import { Entry, Match } from "@yukioshi/schema/filesystem"
 import { makeGlobalNode } from "./effect/app-node"
@@ -457,7 +457,21 @@ export const layer = Layer.effect(
           return { items: code === 1 ? [] : rows, truncated: false, partial: code === 2 }
         }),
       )
-      const abortable = input.signal ? program.pipe(Effect.raceFirst(waitForAbort(input.signal))) : program
+      // A ripgrep that stops answering is killed (closing the scope stops its process group) instead of
+      // waiting forever. Override with YUKIOSHI_RIPGREP_TIMEOUT_MS.
+      const limit = AppProcess.envTimeout("YUKIOSHI_RIPGREP_TIMEOUT_MS", 120_000)
+      const bounded = program.pipe(
+        Effect.timeoutOrElse({
+          duration: limit,
+          orElse: () =>
+            Effect.fail(
+              failure(
+                `ripgrep (rg ${input.args.slice(0, 3).join(" ")}) timed out after ${Math.round(Duration.toMillis(limit) / 1000)}s and was stopped`,
+              ),
+            ),
+        }),
+      )
+      const abortable = input.signal ? bounded.pipe(Effect.raceFirst(waitForAbort(input.signal))) : bounded
       return abortable.pipe(
         Effect.mapError((cause) =>
           cause instanceof Error || cause instanceof InvalidPatternError
