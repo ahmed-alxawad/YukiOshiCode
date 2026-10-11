@@ -253,18 +253,24 @@ for (const item of targets) {
   binaries[name] = Script.version
 }
 
+// Every build stages the licence files next to the binary; the release archives are made from that folder.
 const rootDir = path.resolve(dir, "../..")
 for (const key of Object.keys(binaries)) {
   fs.copyFileSync(path.join(rootDir, "LICENSE"), `dist/${key}/bin/LICENSE`)
   fs.copyFileSync(path.join(rootDir, "THIRD-PARTY-NOTICES.md"), `dist/${key}/bin/THIRD-PARTY-NOTICES.md`)
-  if (key.includes("linux")) {
-    await $`tar -czf ../../${key}.tar.gz *`.cwd(`dist/${key}/bin`)
-  } else {
-    await $`zip -r ../../${key}.zip *`.cwd(`dist/${key}/bin`)
+}
+
+if (Script.release) {
+  for (const key of Object.keys(binaries)) {
+    if (key.includes("linux")) {
+      await $`tar -czf ../../${key}.tar.gz *`.cwd(`dist/${key}/bin`)
+    } else {
+      await $`zip -r ../../${key}.zip *`.cwd(`dist/${key}/bin`)
+    }
   }
 }
 
-if (Script.release && process.env.GH_REPO) {
+if (Script.release) {
   await $`gh release upload v${Script.version} ./dist/*.zip ./dist/*.tar.gz --clobber --repo ${process.env.GH_REPO}`
 }
 
