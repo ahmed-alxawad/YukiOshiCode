@@ -32,6 +32,11 @@ If your configuration already defines an agent named `goal`, `reasoning`,
 `research`, or `auto` with its own prompt, YukiOshi keeps your agent under
 that name instead of the built-in mode.
 
+The **Plan** mode above is an agent. The `plan` permission mode is separate and
+stricter: it refuses every action that is not low-risk, including edits and
+shell commands your rules allow, in the session and in its subagents (see
+[Permissions and safety](permissions-and-safety.md)).
+
 These modes decide *how* the agent works. Permission modes (`manual`, `auto`,
 `auto-all`, `plan`, `review`, see [Permissions and safety](permissions-and-safety.md))
 separately decide *what it may do without asking*; any mode can be combined

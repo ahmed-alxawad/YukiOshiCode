@@ -32,12 +32,21 @@ The default rules allow most actions; YukiOshi still asks before reading
 for what you want to approve yourself, such as `"edit": "ask"` and
 `"bash": "ask"`.
 
-With `yukioshi run --mode`, the mode applies to every tool call: `plan` refuses
-anything that is not low-risk (reading and searching), even actions your rules
-allow. In the terminal UI, the mode decides how the approval prompts your rules
-ask for are answered (`auto` and `auto-all` approve them, `plan` refuses the
-ones that are not low-risk); actions your rules already allow are not
-prompted, so the mode does not change them.
+`plan` holds for every tool call in every session, whichever way the mode was
+set (the terminal UI, `yukioshi run --mode`, the session permission mode
+endpoint of the API, ACP, or the trigger endpoint): anything that is not
+low-risk (reading and searching) is refused, even actions your rules allow, and
+the agent is told that plan mode refused it. Fetching URLs, running commands,
+editing files, loading skills, delegating, and starting subagents are refused
+in plan mode. A subagent session is in plan mode whenever its parent session
+(or any session above it) is, and cannot leave it on its own. Leaving plan mode
+(choosing another mode in the terminal UI, or setting another mode on the
+session) lifts the restriction for the session and its subagents. In the
+terminal UI the mode is sent to the session when you send a message (and when
+you cycle the mode in a session), so cycling to `plan` and sending a message
+holds on the server as well; if that cannot be sent, the message is not sent.
+`auto` and `auto-all` only decide how approval prompts are answered, so they do
+not change actions your rules already allow.
 
 ### Review mode
 
