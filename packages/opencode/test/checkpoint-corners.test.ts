@@ -207,5 +207,6 @@ describe("checkpoint corners", () => {
     expect(withIsolatedEnv(() => listCheckpoints(dir, "ses_big")).length).toBe(2)
     // Memory stays bounded: the 200 MB file is streamed by git, not read into this process.
     expect(rssAfter - rssBefore).toBeLessThan(150 * 1024 * 1024)
-  }, 120_000)
+    // 20,000 files take several minutes to stage on NTFS runners; the limit only needs to catch a hang.
+  }, process.platform === "win32" ? 600_000 : 120_000)
 })
