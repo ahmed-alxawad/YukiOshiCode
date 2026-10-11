@@ -22,7 +22,8 @@ const alive = (pid: number) => {
   }
 }
 
-describe("formatter time limit", () => {
+// The stub formatter is a POSIX `sh -c ... exec sleep` command with a pid file; it does not exist on Windows.
+describe.skipIf(process.platform === "win32")("formatter time limit", () => {
   it.instance(
     "a formatter that never ends is killed at the limit and the edit goes on",
     () =>

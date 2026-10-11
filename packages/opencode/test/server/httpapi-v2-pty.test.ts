@@ -256,12 +256,13 @@ describe("v2 pty HttpApi", () => {
           { closeCodeIsError: () => false },
         )
         const messages = yield* Queue.unbounded<string>()
+        const frames: string[] = []
         yield* socket
           .runRaw((message) =>
             // The 0x00 meta frame is a control frame, not terminal output. The shell may flush its line in
             // several reads (macOS), so a meta frame landing between them must not split the expected text.
             typeof message !== "string" && message[0] === 0
-              ? Effect.void
+              ? Effect.sync(() => void frames.push("meta"))
               : Queue.offer(messages, typeof message === "string" ? message : new TextDecoder().decode(message)),
           )
           .pipe(
@@ -282,7 +283,19 @@ describe("v2 pty HttpApi", () => {
             Effect.timeoutOrElse({
               duration: "40 seconds",
               orElse: () =>
-                Effect.fail(new Error(`Timed out waiting for ${expected}; saw ${JSON.stringify(output)}`)),
+                HttpClientRequest.get(`/api/pty/${info.id}`).pipe(
+                  directoryHeader(dir),
+                  HttpClient.execute,
+                  Effect.flatMap((res) => res.text),
+                  Effect.catch(() => Effect.succeed("pty info unavailable")),
+                  Effect.flatMap((status) =>
+                    Effect.fail(
+                      new Error(
+                        `Timed out waiting for ${expected}; saw ${JSON.stringify(output)}; control frames ${frames.length}; pty ${status}`,
+                      ),
+                    ),
+                  ),
+                ),
             }),
           )
 
