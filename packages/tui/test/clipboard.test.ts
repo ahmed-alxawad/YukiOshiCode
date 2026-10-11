@@ -17,3 +17,48 @@ test("falls back through X11 clipboard commands", () => {
 test("returns undefined when native clipboard is unavailable", () => {
   expect(copyCommand("linux", false, () => false)).toBeUndefined()
 })
+
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import path from "node:path"
+import { copyTo } from "../src/clipboard"
+
+function fake(body: string) {
+  const dir = mkdtempSync(path.join(tmpdir(), "clip-"))
+  const file = path.join(dir, "tool")
+  writeFileSync(file, `#!/bin/sh\n${body}\n`)
+  chmodSync(file, 0o755)
+  return { dir, file }
+}
+
+test("copyTo resolves when the tool forks a daemon that keeps stdio open", async () => {
+  const { file } = fake(`cat > /dev/null\n( sleep 3 ) &\nexit 0`)
+  const start = Date.now()
+  await copyTo(file, [], "hello")
+  expect(Date.now() - start).toBeLessThan(2000)
+})
+
+test("copyTo rejects when the tool fails", async () => {
+  const { file } = fake("exit 1")
+  await expect(copyTo(file, [], "x")).rejects.toThrow()
+})
+
+test("copyTo rejects when the tool is missing", async () => {
+  await expect(copyTo("/nonexistent/clip-tool", [], "x")).rejects.toThrow()
+})
+
+test("copyTo times out a hung tool", async () => {
+  const { file } = fake("sleep 5")
+  await expect(copyTo(file, [], "x", 200)).rejects.toThrow("timed out")
+})
+
+test("copyTo passes text on stdin", async () => {
+  const out = path.join(mkdtempSync(path.join(tmpdir(), "clip-")), "out")
+  const { file } = fake(`cat > ${out}`)
+  await copyTo(file, [], "a\nb\tc")
+  expect(readFileSync(out, "utf8")).toBe("a\nb\tc")
+})
+
+function dir0() {
+  return mkdtempSync(path.join(tmpdir(), "clip-"))
+}

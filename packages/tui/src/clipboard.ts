@@ -20,11 +20,35 @@ function command(command: string, args: string[] = [], input?: string) {
   })
 }
 
+// Clipboard helpers such as xclip and wl-copy fork a daemon that keeps inherited pipes open,
+// so wait for the process to exit rather than for its stdio to close, and never wait forever.
+export function copyTo(cmd: string, args: string[], input: string, timeout = 3000) {
+  return new Promise<void>((resolve, reject) => {
+    const child = spawn(cmd, args, { stdio: ["pipe", "ignore", "ignore"] })
+    const timer = setTimeout(() => {
+      child.kill()
+      reject(new Error(`${cmd} timed out`))
+    }, timeout)
+    child.on("error", (err) => {
+      clearTimeout(timer)
+      reject(err)
+    })
+    child.on("exit", (code) => {
+      clearTimeout(timer)
+      if (code === 0) return resolve()
+      reject(new Error(`${cmd} exited with code ${code}`))
+    })
+    child.stdin?.on("error", () => {})
+    child.stdin?.end(input)
+  })
+}
+
 function writeOsc52(text: string) {
-  if (!process.stdout.isTTY) return
+  if (!process.stdout.isTTY) return false
   const sequence = `\x1b]52;c;${Buffer.from(text).toString("base64")}\x07`
   const passthrough = `\x1bPtmux;\x1b${sequence}\x1b\\`
   process.stdout.write(process.env.TMUX ? sequence + passthrough : process.env.STY ? passthrough : sequence)
+  return true
 }
 
 export async function read() {
@@ -99,27 +123,33 @@ let copyMethod: Promise<(text: string) => Promise<void>> | undefined
 function getCopyMethod() {
   return (copyMethod ??= (async () => {
     const { which } = await import("@yukioshi/core/util/which")
-    const native = copyCommand(platform(), Boolean(process.env.WAYLAND_DISPLAY), (name) => Boolean(which(name)))
+    const native = copyCommand(
+      platform(),
+      Boolean(process.env.WAYLAND_DISPLAY) || process.env.XDG_SESSION_TYPE === "wayland", (name) => Boolean(which(name)),
+    )
     if (native?.[0] === "osascript") {
       return async (text: string) => {
         const escaped = text.replace(/\\/g, "\\\\").replace(/"/g, '\\"')
-        await command("osascript", ["-e", `set the clipboard to "${escaped}"`]).catch(() => undefined)
+        await command("osascript", ["-e", `set the clipboard to "${escaped}"`])
       }
     }
     if (native) {
       return async (text: string) => {
-        await command(native[0], native.slice(1), text).catch(() => undefined)
+        await copyTo(native[0], native.slice(1), text)
       }
     }
     return async (text: string) => {
       const { default: clipboardy } = await import("clipboardy")
-      await clipboardy.write(text).catch(() => undefined)
+      await clipboardy.write(text)
     }
   })())
 }
 
 export async function write(text: string) {
-  writeOsc52(text)
+  const sent = writeOsc52(text)
   const method = await getCopyMethod()
-  await method(text)
+  // A terminal that accepted OSC52 may still have the text; only report failure when nothing could copy it.
+  await method(text).catch((err) => {
+    if (!sent) throw err
+  })
 }
