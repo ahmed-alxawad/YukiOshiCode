@@ -11,6 +11,7 @@ import { Process } from "@/util/process"
 import { which } from "@yukioshi/core/util/which"
 import { Module } from "@yukioshi/core/util/module"
 import { spawn } from "./launch"
+import { fetchWithTimeout } from "@/util/fetch-timeout"
 import { Npm } from "@yukioshi/core/npm"
 import type { RuntimeFlags } from "@/effect/runtime-flags"
 
@@ -180,7 +181,7 @@ export const ESLint: Info = {
     const serverPath = path.join(Global.Path.bin, "vscode-eslint", "server", "out", "eslintServer.js")
     if (!(await Filesystem.exists(serverPath))) {
       if (flags.disableLspDownload) return
-      const response = await fetch("https://github.com/microsoft/vscode-eslint/archive/refs/heads/main.zip")
+      const response = await fetchWithTimeout("https://github.com/microsoft/vscode-eslint/archive/refs/heads/main.zip")
       if (!response.ok) return
 
       const zipPath = path.join(Global.Path.bin, "vscode-eslint.zip")
@@ -549,7 +550,7 @@ export const ElixirLS: Info = {
 
         if (flags.disableLspDownload) return
 
-        const response = await fetch("https://github.com/elixir-lsp/elixir-ls/archive/refs/heads/master.zip")
+        const response = await fetchWithTimeout("https://github.com/elixir-lsp/elixir-ls/archive/refs/heads/master.zip")
         if (!response.ok) return
         const zipPath = path.join(Global.Path.bin, "elixir-ls.zip")
         if (response.body) await Filesystem.writeStream(zipPath, response.body)
@@ -597,7 +598,7 @@ export const Zls: Info = {
 
       if (flags.disableLspDownload) return
 
-      const releaseResponse = await fetch("https://api.github.com/repos/zigtools/zls/releases/latest")
+      const releaseResponse = await fetchWithTimeout("https://api.github.com/repos/zigtools/zls/releases/latest")
       if (!releaseResponse.ok) {
         return
       }
@@ -644,7 +645,7 @@ export const Zls: Info = {
       }
 
       const downloadUrl = asset.browser_download_url
-      const downloadResponse = await fetch(downloadUrl)
+      const downloadResponse = await fetchWithTimeout(downloadUrl)
       if (!downloadResponse.ok) {
         return
       }
@@ -973,7 +974,7 @@ export const Clangd: Info = {
 
     if (flags.disableLspDownload) return
 
-    const releaseResponse = await fetch("https://api.github.com/repos/clangd/clangd/releases/latest")
+    const releaseResponse = await fetchWithTimeout("https://api.github.com/repos/clangd/clangd/releases/latest")
     if (!releaseResponse.ok) {
       return
     }
@@ -1015,7 +1016,7 @@ export const Clangd: Info = {
     }
 
     const name = asset.name
-    const downloadResponse = await fetch(asset.browser_download_url)
+    const downloadResponse = await fetchWithTimeout(asset.browser_download_url)
     if (!downloadResponse.ok) {
       return
     }
@@ -1207,7 +1208,7 @@ export const JDTLS: Info = {
         "https://www.eclipse.org/downloads/download.php?file=/jdtls/snapshots/jdt-language-server-latest.tar.gz"
       const archiveName = "release.tar.gz"
 
-      const download = await fetch(releaseURL)
+      const download = await fetchWithTimeout(releaseURL)
       if (!download.ok || !download.body) {
         return
       }
@@ -1294,7 +1295,7 @@ export const KotlinLS: Info = {
     if (!installed) {
       if (flags.disableLspDownload) return
 
-      const releaseResponse = await fetch("https://api.github.com/repos/Kotlin/kotlin-lsp/releases/latest")
+      const releaseResponse = await fetchWithTimeout("https://api.github.com/repos/Kotlin/kotlin-lsp/releases/latest")
       if (!releaseResponse.ok) {
         return
       }
@@ -1331,7 +1332,7 @@ export const KotlinLS: Info = {
 
       await fs.mkdir(distPath, { recursive: true })
       const archivePath = path.join(distPath, "kotlin-ls.zip")
-      const download = await fetch(releaseURL)
+      const download = await fetchWithTimeout(releaseURL)
       if (!download.ok || !download.body) {
         return
       }
@@ -1402,7 +1403,7 @@ export const LuaLS: Info = {
     if (!bin) {
       if (flags.disableLspDownload) return
 
-      const releaseResponse = await fetch("https://api.github.com/repos/LuaLS/lua-language-server/releases/latest")
+      const releaseResponse = await fetchWithTimeout("https://api.github.com/repos/LuaLS/lua-language-server/releases/latest")
       if (!releaseResponse.ok) {
         return
       }
@@ -1447,7 +1448,7 @@ export const LuaLS: Info = {
       }
 
       const downloadUrl = asset.browser_download_url
-      const downloadResponse = await fetch(downloadUrl)
+      const downloadResponse = await fetchWithTimeout(downloadUrl)
       if (!downloadResponse.ok) {
         return
       }
@@ -1629,7 +1630,7 @@ export const TerraformLS: Info = {
     if (!bin) {
       if (flags.disableLspDownload) return
 
-      const releaseResponse = await fetch("https://api.releases.hashicorp.com/v1/releases/terraform-ls/latest")
+      const releaseResponse = await fetchWithTimeout("https://api.releases.hashicorp.com/v1/releases/terraform-ls/latest")
       if (!releaseResponse.ok) {
         return
       }
@@ -1651,7 +1652,7 @@ export const TerraformLS: Info = {
         return
       }
 
-      const downloadResponse = await fetch(build.url)
+      const downloadResponse = await fetchWithTimeout(build.url)
       if (!downloadResponse.ok) {
         return
       }
@@ -1702,7 +1703,7 @@ export const TexLab: Info = {
     if (!bin) {
       if (flags.disableLspDownload) return
 
-      const response = await fetch("https://api.github.com/repos/latex-lsp/texlab/releases/latest")
+      const response = await fetchWithTimeout("https://api.github.com/repos/latex-lsp/texlab/releases/latest")
       if (!response.ok) {
         return
       }
@@ -1730,7 +1731,7 @@ export const TexLab: Info = {
         return
       }
 
-      const downloadResponse = await fetch(asset.browser_download_url)
+      const downloadResponse = await fetchWithTimeout(asset.browser_download_url)
       if (!downloadResponse.ok) {
         return
       }
@@ -1874,7 +1875,7 @@ export const Tinymist: Info = {
     if (!bin) {
       if (flags.disableLspDownload) return
 
-      const response = await fetch("https://api.github.com/repos/Myriad-Dreamin/tinymist/releases/latest")
+      const response = await fetchWithTimeout("https://api.github.com/repos/Myriad-Dreamin/tinymist/releases/latest")
       if (!response.ok) {
         return
       }
@@ -1910,7 +1911,7 @@ export const Tinymist: Info = {
         return
       }
 
-      const downloadResponse = await fetch(asset.browser_download_url)
+      const downloadResponse = await fetchWithTimeout(asset.browser_download_url)
       if (!downloadResponse.ok) {
         return
       }
