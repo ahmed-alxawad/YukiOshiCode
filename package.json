@@ -144,7 +144,11 @@
     "@opentui/solid": "catalog:",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
-    "open": "11.0.4"
+    "fast-uri": "3.1.7",
+    "fast-xml-parser": "5.7.3",
+    "fastify": "5.12.2",
+    "open": "11.0.4",
+    "tar": "7.5.21"
   },
   "patchedDependencies": {
     "@dnd-kit/dom@0.5.0": "patches/@dnd-kit%2Fdom@0.5.0.patch",
