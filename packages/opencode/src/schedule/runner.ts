@@ -4,6 +4,7 @@
 
 import { createOpencodeClient, type OpencodeClient } from "@yukioshi/sdk/v2"
 import { existsSync } from "fs"
+import { ChildRegistry } from "@yukioshi/core/child-registry"
 import {
   acquireJobLock,
   findJob,
@@ -18,6 +19,12 @@ export type RunJobResult = {
   sessionID?: string
   logPath?: string
   error?: string
+}
+
+/** A scheduled run that has not finished after this long is stopped (default 2 hours). */
+export function maxRunMs(env: NodeJS.ProcessEnv = process.env) {
+  const seconds = Number(env.YUKIOSHI_SCHEDULE_MAX_RUN_SECONDS)
+  return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 2 * 60 * 60 * 1000
 }
 
 function pickModel(value?: string) {
@@ -166,13 +173,32 @@ export async function runJob(id: string): Promise<RunJobResult> {
       }
     })()
 
+    // Stop the run when it takes too long, or when the scheduler or the user ends this process, so its shell
+    // commands and subagents are cancelled instead of left running (and the job locked) for hours.
+    let timedOut = false
+    const limit = maxRunMs()
+    const stopRun = () => sdk.session.abort({ sessionID }).catch(() => undefined)
+    const timer = setTimeout(() => {
+      timedOut = true
+      appendLog(
+        `[${new Date().toISOString()}] Stopping the run: it exceeded the ${Math.round(limit / 1000)}s limit (change it with YUKIOSHI_SCHEDULE_MAX_RUN_SECONDS)`,
+      )
+      void stopRun()
+    }, limit)
+    const unhook = ChildRegistry.onStop(stopRun)
+
     // Send the prompt
-    const promptResult = await sdk.session.prompt({
-      sessionID,
-      agent: job.agent,
-      model: modelInput,
-      parts: [{ type: "text", text: job.prompt }],
-    })
+    const promptResult = await sdk.session
+      .prompt({
+        sessionID,
+        agent: job.agent,
+        model: modelInput,
+        parts: [{ type: "text", text: job.prompt }],
+      })
+      .finally(() => {
+        clearTimeout(timer)
+        unhook()
+      })
     loopDone = true
 
     // Wait for event loop to conclude or drain
@@ -187,7 +213,11 @@ export async function runJob(id: string): Promise<RunJobResult> {
     const assistantError = (promptResult.data as any)?.info?.error || (promptResult.data as any)?.error
     const effectiveError = promptResult.error || assistantError || sessionError
 
-    if (isBudgetExceeded(effectiveError)) {
+    if (timedOut) {
+      status = "failed"
+      statusText = `failed: timed out after ${Math.round(limit / 1000)}s`
+      appendLog(`[${new Date().toISOString()}] ${statusText}`)
+    } else if (isBudgetExceeded(effectiveError)) {
       status = "skipped: budget"
       statusText = "skipped: budget"
       appendLog(`[${new Date().toISOString()}] skipped: budget`)
@@ -214,7 +244,12 @@ export async function runJob(id: string): Promise<RunJobResult> {
     job.lastResult = statusText
     await saveJobs(jobs)
 
-    return { status, sessionID, logPath }
+    return {
+      status,
+      sessionID,
+      logPath,
+      ...(status === "failed" ? { error: statusText.replace(/^failed: /, "") + (timedOut ? " (change the limit with YUKIOSHI_SCHEDULE_MAX_RUN_SECONDS)" : "") } : {}),
+    }
   } catch (err: any) {
     const errorMsg = err.message || String(err)
     appendLog(`[${new Date().toISOString()}] Execution failed: ${errorMsg}`)
