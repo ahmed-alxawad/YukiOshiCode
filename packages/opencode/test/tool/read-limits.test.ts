@@ -53,6 +53,14 @@ const writeRepeated = (file: string, byte: number, total: number) =>
     await out.end()
   })
 
+// resourceUsage().maxRSS is KiB on Linux but bytes under Bun on macOS. The
+// current RSS is always bytes and never exceeds the peak, so a peak reported
+// in KiB is >1000x smaller than it: use that to detect the unit.
+function peakRssBytes(): number {
+  const peak = process.resourceUsage().maxRSS
+  return peak < process.memoryUsage().rss / 10 ? peak * 1024 : peak
+}
+
 describe("tool.read limits", () => {
   it.instance("does not hold a huge single line in memory", () =>
     Effect.gen(function* () {
@@ -60,10 +68,10 @@ describe("tool.read limits", () => {
       const file = path.join(test.directory, "huge-line.txt")
       yield* writeRepeated(file, 97, 400 * 1024 * 1024)
 
-      const before = process.resourceUsage().maxRSS
+      const before = peakRssBytes()
       const read = yield* (yield* ReadTool).init()
       const result = yield* read.execute({ filePath: file }, ctx)
-      const grown = (process.resourceUsage().maxRSS - before) / 1024
+      const grown = (peakRssBytes() - before) / (1024 * 1024)
 
       expect(result.output).toContain("line truncated to 2000 chars")
       expect(grown).toBeLessThan(250)
