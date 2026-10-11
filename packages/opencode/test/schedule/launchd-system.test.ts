@@ -53,11 +53,14 @@ describe("macOS launchd scheduled jobs", () => {
     expect(plist).not.toContain("<key>StartInterval</key>")
   })
 
-  it("maps simple repeating minutes to StartInterval and keeps cron day OR semantics in calendar entries", () => {
-    expect(cronToLaunchdSchedule("*/15 * * * *")).toEqual({ type: "interval", seconds: 900 })
+  it("maps simple repeating minutes to aligned calendar entries and keeps cron day OR semantics", () => {
+    expect(cronToLaunchdSchedule("*/15 * * * *")).toEqual({
+      type: "calendar",
+      intervals: [{ Minute: 0 }, { Minute: 15 }, { Minute: 30 }, { Minute: 45 }],
+    })
     expect(
       cronToLaunchdPlist(job.id, "*/15 * * * *", "/opt/yukioshi", job.directory, "/Users/alice", "/usr/bin"),
-    ).toContain("<key>StartInterval</key>\n  <integer>900</integer>")
+    ).toContain("<key>StartCalendarInterval</key>")
     expect(cronToLaunchdSchedule("0 9 13 * 5")).toEqual({
       type: "calendar",
       intervals: [

@@ -2,6 +2,7 @@
 
 import path from "path"
 import fs from "fs/promises"
+import { constants as fsConstants } from "fs"
 import { validateCron, type ParsedCron } from "./cron"
 import { assertSafeJobId, type ScheduleJob } from "./store"
 
@@ -248,10 +249,14 @@ function isNotLoadedError(error: unknown): boolean {
   return /could not find service|no such process|not loaded/i.test(String(error))
 }
 
+function managedPlistSymlinkError(plistPath: string): Error {
+  return new Error(`Refusing to manage LaunchAgent plist symbolic link: ${plistPath}`)
+}
+
 async function assertManagedPlistNotSymlink(plistPath: string): Promise<void> {
   try {
     if ((await fs.lstat(plistPath)).isSymbolicLink()) {
-      throw new Error(`Refusing to manage LaunchAgent plist symbolic link: ${plistPath}`)
+      throw managedPlistSymlinkError(plistPath)
     }
   } catch (error: any) {
     if (error?.code === "ENOENT") return
@@ -259,11 +264,34 @@ async function assertManagedPlistNotSymlink(plistPath: string): Promise<void> {
   }
 }
 
+async function writeManagedFile(plistPath: string, contents: string, exclusive = false): Promise<void> {
+  // lstat gives a clear error for an existing symlink. O_NOFOLLOW and descriptor chmod close the race
+  // where the path is replaced with a symlink after that check.
+  await assertManagedPlistNotSymlink(plistPath)
+  try {
+    const file = await fs.open(
+      plistPath,
+      fsConstants.O_WRONLY |
+        fsConstants.O_CREAT |
+        fsConstants.O_NOFOLLOW |
+        (exclusive ? fsConstants.O_EXCL : fsConstants.O_TRUNC),
+      0o600,
+    )
+    try {
+      await file.writeFile(contents, { encoding: "utf8" })
+      await file.chmod(0o600)
+    } finally {
+      await file.close()
+    }
+  } catch (error: any) {
+    if (error?.code === "ELOOP") throw managedPlistSymlinkError(plistPath)
+    throw error
+  }
+  await assertManagedPlistNotSymlink(plistPath)
+}
+
 async function writeManagedPlist(plistPath: string, plist: string): Promise<void> {
-  await assertManagedPlistNotSymlink(plistPath)
-  await fs.writeFile(plistPath, plist, { encoding: "utf8", mode: 0o600 })
-  await assertManagedPlistNotSymlink(plistPath)
-  await fs.chmod(plistPath, 0o600)
+  await writeManagedFile(plistPath, plist)
 }
 
 async function removeManagedPlist(plistPath: string): Promise<void> {
@@ -305,9 +333,7 @@ async function createLaunchAgentBackup(plistPath: string): Promise<LaunchAgentBa
   const contents = await fs.readFile(plistPath, "utf8")
   const backupPath = launchdBackupPath(plistPath)
   try {
-    await fs.writeFile(backupPath, contents, { encoding: "utf8", mode: 0o600, flag: "wx" })
-    await assertManagedPlistNotSymlink(backupPath)
-    await fs.chmod(backupPath, 0o600)
+    await writeManagedFile(backupPath, contents, true)
   } catch (error: any) {
     if (error?.code === "EEXIST") {
       throw new Error(`Refusing to update LaunchAgent with an existing backup: ${backupPath}`)
