@@ -1,9 +1,13 @@
 // A fetch that cannot wait forever. The limit covers the wait for the response and then every gap between
 // chunks of the body, so a server that goes quiet part way through a download is also stopped.
-export const FETCH_TIMEOUT_MS =
-  typeof process !== "undefined" && process.env["YUKIOSHI_FETCH_TIMEOUT_MS"]
-    ? Number(process.env["YUKIOSHI_FETCH_TIMEOUT_MS"])
-    : 30_000
+export const FETCH_TIMEOUT_MS = 30_000
+
+// YUKIOSHI_FETCH_TIMEOUT_MS shortens or lengthens the limit. Anything that is not a positive number of
+// milliseconds is ignored, so a typo cannot make every request fail at once or never time out.
+function configuredTimeout() {
+  const value = Number(typeof process !== "undefined" ? process.env["YUKIOSHI_FETCH_TIMEOUT_MS"] : undefined)
+  return Number.isFinite(value) && value > 0 ? value : FETCH_TIMEOUT_MS
+}
 
 // Names the host only: a URL's query string can carry tokens.
 const hostOf = (input: string | URL | Request) => {
@@ -17,9 +21,7 @@ const hostOf = (input: string | URL | Request) => {
 export async function fetchWithTimeout(
   input: string | URL | Request,
   init: RequestInit = {},
-  timeoutMs: number = typeof process !== "undefined" && process.env["YUKIOSHI_FETCH_TIMEOUT_MS"]
-    ? Number(process.env["YUKIOSHI_FETCH_TIMEOUT_MS"])
-    : FETCH_TIMEOUT_MS,
+  timeoutMs: number = configuredTimeout(),
 ): Promise<Response> {
   const controller = new AbortController()
   const outer = init.signal

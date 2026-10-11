@@ -200,3 +200,25 @@ describe("fetchWithTimeout", () => {
     }
   }, 15_000)
 })
+
+describe("YUKIOSHI_FETCH_TIMEOUT_MS", () => {
+  test.each(["abc", "0", "-5"])("the value %p is ignored and the default limit applies", async (value) => {
+    const previous = process.env.YUKIOSHI_FETCH_TIMEOUT_MS
+    process.env.YUKIOSHI_FETCH_TIMEOUT_MS = value
+    const server = Bun.serve({
+      port: 0,
+      async fetch() {
+        await Bun.sleep(300)
+        return new Response("ok")
+      },
+    })
+    try {
+      const response = await fetchWithTimeout(`http://127.0.0.1:${server.port}/`)
+      expect(await response.text()).toBe("ok")
+    } finally {
+      server.stop(true)
+      if (previous === undefined) delete process.env.YUKIOSHI_FETCH_TIMEOUT_MS
+      else process.env.YUKIOSHI_FETCH_TIMEOUT_MS = previous
+    }
+  })
+})
