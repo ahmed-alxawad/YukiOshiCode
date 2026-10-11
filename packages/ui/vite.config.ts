@@ -44,13 +44,21 @@ function providerIconsPlugin() {
   }
 }
 
+const modelsDevOrigin = "https://models.dev"
+const modelsCatalogPath = "/api.json"
+
+export function modelsCatalogOrigin(url?: string) {
+  const source = (url || modelsDevOrigin).replace(/\/+$/, "")
+  return source.endsWith(modelsCatalogPath) ? source.slice(0, -modelsCatalogPath.length) : source
+}
+
 export function modelsCatalogUrl(url?: string) {
-  return url ? `${url}/api.json` : "https://models.dev/api.json"
+  return `${modelsCatalogOrigin(url)}${modelsCatalogPath}`
 }
 
 async function fetchProviderIcons() {
   const source = process.env.YUKIOSHI_MODELS_URL
-  const url = source || "https://models.dev"
+  const url = modelsCatalogOrigin(source)
   const providers = await fetch(modelsCatalogUrl(source))
     .then((res) => res.json())
     .then((json) => Object.keys(json))
