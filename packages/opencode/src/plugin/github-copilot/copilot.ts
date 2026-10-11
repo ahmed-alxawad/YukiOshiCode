@@ -6,6 +6,10 @@ import { setTimeout as sleep } from "node:timers/promises"
 import { CopilotModels } from "./models"
 import { MessageV2 } from "@/session/message-v2"
 
+/** Sign-in and token requests must not wait forever on a server that never answers. */
+const OAUTH_REQUEST_TIMEOUT_MS = 30_000
+const DEVICE_CODE_WAIT_MS = 15 * 60_000
+
 const CLIENT_ID = "Ov23li8tweQw6odWQebz"
 const API_VERSION = "2026-06-01"
 const UTILITY_MODELS = ["gpt-5.4-nano", "gpt-4.1", "gpt-4o", "gpt-4o-mini"]
@@ -233,6 +237,7 @@ export async function CopilotAuthPlugin(input: PluginInput): Promise<Hooks> {
 
             const deviceResponse = await fetch(urls.DEVICE_CODE_URL, {
               method: "POST",
+              signal: AbortSignal.timeout(OAUTH_REQUEST_TIMEOUT_MS),
               headers: {
                 Accept: "application/json",
                 "Content-Type": "application/json",
@@ -260,9 +265,12 @@ export async function CopilotAuthPlugin(input: PluginInput): Promise<Hooks> {
               instructions: `Enter code: ${deviceData.user_code}`,
               method: "auto" as const,
               async callback() {
-                while (true) {
+                // Device codes expire after about 15 minutes; stop waiting for approval then.
+                const deadline = Date.now() + DEVICE_CODE_WAIT_MS
+                while (Date.now() < deadline) {
                   const response = await fetch(urls.ACCESS_TOKEN_URL, {
                     method: "POST",
+                    signal: AbortSignal.timeout(OAUTH_REQUEST_TIMEOUT_MS),
                     headers: {
                       Accept: "application/json",
                       "Content-Type": "application/json",
@@ -331,6 +339,7 @@ export async function CopilotAuthPlugin(input: PluginInput): Promise<Hooks> {
                   await sleep(deviceData.interval * 1000 + OAUTH_POLLING_SAFETY_MARGIN_MS)
                   continue
                 }
+                return { type: "failed" as const }
               },
             }
           },

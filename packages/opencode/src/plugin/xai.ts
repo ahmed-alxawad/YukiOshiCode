@@ -2,6 +2,9 @@ import type { Hooks, PluginInput } from "@yukioshi/plugin"
 import { OAUTH_DUMMY_KEY } from "../auth"
 import { InstallationVersion } from "@yukioshi/core/installation/version"
 
+/** Sign-in and token requests must not wait forever on a server that never answers. */
+const OAUTH_REQUEST_TIMEOUT_MS = 30_000
+
 // Public Grok-CLI OAuth client.
 const CLIENT_ID = "b1a00492-073a-47ea-816f-4c329264a828"
 const TOKEN_URL = "https://auth.x.ai/oauth2/token"
@@ -77,6 +80,7 @@ export function accessTokenIsExpiring(
 async function refreshAccessToken(refreshToken: string, options: XaiAuthPluginOptions = {}): Promise<TokenResponse> {
   const response = await fetch(options.tokenUrl ?? TOKEN_URL, {
     method: "POST",
+    signal: AbortSignal.timeout(OAUTH_REQUEST_TIMEOUT_MS),
     headers: authHeaders(),
     body: new URLSearchParams({
       grant_type: "refresh_token",
@@ -108,6 +112,7 @@ interface DeviceTokenErrorBody {
 export async function requestDeviceCode(options: XaiAuthPluginOptions = {}): Promise<DeviceCodeResponse> {
   const response = await fetch(options.deviceAuthorizationUrl ?? DEVICE_AUTHORIZATION_URL, {
     method: "POST",
+    signal: AbortSignal.timeout(OAUTH_REQUEST_TIMEOUT_MS),
     headers: authHeaders(),
     body: new URLSearchParams({
       client_id: CLIENT_ID,
@@ -161,6 +166,7 @@ export async function pollDeviceCodeToken(
   while (now() < deadline) {
     const response = await fetch(options.tokenUrl ?? TOKEN_URL, {
       method: "POST",
+      signal: AbortSignal.timeout(OAUTH_REQUEST_TIMEOUT_MS),
       headers: authHeaders(),
       body: new URLSearchParams({
         grant_type: DEVICE_CODE_GRANT_TYPE,

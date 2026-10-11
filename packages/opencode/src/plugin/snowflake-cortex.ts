@@ -5,6 +5,9 @@ import { OauthCallbackPage } from "@yukioshi/core/oauth/page"
 import { createServer } from "http"
 import { openUrl } from "@yukioshi/core/open"
 
+/** Sign-in and token requests must not wait forever on a server that never answers. */
+const OAUTH_REQUEST_TIMEOUT_MS = 30_000
+
 const OAUTH_CLIENT_ID = "LOCAL_APPLICATION"
 const OAUTH_CALLBACK_HOST = "127.0.0.1"
 const OAUTH_CALLBACK_PATH = "/"
@@ -105,6 +108,7 @@ function buildAuthorizeUrl(account: string, role: string | undefined, state: str
 async function exchangeCodeForToken(account: string, code: string, pkce: PkceCodes) {
   const response = await fetch(`https://${account}.snowflakecomputing.com/oauth/token-request`, {
     method: "POST",
+    signal: AbortSignal.timeout(OAUTH_REQUEST_TIMEOUT_MS),
     headers: {
       ...authHeaders(),
       Authorization: authBasicHeader(),
@@ -136,6 +140,7 @@ async function exchangeCodeForToken(account: string, code: string, pkce: PkceCod
 async function refreshAccessToken(account: string, refreshToken: string) {
   const response = await fetch(`https://${account}.snowflakecomputing.com/oauth/token-request`, {
     method: "POST",
+    signal: AbortSignal.timeout(OAUTH_REQUEST_TIMEOUT_MS),
     headers: {
       ...authHeaders(),
       Authorization: authBasicHeader(),

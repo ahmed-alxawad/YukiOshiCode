@@ -7,6 +7,10 @@ import { createServer } from "http"
 import { OpenAIWebSocketPool } from "./ws-pool"
 import { OauthCallbackPage } from "@yukioshi/core/oauth/page"
 
+/** Sign-in and token requests must not wait forever on a server that never answers. */
+const OAUTH_REQUEST_TIMEOUT_MS = 30_000
+const DEVICE_CODE_WAIT_MS = 15 * 60_000
+
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 const ISSUER = "https://auth.openai.com"
 const CODEX_API_ENDPOINT = "https://chatgpt.com/backend-api/codex/responses"
@@ -117,6 +121,7 @@ interface CodexAuthPluginOptions {
 async function exchangeCodeForTokens(code: string, redirectUri: string, pkce: PkceCodes): Promise<TokenResponse> {
   const response = await fetch(`${ISSUER}/oauth/token`, {
     method: "POST",
+    signal: AbortSignal.timeout(OAUTH_REQUEST_TIMEOUT_MS),
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       grant_type: "authorization_code",
@@ -135,6 +140,7 @@ async function exchangeCodeForTokens(code: string, redirectUri: string, pkce: Pk
 async function refreshAccessToken(refreshToken: string, issuer = ISSUER): Promise<TokenResponse> {
   const response = await fetch(`${issuer}/oauth/token`, {
     method: "POST",
+    signal: AbortSignal.timeout(OAUTH_REQUEST_TIMEOUT_MS),
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       grant_type: "refresh_token",
@@ -473,6 +479,7 @@ export async function CodexAuthPlugin(input: PluginInput, options: CodexAuthPlug
           authorize: async () => {
             const deviceResponse = await fetch(`${ISSUER}/api/accounts/deviceauth/usercode`, {
               method: "POST",
+              signal: AbortSignal.timeout(OAUTH_REQUEST_TIMEOUT_MS),
               headers: {
                 "Content-Type": "application/json",
                 "User-Agent": `yukioshi/${InstallationVersion}`,
@@ -494,9 +501,12 @@ export async function CodexAuthPlugin(input: PluginInput, options: CodexAuthPlug
               instructions: `Enter code: ${deviceData.user_code}`,
               method: "auto" as const,
               async callback() {
-                while (true) {
+                // Device codes expire after about 15 minutes; stop waiting for approval then.
+                const deadline = Date.now() + DEVICE_CODE_WAIT_MS
+                while (Date.now() < deadline) {
                   const response = await fetch(`${ISSUER}/api/accounts/deviceauth/token`, {
                     method: "POST",
+                    signal: AbortSignal.timeout(OAUTH_REQUEST_TIMEOUT_MS),
                     headers: {
                       "Content-Type": "application/json",
                       "User-Agent": `yukioshi/${InstallationVersion}`,
@@ -515,6 +525,7 @@ export async function CodexAuthPlugin(input: PluginInput, options: CodexAuthPlug
 
                     const tokenResponse = await fetch(`${ISSUER}/oauth/token`, {
                       method: "POST",
+                      signal: AbortSignal.timeout(OAUTH_REQUEST_TIMEOUT_MS),
                       headers: { "Content-Type": "application/x-www-form-urlencoded" },
                       body: new URLSearchParams({
                         grant_type: "authorization_code",
@@ -546,6 +557,7 @@ export async function CodexAuthPlugin(input: PluginInput, options: CodexAuthPlug
 
                   await sleep(interval + OAUTH_POLLING_SAFETY_MARGIN_MS)
                 }
+                return { type: "failed" as const }
               },
             }
           },
