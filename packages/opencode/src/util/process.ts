@@ -3,6 +3,7 @@ import type { Stream } from "node:stream"
 import launch from "cross-spawn"
 import { buffer } from "node:stream/consumers"
 import { errorMessage } from "./error"
+import { ChildRegistry } from "@yukioshi/core/child-registry"
 
 export type Stdio = "inherit" | "pipe" | "ignore" | number | Stream
 export type Shell = boolean | string
@@ -67,6 +68,8 @@ export function spawn(cmd: string[], opts: Options = {}): Child {
     stdio: [opts.stdin ?? "ignore", opts.stdout ?? "ignore", opts.stderr ?? "ignore"],
     windowsHide: process.platform === "win32",
   })
+
+  ChildRegistry.track(proc, false)
 
   let closed = false
   let timer: ReturnType<typeof setTimeout> | undefined

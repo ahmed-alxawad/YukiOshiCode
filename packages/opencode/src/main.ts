@@ -32,6 +32,7 @@ import { CheckpointCommand } from "./cli/cmd/checkpoint"
 import { ScheduleCommand } from "./cli/cmd/schedule"
 import { SkillCommand } from "./cli/cmd/skill"
 import { WorktreeCommand } from "./cli/cmd/worktree"
+import { ChildRegistry } from "@yukioshi/core/child-registry"
 
 const args = hideBin(process.argv)
 
@@ -44,6 +45,9 @@ function show(out: string) {
   }
   process.stderr.write(out)
 }
+
+// Ctrl-C, SIGTERM and SIGHUP must not leave shell commands, hooks, MCP or delegate agents running.
+ChildRegistry.stopOnSignals(["SIGINT", "SIGTERM", "SIGHUP"])
 
 const cli = yargs(args)
   .parserConfiguration({ "populate--": true })

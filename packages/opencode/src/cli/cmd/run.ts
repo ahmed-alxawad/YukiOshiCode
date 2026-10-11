@@ -32,6 +32,7 @@ import { executePostTurnVerification } from "./run/verification"
 import { EXIT, dollars, goalExitCode, readOutputSchema, unknownCommandMessage } from "./run/outcome"
 import { schemaViolation } from "./run/schema"
 import { combineFileChanges, formatFileChanges, type FileChange } from "@yukioshi/core/files-changed-summary"
+import { ChildRegistry } from "@yukioshi/core/child-registry"
 
 type ModelInput = Parameters<OpencodeClient["session"]["prompt"]>[0]["model"]
 
@@ -1032,6 +1033,9 @@ export const RunCommand = effectCmd({
         await share(client, sessionID)
 
         if (!interactive) {
+          // Ctrl-C or SIGTERM: stop the turn through the server first, so the shell commands, hooks and
+          // subagents it started are cancelled and the turn is recorded as interrupted.
+          if (!args.attach) ChildRegistry.onStop(() => client.session.abort({ sessionID }))
           const events = await client.event.subscribe()
           const completed = loop(client, events).catch((e) => {
             console.error(e)
