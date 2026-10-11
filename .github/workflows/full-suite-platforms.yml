@@ -14,7 +14,6 @@ jobs:
   test:
     name: full-suite (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -40,7 +39,6 @@ jobs:
 
       - name: Run opencode test suite
         id: test
-        continue-on-error: true
         working-directory: packages/opencode
         run: |
           bun test --timeout 30000 2>&1 | tee test-output.log
