@@ -135,7 +135,7 @@ jobs:
           fi
 
           if [[ "$ARCHIVE" == *.zip ]]; then
-            unzip -q "$ARCHIVE"
+            unzip -qo "$ARCHIVE"
           else
             tar -xzf "$ARCHIVE"
           fi
