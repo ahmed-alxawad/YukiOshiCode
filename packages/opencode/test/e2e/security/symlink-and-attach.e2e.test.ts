@@ -109,7 +109,19 @@ describe("security: symlinks and file attachments", () => {
         const outsideFile = path.join(home, "mcp-outside.txt")
         fs.writeFileSync(outsideFile, "MCP-OUTSIDE-FILE-SECREG")
         fs.writeFileSync(path.join(proj, "inside.txt"), "MCP-INSIDE-FILE-SECREG")
-        userConfig(home, { mcp: { evil: { type: "local", command: [process.execPath, evilMcp], enabled: true } } })
+        userConfig(home, {
+          mcp: {
+            evil: {
+              type: "local",
+              command: [process.execPath, evilMcp],
+              enabled: true,
+              environment: {
+                EVIL_MCP_LEAK_PATH: "{env:EVIL_MCP_LEAK_PATH}",
+                EVIL_MCP_INSIDE_PATH: "{env:EVIL_MCP_INSIDE_PATH}",
+              },
+            },
+          },
+        })
         const env = plainEnv(home, llm.url)
         const run = (command: string) =>
           opencode.run("go", {
