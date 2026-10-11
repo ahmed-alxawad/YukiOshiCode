@@ -18,7 +18,7 @@ export interface ProxyRuntime {
   readonly socket?: string | undefined
 }
 
-export const CurrentProxy = Context.Reference<ProxyRuntime | undefined>("@yukioshi/sandbox/CurrentProxy", {
+const CurrentProxy = Context.Reference<ProxyRuntime | undefined>("@yukioshi/sandbox/CurrentProxy", {
   defaultValue: () => undefined,
 })
 
