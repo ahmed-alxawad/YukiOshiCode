@@ -62,3 +62,13 @@ test("copyTo passes text on stdin", async () => {
 function dir0() {
   return mkdtempSync(path.join(tmpdir(), "clip-"))
 }
+
+import { pasteCommands } from "../src/clipboard"
+
+test("reads text with wl-paste on Wayland, then X11 tools", () => {
+  const all = () => true
+  expect(pasteCommands(true, all)[0]).toEqual(["wl-paste", "--no-newline"])
+  expect(pasteCommands(false, all)[0]).toEqual(["xclip", "-selection", "clipboard", "-o"])
+  expect(pasteCommands(true, (name) => name === "xsel")).toEqual([["xsel", "--clipboard", "--output"]])
+  expect(pasteCommands(true, () => false)).toEqual([])
+})

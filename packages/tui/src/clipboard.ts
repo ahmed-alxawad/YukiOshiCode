@@ -6,18 +6,37 @@ import { promisify } from "node:util"
 
 const exec = promisify(execFile)
 
-function command(command: string, args: string[] = [], input?: string) {
+// Reads a helper's output. A clipboard helper that never answers must not freeze the prompt, so it is
+// stopped after `timeout` milliseconds.
+function command(command: string, args: string[] = [], input?: string, timeout = 3000) {
   return new Promise<Buffer>((resolve, reject) => {
     const child = spawn(command, args, { stdio: [input === undefined ? "ignore" : "pipe", "pipe", "ignore"] })
     const output: Buffer[] = []
-    child.on("error", reject)
+    const timer = setTimeout(() => {
+      child.kill()
+      reject(new Error(`${command} timed out`))
+    }, timeout)
+    child.on("error", (err) => {
+      clearTimeout(timer)
+      reject(err)
+    })
     child.stdout?.on("data", (chunk: Buffer) => output.push(chunk))
     child.on("close", (code) => {
+      clearTimeout(timer)
       if (code === 0) return resolve(Buffer.concat(output))
       reject(new Error(`${command} exited with code ${code}`))
     })
     if (input !== undefined) child.stdin?.end(input)
   })
+}
+
+/** The commands that print the clipboard as text on Linux, best first. */
+export function pasteCommands(wayland: boolean, has: (name: string) => boolean): string[][] {
+  const commands: string[][] = []
+  if (wayland && has("wl-paste")) commands.push(["wl-paste", "--no-newline"])
+  if (has("xclip")) commands.push(["xclip", "-selection", "clipboard", "-o"])
+  if (has("xsel")) commands.push(["xsel", "--clipboard", "--output"])
+  return commands
 }
 
 // Clipboard helpers such as xclip and wl-copy fork a daemon that keeps inherited pipes open,
@@ -91,6 +110,16 @@ export async function read() {
       Buffer.alloc(0),
     )
     if (x11.length) return { data: x11.toString("base64"), mime: "image/png" }
+  }
+
+  if (platform() === "linux") {
+    // clipboardy needs xsel or XWayland, so on a plain Wayland desktop read the text with wl-paste first.
+    const { which } = await import("@yukioshi/core/util/which")
+    const wayland = Boolean(process.env.WAYLAND_DISPLAY) || process.env.XDG_SESSION_TYPE === "wayland"
+    for (const [cmd, ...args] of pasteCommands(wayland, (name) => Boolean(which(name)))) {
+      const text = await command(cmd, args).catch(() => undefined)
+      if (text?.length) return { data: text.toString(), mime: "text/plain" }
+    }
   }
 
   const { default: clipboardy } = await import("clipboardy")
