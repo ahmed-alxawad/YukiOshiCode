@@ -44,9 +44,14 @@ function providerIconsPlugin() {
   }
 }
 
+export function modelsCatalogUrl(url?: string) {
+  return url ? `${url}/api.json` : "https://models.dev/api.json"
+}
+
 async function fetchProviderIcons() {
-  const url = process.env.YUKIOSHI_MODELS_URL || "https://models.opencode.ai"
-  const providers = await fetch(`${url}/api.json`)
+  const source = process.env.YUKIOSHI_MODELS_URL
+  const url = source || "https://models.dev"
+  const providers = await fetch(modelsCatalogUrl(source))
     .then((res) => res.json())
     .then((json) => Object.keys(json))
   await Promise.all(
