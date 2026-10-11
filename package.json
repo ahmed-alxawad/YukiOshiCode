@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "packages/opencode/bin/yukioshi-dev",
     "lint": "oxlint",
+    "notices": "bun run packages/opencode/script/third-party-notices.ts",
     "typecheck": "bun turbo typecheck",
     "upgrade-opentui": "bun run script/upgrade-opentui.ts",
     "postinstall": "bun run --cwd packages/core fix-node-pty",

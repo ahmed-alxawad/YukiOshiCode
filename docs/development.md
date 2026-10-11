@@ -63,6 +63,8 @@ bun run build               # every platform
 
 Binaries are written to `packages/opencode/dist/yukioshi-<os>-<arch>/bin/`.
 
+Run `bun run notices` to regenerate `THIRD-PARTY-NOTICES.md` after a dependency change.
+
 ## Releasing
 
 Pushing a tag such as `v0.3.6` starts the release workflow: it builds every
