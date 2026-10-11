@@ -636,3 +636,14 @@ table is in [Permissions and safety](permissions-and-safety.md#platform-support)
   service and never uploads sessions anywhere else.
 - **Editors**: `yukioshi acp` speaks the Agent Client Protocol for editors that
   support it. No separate YukiOshi editor extension is published; connect your editor over ACP: `yukioshi acp`.
+
+## macOS launchd scheduling
+
+On macOS, every enabled scheduled job has its own user LaunchAgent at
+`~/Library/LaunchAgents/com.yukioshi.schedule.<id>.plist`. The agent runs the
+YukiOshi binary with `schedule run <id>`, preserves the job's working directory
+and scheduler environment, and uses `StartInterval` for simple recurring
+minute intervals or `StartCalendarInterval` for calendar schedules. YukiOshi
+bootstraps the agent with `launchctl` and removes its legacy crontab block once
+that succeeds; if launchctl cannot load the agent, scheduling falls back to the
+existing crontab integration.

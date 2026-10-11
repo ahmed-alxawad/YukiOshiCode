@@ -1,4 +1,4 @@
-// System scheduler integration (crontab on Linux/macOS, schtasks on Windows).
+// System scheduler integration (crontab on Linux, launchd on macOS, schtasks on Windows).
 // Manages the designated "# BEGIN yukioshi schedule" ... "# END yukioshi schedule" block.
 
 import path from "path"
@@ -7,6 +7,7 @@ import fs from "fs/promises"
 import { existsSync } from "fs"
 import type { ScheduleJob } from "./store"
 import { cronToTaskXml, schtasksDeleteArgs } from "./windows"
+import { syncLaunchdSchedule, type LaunchctlRunner } from "./launchd"
 
 export const CRON_BLOCK_START = "# BEGIN yukioshi schedule"
 export const CRON_BLOCK_END = "# END yukioshi schedule"
@@ -216,25 +217,44 @@ export async function writeCrontab(content: string): Promise<void> {
 
 /**
  * A warning to show when a job is added, for platforms where the system scheduler has limits the user would
- * not expect. macOS uses cron too, and cron there is sandboxed by privacy protections.
+ * not expect.
  */
 export function schedulerWarning(platform: NodeJS.Platform = process.platform): string | undefined {
   if (platform !== "darwin") return undefined
   return [
-    "Warning: on macOS, scheduled jobs run from cron, which has limits:",
-    "  - cron cannot read ~/Documents, ~/Desktop or ~/Downloads unless /usr/sbin/cron has Full Disk Access (System Settings > Privacy & Security).",
-    "  - jobs do not run while the Mac is asleep, and missed runs are not made up.",
-    "  - cron cannot reach the login Keychain, so keys stored there are unavailable to scheduled runs.",
+    "Warning: on macOS, scheduled jobs run through launchd:",
+    "  - the YukiOshi binary may need Full Disk Access to read ~/Documents, ~/Desktop or ~/Downloads (System Settings > Privacy & Security).",
+    "  - calendar jobs missed while the Mac is asleep run after wake; interval jobs wait for their next interval.",
+    "  - Keychain access still depends on an active user login session and an unlocked login Keychain.",
   ].join("\n")
+}
+
+export interface SystemScheduleOptions {
+  platform?: NodeJS.Platform
+  launchctl?: LaunchctlRunner
+}
+
+async function syncCronSchedule(
+  jobs: ScheduleJob[],
+  binary: string,
+  home: string,
+  pathEnv: string,
+  env: Record<string, string>,
+): Promise<void> {
+  const existing = await readCrontab()
+  const updated = updateCrontabBlock(existing, jobs, binary, home, pathEnv, env)
+  if (updated !== existing) await writeCrontab(updated)
 }
 
 /**
  * Synchronizes the list of configured jobs with the host system's scheduler:
- * - On Linux/macOS: updates the "# BEGIN yukioshi schedule" block in crontab.
+ * - On Linux: updates the "# BEGIN yukioshi schedule" block in crontab.
+ * - On macOS: creates one LaunchAgent per enabled job, falling back to the crontab block if launchctl fails.
  * - On Windows: creates or deletes tasks in Task Scheduler via schtasks.exe.
  */
-export async function syncSystemSchedule(jobs: ScheduleJob[]): Promise<void> {
-  if (process.platform === "win32") {
+export async function syncSystemSchedule(jobs: ScheduleJob[], options: SystemScheduleOptions = {}): Promise<void> {
+  const platform = options.platform ?? process.platform
+  if (platform === "win32") {
     const binary = getYukioshiBinary()
     for (const job of jobs) {
       if (job.enabled) {
@@ -263,11 +283,23 @@ export async function syncSystemSchedule(jobs: ScheduleJob[]): Promise<void> {
     return
   }
 
-  // Linux & macOS
-  const existing = await readCrontab()
+  const env = carriedEnv()
   const binary = getYukioshiBinary()
   const home = process.env.YUKIOSHI_TEST_HOME ?? process.env.HOME ?? os.homedir()
   const pathEnv = process.env.PATH ?? ""
-  const updated = updateCrontabBlock(existing, jobs, binary, home, pathEnv, carriedEnv())
-  await writeCrontab(updated)
+
+  if (platform === "darwin") {
+    try {
+      await syncLaunchdSchedule(jobs, { binary, home, pathEnv, env, launchctl: options.launchctl })
+    } catch {
+      await syncCronSchedule(jobs, binary, home, pathEnv, env)
+      return
+    }
+
+    // A successful LaunchAgent sync replaces the legacy macOS cron block, including after job removal.
+    await syncCronSchedule([], binary, home, pathEnv, env)
+    return
+  }
+
+  await syncCronSchedule(jobs, binary, home, pathEnv, env)
 }
