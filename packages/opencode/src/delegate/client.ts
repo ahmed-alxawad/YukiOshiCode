@@ -21,6 +21,7 @@ import { InstallationVersion } from "@yukioshi/core/installation/version"
 import { mergeEnv, planSpawn } from "./spawn"
 import { Redact } from "@yukioshi/core/redact"
 import { ChildRegistry } from "@yukioshi/core/child-registry"
+import { MAX_TIMER_MS } from "@/util/timer"
 import { DEFAULT_TIMEOUT, type Agent as ConfigAgent } from "@yukioshi/core/v1/config/delegate"
 
 export interface DelegateRunOptions {
@@ -391,7 +392,8 @@ export async function runDelegate(options: DelegateRunOptions): Promise<Delegate
   let activeSessionId: string | null = null
 
   // Timeout handling
-  const timeoutMs = agentConfig.timeout ?? DEFAULT_TIMEOUT
+  // A timer cannot hold more than about 24 days; a larger delay would fire at once.
+  const timeoutMs = Math.min(agentConfig.timeout ?? DEFAULT_TIMEOUT, MAX_TIMER_MS)
   let timeoutTimer: NodeJS.Timeout | undefined
 
   const timeoutPromise = new Promise<never>((_, reject) => {
@@ -425,7 +427,7 @@ export async function runDelegate(options: DelegateRunOptions): Promise<Delegate
         () =>
           reject(
             new Error(
-              `Agent "${agentName}" started but did not answer the ACP handshake within ${Math.round(handshakeMs / 1000)}s. Check that "${cmd}" speaks the Agent Client Protocol (ACP) and is logged in, or raise delegate.agents.${agentName}.timeout (milliseconds).`,
+              `Agent "${agentName}" started but did not answer the ACP handshake within ${Math.round(handshakeMs / 1000)}s. Check that "${cmd}" speaks the Agent Client Protocol (ACP) and is logged in. If it has to download or sign in on first use, run it once by hand first.`,
             ),
           ),
         handshakeMs,
