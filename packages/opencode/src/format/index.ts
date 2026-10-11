@@ -1,5 +1,5 @@
 import { LayerNode } from "@yukioshi/core/effect/layer-node"
-import { Effect, Layer, Context, Schema } from "effect"
+import { Duration, Effect, Layer, Context, Schema } from "effect"
 import { serviceUse } from "@yukioshi/core/effect/service-use"
 import { ChildProcess } from "effect/unstable/process"
 import { AppProcess } from "@yukioshi/core/process"
@@ -10,6 +10,12 @@ import { Config } from "@/config/config"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { errorMessage } from "@/util/error"
 import * as Formatter from "./formatter"
+
+/** A formatter that runs longer than this is killed so one stuck process cannot block every edit. */
+export function formatTimeoutSeconds(env: NodeJS.ProcessEnv = process.env) {
+  const seconds = Number(env.YUKIOSHI_FORMATTER_TIMEOUT_SECONDS)
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : 60
+}
 
 export const Status = Schema.Struct({
   name: Schema.String,
@@ -91,11 +97,12 @@ const layer = Layer.effect(
                     stdout: "ignore",
                     stderr: "ignore",
                   }),
+                  { timeout: Duration.seconds(formatTimeoutSeconds()) },
                 )
                 .pipe(
                   Effect.catch((error) =>
                     Effect.logError("failed to format file", {
-                      error: "spawn failed",
+                      error: "spawn failed or timed out (limit: YUKIOSHI_FORMATTER_TIMEOUT_SECONDS, default 60)",
                       command: cmd,
                       ...item.environment,
                       file: filepath,
