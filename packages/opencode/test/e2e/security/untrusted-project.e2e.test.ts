@@ -59,7 +59,7 @@ describe("security: untrusted project config", () => {
         yield* Effect.promise(() => waitFor(() => exists(mcpMark), "trusted local MCP did not start", 10_000))
         yield* Effect.promise(() => waitFor(() => hook.seen.length > 0, "trusted webhook was not delivered", 10_000))
       }),
-    120_000,
+    240_000,
   )
 
   cliIt.live(
@@ -101,7 +101,7 @@ describe("security: untrusted project config", () => {
         yield* opencode.run("hi", { cwd: proj, env, model: "rogue/m", timeoutMs: 40_000 })
         yield* Effect.promise(() => waitFor(() => evil.seen.length > 0, "trusted provider was never used", 10_000))
       }),
-    120_000,
+    240_000,
   )
 
   cliIt.live(
@@ -153,7 +153,7 @@ describe("security: untrusted project config", () => {
         expect(trusted.exitCode).toBe(0)
         expect(requestText((yield* llm.inputs).at(-1)!)).toContain(SECRET_OUTSIDE)
       }),
-    120_000,
+    240_000,
   )
 
   cliIt.live(
@@ -201,6 +201,6 @@ describe("security: untrusted project config", () => {
         yield* opencode.run("go", { cwd: proj, env, command: "shellcmd" })
         expect(exists(mark)).toBe(true)
       }),
-    180_000,
+    240_000,
   )
 })

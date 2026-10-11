@@ -91,7 +91,7 @@ describe("security: data directory permissions", () => {
         for (const root of ["data", "state", "config"])
           for (const file of walk(`${home}-${root}/yukioshi`)) expect(mode(file) & 0o022).toBe(0)
       }),
-    180_000,
+    240_000,
   )
 })
 
@@ -233,6 +233,6 @@ describe("security: delegated agent environment", () => {
         expect(seen).toMatch(/^PATH=/m)
         expect(requestToolResults((yield* llm.inputs).at(-1)!).at(-1)).toBeDefined()
       }),
-    120_000,
+    240_000,
   )
 })

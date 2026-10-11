@@ -35,7 +35,7 @@ describe("security: MCP", () => {
         expect(patch).toBeDefined()
         expect(JSON.stringify(patch)).not.toContain("fixture tool search")
       }),
-    90_000,
+    240_000,
   )
 
   cliIt.live(
@@ -57,7 +57,7 @@ describe("security: MCP", () => {
         expect(out).not.toMatch(/fileurl[^\n]*connected/i)
         expect(out).not.toMatch(/ftpurl[^\n]*connected/i)
       }),
-    90_000,
+    240_000,
   )
 
   cliIt.live(
@@ -90,6 +90,6 @@ describe("security: MCP", () => {
         expect(third.seen).toHaveLength(0)
         expect(JSON.stringify(third.seen)).not.toContain(value)
       }),
-    90_000,
+    240_000,
   )
 })

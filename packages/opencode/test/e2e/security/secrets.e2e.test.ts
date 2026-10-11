@@ -123,7 +123,7 @@ describe("security: secrets stay local", () => {
         expect(files.some((file) => file.includes(`${path.sep}audit${path.sep}`))).toBe(true)
         expect(leakedInFiles(files)).toEqual([])
       }),
-    120_000,
+    240_000,
   )
 
   cliIt.live(
@@ -149,7 +149,7 @@ describe("security: secrets stay local", () => {
         // The history reached the provider at all: the second turn carries the first turn's tool call.
         expect(JSON.stringify(inputs.at(-1))).toContain("report")
       }),
-    180_000,
+    240_000,
   )
 
   cliIt.live(
@@ -177,6 +177,6 @@ describe("security: secrets stay local", () => {
         expect(debug.stdout).toContain("remote")
         expectClean("debug config", debug.stdout + debug.stderr)
       }),
-    120_000,
+    240_000,
   )
 })

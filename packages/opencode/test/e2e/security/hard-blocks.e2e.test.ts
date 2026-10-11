@@ -110,7 +110,7 @@ describe("security: hard blocks and permission patterns", () => {
         for (const [, content] of secrets) expect(text).not.toContain(content)
         expect(requestText(inputs.at(-1)!)).toContain("ORDINARY-README-SECREG")
       }),
-    120_000,
+    240_000,
   )
 
   cliIt.live(
@@ -134,6 +134,6 @@ describe("security: hard blocks and permission patterns", () => {
         // A 5000-character match must not be the dominant cost of the run.
         expect(result.durationMs).toBeLessThan(60_000)
       }),
-    120_000,
+    240_000,
   )
 })

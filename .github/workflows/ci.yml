@@ -118,7 +118,7 @@ jobs:
           git config --global user.name CI
       - run: bun install --frozen-lockfile
       # Drives the real CLI (from source, nothing is built) through the attack scenarios fixed in
-      # v0.3.6. Each file is an independent area, so they run side by side to keep the job short.
+      # v0.3.6. Each file is an independent area, so a few run side by side to keep the job short.
       - name: Run the security scenarios
         working-directory: packages/opencode
         shell: bash
@@ -127,16 +127,16 @@ jobs:
           logs="$RUNNER_TEMP/security"
           mkdir -p "$logs"
           files=(test/e2e/security/*.e2e.test.ts)
-          pids=()
           for file in "${files[@]}"; do
             name="$(basename "$file" .e2e.test.ts)"
-            bun test --timeout 240000 "$file" > "$logs/$name.log" 2>&1 &
-            pids+=("$!")
+            while [ "$(jobs -rp | wc -l)" -ge 4 ]; do wait -n || true; done
+            ( bun test --timeout 240000 "$file" > "$logs/$name.log" 2>&1; echo $? > "$logs/$name.status" ) &
           done
+          wait
           status=0
-          for i in "${!pids[@]}"; do
-            name="$(basename "${files[$i]}" .e2e.test.ts)"
-            if wait "${pids[$i]}"; then result=passed; else result=FAILED; status=1; fi
+          for file in "${files[@]}"; do
+            name="$(basename "$file" .e2e.test.ts)"
+            if [ "$(cat "$logs/$name.status")" = 0 ]; then result=passed; else result=FAILED; status=1; fi
             echo "::group::security/$name ($result)"
             cat "$logs/$name.log"
             echo "::endgroup::"

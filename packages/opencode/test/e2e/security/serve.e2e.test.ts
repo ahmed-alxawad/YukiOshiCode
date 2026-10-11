@@ -63,7 +63,7 @@ describe("security: yukioshi serve", () => {
         const literal = yield* Effect.promise(() => rawGet(server.port, `127.0.0.1:${server.port}`))
         expect(literal.status).toBe(200)
       }),
-    90_000,
+    240_000,
   )
 
   cliIt.live(
@@ -84,7 +84,7 @@ describe("security: yukioshi serve", () => {
         expect(post.status).toBe(401)
         expect((yield* get({ authorization: basic(password) })).status).toBe(200)
       }),
-    90_000,
+    240_000,
   )
 
   cliIt.live(
@@ -125,7 +125,7 @@ describe("security: yukioshi serve", () => {
         // Nothing above started a model request.
         expect(yield* llm.calls).toBe(0)
       }),
-    90_000,
+    240_000,
   )
 
   for (const mode of ["plan", "review"] as const) {

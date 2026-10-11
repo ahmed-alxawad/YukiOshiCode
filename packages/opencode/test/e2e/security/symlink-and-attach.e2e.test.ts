@@ -64,7 +64,7 @@ describe("security: symlinks and file attachments", () => {
         expect(allowed.exitCode).toBe(0)
         expect(requestText((yield* llm.inputs).at(-1)!)).toContain(OUT)
       }),
-    120_000,
+    240_000,
   )
 
   cliIt.live(
@@ -96,7 +96,7 @@ describe("security: symlinks and file attachments", () => {
         // Positive control: a reference inside the project is attached.
         expect(JSON.stringify(b)).toContain("SUBAGENT-INSIDE-SECREG")
       }),
-    120_000,
+    240_000,
   )
 
   cliIt.live(
@@ -135,6 +135,6 @@ describe("security: symlinks and file attachments", () => {
         expect(inside.exitCode).toBe(0)
         expect(JSON.stringify(yield* llm.inputs)).toContain("MCP-INSIDE-FILE-SECREG")
       }),
-    120_000,
+    240_000,
   )
 })

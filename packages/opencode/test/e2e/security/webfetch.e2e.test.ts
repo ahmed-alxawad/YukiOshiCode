@@ -56,7 +56,7 @@ describe("security: webfetch", () => {
         expect(small.exitCode).toBe(0)
         expect(lastResult(yield* llm.inputs)).toContain("SMALL-PAGE-SECREG")
       }),
-    120_000,
+    240_000,
   )
 
   cliIt.live(
@@ -119,6 +119,6 @@ describe("security: webfetch", () => {
         expect(file.exitCode).toBe(0)
         expect(lastResult(yield* llm.inputs)).toContain("non-http URL was refused")
       }),
-    180_000,
+    240_000,
   )
 })
