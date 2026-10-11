@@ -27,7 +27,7 @@ function todoColor(theme: RunTheme, status: string) {
   return status === "in_progress" ? theme.block.warning : theme.block.muted
 }
 
-export function entryGroupKey(commit: StreamCommit): string | undefined {
+function entryGroupKey(commit: StreamCommit): string | undefined {
   if (!commit.partID) {
     return undefined
   }
@@ -49,7 +49,7 @@ export function sameEntryGroup(left: StreamCommit | undefined, right: StreamComm
   return Boolean(current && next && current === next)
 }
 
-export function entryLayout(commit: StreamCommit, body: RunEntryBody = entryBody(commit)): EntryLayout {
+function entryLayout(commit: StreamCommit, body: RunEntryBody = entryBody(commit)): EntryLayout {
   if (commit.kind === "tool") {
     if (body.type === "structured" || body.type === "markdown") {
       return "block"

@@ -113,8 +113,6 @@ type RunFooterViewProps = {
   onQueuedRemove: (messageID: string) => Promise<boolean>
 }
 
-export { TEXTAREA_MIN_ROWS, TEXTAREA_MAX_ROWS } from "./footer.prompt"
-
 export function RunFooterView(props: RunFooterViewProps) {
   const term = useTerminalDimensions()
   const width = createMemo(() => term().width)
