@@ -213,6 +213,11 @@ applies these checks:
 - A remote server cannot send your configured headers elsewhere. YukiOshi
   follows its redirects (up to five) only within the original origin and
   refuses a redirect to a different origin.
+- A local stdio server receives only `PATH`, `HOME`, `USER`, `LANG`, `LC_*`,
+  `TERM`, `TMPDIR`, `SHELL`, and standard proxy variables by default. Windows
+  servers also receive `SystemRoot`, `PATHEXT`, `COMSPEC`, `USERPROFILE`, and
+  `APPDATA`. Credentials and unrelated variables are not inherited unless you
+  explicitly set `environment` (or its `env` alias), or set `inherit_env: true`.
 - A tool is named `<server>_<tool>`. A tool whose name matches a built-in tool
   (a server `apply` with a tool `patch` would match `apply_patch`) or
   `tool_search` is skipped and logged. If two tools get the same name after

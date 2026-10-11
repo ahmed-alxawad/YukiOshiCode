@@ -50,6 +50,28 @@ read:
 Keep API keys out of checked-in config files: use `{env:…}` or
 `yukioshi providers login`, which stores them in your OS keychain.
 
+### Local MCP environment
+
+Local stdio MCP servers inherit only `PATH`, `HOME`, `USER`, `LANG`, `LC_*`,
+`TERM`, `TMPDIR`, `SHELL`, and standard proxy variables. On Windows they also
+inherit `SystemRoot`, `PATHEXT`, `COMSPEC`, `USERPROFILE`, and `APPDATA`.
+Pass anything else explicitly with `environment` (or its `env` alias):
+
+```jsonc
+{
+  "mcp": {
+    "private-service": {
+      "type": "local",
+      "command": ["npx", "-y", "@example/private-mcp"],
+      "environment": { "PRIVATE_SERVICE_TOKEN": "{env:PRIVATE_SERVICE_TOKEN}" }
+    }
+  }
+}
+```
+
+Normal `{env:…}` substitution applies to both aliases. Set `"inherit_env": true`
+only when the server needs the full parent environment, including credentials.
+
 ## Common settings
 
 ```jsonc

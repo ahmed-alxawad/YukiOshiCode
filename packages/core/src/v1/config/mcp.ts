@@ -1,9 +1,11 @@
 export * as ConfigMCPV1 from "./mcp"
 
-import { Schema } from "effect"
+import { Schema, SchemaGetter } from "effect"
 import { PositiveInt } from "../../schema"
 
-export const Local = Schema.Struct({
+const Environment = Schema.Record(Schema.String, Schema.String)
+
+const LocalInput = Schema.Struct({
   type: Schema.Literal("local").annotate({ description: "Type of MCP server connection" }),
   command: Schema.mutable(Schema.Array(Schema.String)).annotate({
     description: "Command and arguments to run the MCP server",
@@ -11,8 +13,14 @@ export const Local = Schema.Struct({
   cwd: Schema.optional(Schema.String).annotate({
     description: "Working directory for the MCP server process. Relative paths resolve from the workspace directory.",
   }),
-  environment: Schema.optional(Schema.Record(Schema.String, Schema.String)).annotate({
+  environment: Schema.optional(Environment).annotate({
     description: "Environment variables to set when running the MCP server",
+  }),
+  env: Schema.optional(Environment).annotate({
+    description: "Alias for environment variables to set when running the MCP server",
+  }),
+  inherit_env: Schema.optional(Schema.Boolean).annotate({
+    description: "Pass the complete parent environment to this local MCP server. Defaults to false.",
   }),
   enabled: Schema.optional(Schema.Boolean).annotate({
     description: "Enable or disable the MCP server on startup",
@@ -20,7 +28,44 @@ export const Local = Schema.Struct({
   timeout: Schema.optional(PositiveInt).annotate({
     description: "Timeout in ms for MCP server requests. Defaults to 5000 (5 seconds) if not specified.",
   }),
-}).annotate({ identifier: "McpLocalConfig" })
+})
+
+const LocalOutput = Schema.Struct({
+  type: Schema.Literal("local").annotate({ description: "Type of MCP server connection" }),
+  command: Schema.mutable(Schema.Array(Schema.String)).annotate({
+    description: "Command and arguments to run the MCP server",
+  }),
+  cwd: Schema.optional(Schema.String).annotate({
+    description: "Working directory for the MCP server process. Relative paths resolve from the workspace directory.",
+  }),
+  environment: Schema.optional(Environment).annotate({
+    description: "Environment variables to set when running the MCP server",
+  }),
+  inherit_env: Schema.optional(Schema.Boolean).annotate({
+    description: "Pass the complete parent environment to this local MCP server. Defaults to false.",
+  }),
+  enabled: Schema.optional(Schema.Boolean).annotate({
+    description: "Enable or disable the MCP server on startup",
+  }),
+  timeout: Schema.optional(PositiveInt).annotate({
+    description: "Timeout in ms for MCP server requests. Defaults to 5000 (5 seconds) if not specified.",
+  }),
+})
+
+function normalizeLocal(
+  input: Schema.Schema.Type<typeof LocalInput>,
+): Schema.Schema.Type<typeof LocalOutput> {
+  const { env, environment, ...rest } = input
+  if (env === undefined && environment === undefined) return rest
+  return { ...rest, environment: { ...env, ...environment } }
+}
+
+export const Local = LocalInput.pipe(
+  Schema.decodeTo(LocalOutput, {
+    decode: SchemaGetter.transform(normalizeLocal),
+    encode: SchemaGetter.passthrough({ strict: false }),
+  }),
+).annotate({ identifier: "McpLocalConfig" })
 export type Local = Schema.Schema.Type<typeof Local>
 
 export const OAuth = Schema.Struct({
