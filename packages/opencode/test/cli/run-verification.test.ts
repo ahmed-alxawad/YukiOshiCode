@@ -367,8 +367,15 @@ describe("run verification post-turn", () => {
     "full round-trip: opencode run with tool-modifying turn prints verification status to stdout",
     ({ llm, home, opencode }) =>
       Effect.gen(function* () {
-        const { execSync } = yield* Effect.promise(() => import("node:child_process"))
-        execSync("git init && git config user.email 'test@test.com' && git config user.name 'test'", { cwd: home })
+        // spawnSync with piped stdio: execSync throws "this._write is not a function" under Bun on macOS
+        const { spawnSync } = yield* Effect.promise(() => import("node:child_process"))
+        const git = (...args: string[]) => {
+          const r = spawnSync("git", args, { cwd: home, stdio: "pipe", encoding: "utf8" })
+          if (r.status !== 0) throw new Error(`git ${args.join(" ")} failed: ${r.stderr}`)
+        }
+        git("init")
+        git("config", "user.email", "test@test.com")
+        git("config", "user.name", "test")
 
         // Setup a project package.json with a test script that exits 0
         writeFileSync(
@@ -380,7 +387,8 @@ describe("run verification post-turn", () => {
             },
           }),
         )
-        execSync("git add . && git commit -m 'init'", { cwd: home })
+        git("add", ".")
+        git("commit", "-m", "init")
 
         // Have the LLM call the bash tool to create/modify a file, then reply
         yield* llm.push(
