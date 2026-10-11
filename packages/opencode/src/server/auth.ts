@@ -17,7 +17,7 @@ export type DecodedCredentials = {
 
 export class Config extends ConfigService.Service<Config>()("@yukioshi/ServerAuthConfig", {
   password: EffectConfig.string("YUKIOSHI_SERVER_PASSWORD").pipe(EffectConfig.option),
-  username: EffectConfig.string("YUKIOSHI_SERVER_USERNAME").pipe(EffectConfig.withDefault("opencode")),
+  username: EffectConfig.string("YUKIOSHI_SERVER_USERNAME").pipe(EffectConfig.withDefault("yukioshi")),
 }) {}
 
 export type Info = Context.Service.Shape<typeof Config>
@@ -35,17 +35,24 @@ function safeEqual(a: string, b: string) {
 
 export function authorized(credentials: DecodedCredentials, config: Info) {
   if (!Option.isSome(config.password)) return false
-  // Evaluate both comparisons so a wrong username is not distinguishable from a wrong password by timing.
-  const username = safeEqual(credentials.username, config.username)
+  // Evaluate comparisons in constant time:
+  // accept config.username, and also accept legacy "opencode" when default username is used
+  const matchConfig = safeEqual(credentials.username, config.username)
+  if (config.username === "yukioshi") {
+    const matchLegacy = safeEqual(credentials.username, "opencode")
+    const username = matchConfig || matchLegacy
+    const password = safeEqual(Redacted.value(credentials.password), config.password.value)
+    return username && password
+  }
   const password = safeEqual(Redacted.value(credentials.password), config.password.value)
-  return username && password
+  return matchConfig && password
 }
 
 export function header(credentials?: Credentials) {
   const password = credentials?.password ?? Flag.YUKIOSHI_SERVER_PASSWORD
   if (!password) return undefined
 
-  const username = credentials?.username ?? Flag.YUKIOSHI_SERVER_USERNAME ?? "opencode"
+  const username = credentials?.username ?? Flag.YUKIOSHI_SERVER_USERNAME ?? "yukioshi"
   return `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`
 }
 

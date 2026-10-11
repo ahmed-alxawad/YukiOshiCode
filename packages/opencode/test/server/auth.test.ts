@@ -22,12 +22,12 @@ describe("ServerAuth", () => {
     expect(ServerAuth.headers()).toBeUndefined()
   })
 
-  test("defaults to the opencode username", () => {
+  test("defaults to the yukioshi username", () => {
     Flag.YUKIOSHI_SERVER_PASSWORD = "secret"
     Flag.YUKIOSHI_SERVER_USERNAME = undefined
 
     expect(ServerAuth.headers()).toEqual({
-      Authorization: `Basic ${Buffer.from("opencode:secret").toString("base64")}`,
+      Authorization: `Basic ${Buffer.from("yukioshi:secret").toString("base64")}`,
     })
   })
 
@@ -55,5 +55,20 @@ describe("ServerAuth", () => {
     expect(ServerAuth.required(config)).toBe(true)
     expect(ServerAuth.authorized({ username: "alice", password: Redacted.make("secret") }, config)).toBe(true)
     expect(ServerAuth.authorized({ username: "opencode", password: Redacted.make("secret") }, config)).toBe(false)
+    expect(ServerAuth.authorized({ username: "yukioshi", password: Redacted.make("secret") }, config)).toBe(false)
+  })
+
+  test("accepts both yukioshi and legacy opencode when default username is used", () => {
+    const config = { password: Option.some("secret"), username: "yukioshi" }
+
+    expect(ServerAuth.required(config)).toBe(true)
+    // Both accepted with correct password
+    expect(ServerAuth.authorized({ username: "yukioshi", password: Redacted.make("secret") }, config)).toBe(true)
+    expect(ServerAuth.authorized({ username: "opencode", password: Redacted.make("secret") }, config)).toBe(true)
+    // Wrong username refused
+    expect(ServerAuth.authorized({ username: "mallory", password: Redacted.make("secret") }, config)).toBe(false)
+    // Wrong password refused
+    expect(ServerAuth.authorized({ username: "yukioshi", password: Redacted.make("wrong") }, config)).toBe(false)
+    expect(ServerAuth.authorized({ username: "opencode", password: Redacted.make("wrong") }, config)).toBe(false)
   })
 })
