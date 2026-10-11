@@ -21,7 +21,6 @@ ln -s "$(pwd)/packages/opencode/bin/yukioshi-dev" ~/.local/bin/yukioshi
 
 | Folder                           | Contains                                                               |
 | -------------------------------- | ---------------------------------------------------------------------- |
-| `packages/cli`                   | CLI framework, entrypoint commands, and terminal runner services       |
 | `packages/client`                | generated API client and Effect-based HTTP contract schemas            |
 | `packages/code-graph`            | repository structure signals and dependency graph analysis             |
 | `packages/codemode`              | confined code execution and interpreter runtime over schema tools      |
