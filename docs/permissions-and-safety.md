@@ -32,19 +32,14 @@ The default rules allow most actions; YukiOshi still asks before reading
 for what you want to approve yourself, such as `"edit": "ask"` and
 `"bash": "ask"`.
 
-`plan` holds for every tool call in every session, whichever way the mode was
-set (the terminal UI, `yukioshi run --mode`, the session permission mode
-endpoint of the API, ACP, or the trigger endpoint): anything that is not
-low-risk (reading and searching) is refused, even actions your rules allow, and
-the agent is told that plan mode refused it. Fetching URLs, running commands,
-editing files, loading skills, delegating, and starting subagents are refused
-in plan mode. A subagent session is in plan mode whenever its parent session
-(or any session above it) is, and cannot leave it on its own. Leaving plan mode
-(choosing another mode in the terminal UI, or setting another mode on the
-session) lifts the restriction for the session and its subagents. In the
-terminal UI the mode is sent to the session when you send a message (and when
-you cycle the mode in a session), so cycling to `plan` and sending a message
-holds on the server as well; if that cannot be sent, the message is not sent.
+### Plan mode
+
+Plan mode enforces strict read-only execution across all tools, subagents, and entry points:
+
+- **Strict read-only enforcement**: The agent may only perform low-risk actions (reading files, listing directories, codebase search, and read-only inspection). Any attempt to edit files, write new files, execute shell commands, fetch web URLs, load skills, delegate via ACP, or start subagents is refused unconditionally. Configured `allow` rules never override this restriction. When a tool call is refused, the agent is informed: *"Plan mode refused this tool call: plan mode only allows read-only actions. Keep planning with read-only tools, or ask the user to leave plan mode."*
+- **Subagent inheritance**: A subagent session never escapes plan mode. If a parent session or any ancestor session in the tree is in plan mode, the subagent inherits plan mode unconditionally (`inheritsPlan`). Subagents cannot bypass read-only limits or lift plan mode independently.
+- **Universal entry points**: Plan mode is enforced identically across every entry point: the terminal UI (mode cycling via `Ctrl+P` or `tab`), the CLI (`yukioshi run --mode plan`), the HTTP API (`/permission/mode`), the Agent Client Protocol (ACP), and the headless server trigger endpoint (`POST /trigger` with `"mode": "plan"`).
+- **Session synchronization**: Leaving plan mode (by selecting another mode in the terminal UI or updating the session mode via the API) lifts the restriction for the session and its active subagents. In the terminal UI, the mode is synchronized with the server when sending each message; if the mode change cannot be committed to the server, the message is not sent.
 `auto` and `auto-all` only decide how approval prompts are answered, so they do
 not change actions your rules already allow.
 
@@ -234,6 +229,25 @@ applies these checks:
   opening or closing `<server` or `<mcp_instructions` tag is altered, so the
   server cannot close the wrapper and continue as prompt text.
 
+## Webfetch and private network protection
+
+The built-in `webfetch` tool implements strict protections against Server-Side Request Forgery (SSRF) and unauthorized private network probing:
+
+- **Pre-connection DNS inspection**: Before initiating an HTTP connection, YukiOshi resolves the hostname and evaluates all IP addresses against private and local network definitions:
+  - IPv4 loopback (`127.0.0.0/8`) and unspecified (`0.0.0.0/8`)
+  - Private IPv4 ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`)
+  - Link-local addresses (`169.254.0.0/16` and `fe80::/10`)
+  - IPv6 loopback (`::1`) and unspecified (`::`)
+  - Unique local IPv6 addresses (`fc00::/7`)
+  - IPv4-mapped IPv6 addresses (`::ffff:0:0/96`)
+  - Non-standard numeric encodings (decimal integers, octal, hexadecimal)
+- **Mandatory confirmation prompts**: When a target URL resolves to a private or local network address, YukiOshi forces an interactive permission prompt displaying the resolved addresses and identified risks. The prompt cannot be permanently saved or auto-approved (`always: []`), requiring confirmation on each access.
+- **Unattended execution refusal**: In unattended modes (such as background tasks, headless trigger runs, or automated scripts where `unattended: true`), requests to private or local network addresses are refused immediately without connecting.
+- **DNS pinning**: To prevent DNS rebinding attacks (where a DNS entry returns a benign IP on inspection but resolves to an internal address during connection), the HTTP transport pins the connection strictly to the IP addresses verified during inspection (`pinnedFetch`).
+- **Redirect validation**: Redirects are followed manually (up to a limit of 10 hops) and each hop is independently inspected, prompted, and pinned. Redirects to non-HTTP protocols are rejected.
+- **Streaming response cap**: Responses are streamed and enforced against a maximum size limit of 5 MB (`MAX_RESPONSE_SIZE`) to prevent memory exhaustion.
+- **Global `allow_private` setting**: Access to private addresses after interactive confirmation requires `"allow_private": true` under `"webfetch"` in global configuration (`~/.config/yukioshi/yukioshi.json`). This setting cannot be enabled by project-level configuration files.
+
 ## Hard blocks
 
 These are refused in every mode and cannot be overridden by any rule. They are
@@ -384,7 +398,8 @@ answer to `<state>/audit/<date>.jsonl` (`~/.local/state/yukioshi/audit/<date>.js
 name from `YUKIOSHI_SERVER_USERNAME`, which is `yukioshi` when not set; HTTP
 basic auth). Set a password if anyone else can reach the port.
 
-- The user name and password are compared in constant time. Both are always
+- The default username is `yukioshi`. For backward compatibility with existing opencode clients, integrations, and scripts, the server also accepts the legacy username `opencode` when the default username is in use. If a custom `YUKIOSHI_SERVER_USERNAME` is explicitly configured, only that configured username is accepted.
+- The user name and password are compared in constant time (`crypto.timingSafeEqual`). Both are always
   checked, so a wrong user name cannot be told apart from a wrong password by
   timing.
 - When no password is set and the server is bound to a loopback address

@@ -18,6 +18,7 @@ workflow. Most opencode setups work after a few renames.
 | `.opencodeignore`                | `.yukioshiignore` (old name still read) |
 | `~/.config/opencode/`            | `~/.config/yukioshi/`                  |
 | data, cache, and state in `opencode` directories | the same locations under `yukioshi` |
+| Default server username          | `yukioshi` (legacy `opencode` accepted) |
 
 **Added**
 
@@ -25,6 +26,9 @@ workflow. Most opencode setups work after a few renames.
   blocks that no rule or mode can override.
 - An optional OS-level sandbox for shell commands, also enforced by the
   `write` and `edit` tools (`sandbox`).
+- MCP environment isolation: Local stdio MCP servers run in an isolated environment
+  and no longer inherit ambient parent process environment variables by default,
+  preventing secret and credential leaks.
 - Repository trust: a repository's hooks and plugins run only after
   `yukioshi trust`.
 - Project trust records a fingerprint of the repository's executable config (hooks, plugins, MCP/LSP/formatter commands) and lapses when that config changes.
@@ -76,9 +80,14 @@ choose one with `/models` or set `model` in `yukioshi.json`.
    unchanged.
 8. Turn on the optional features you want in `yukioshi.json`: `sandbox`,
    `memory`, `indexing`, `code_graph`, and `hooks`.
+9. If you authenticate with `yukioshi serve`, the default username is now `yukioshi`. For backward compatibility, the legacy username `opencode` is still accepted when the default username is active.
+10. If your local stdio MCP servers rely on environment variables from the parent process, declare them explicitly using `environment` (or `env`) in your MCP configuration, or set `"inherit_env": true` on the server.
 
 ## Names that intentionally stay "opencode"
 
 Not every remaining `opencode` is a missed rename. Third-party plugin packages,
 plugin compatibility fields, and the built-in `customize-opencode` skill keep
-their names so existing integrations keep working.
+their names so existing integrations keep working. The headless server
+(`yukioshi serve`) also accepts `opencode` as an HTTP Basic authentication
+username when the default username is used, ensuring existing client scripts
+continue to authenticate without changes.

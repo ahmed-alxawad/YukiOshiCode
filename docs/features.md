@@ -397,6 +397,19 @@ limits. Only the search query the agent writes is sent, never your session or
 files. Each search follows your `websearch` permission rules. With web search
 off, the agent can still read a page with `webfetch`.
 
+## Web fetching
+
+The built-in `webfetch` tool lets the agent fetch web pages and convert them to Markdown, plain text, or HTML, and also supports downloading image attachments.
+
+### Private IP security and `allow_private`
+
+To protect internal networks and services against Server-Side Request Forgery (SSRF) and data exfiltration:
+- **Private address detection**: Before making a request, YukiOshi resolves the hostname and inspects all resolved IP addresses. Loopback addresses (`127.0.0.1`, `::1`), private networks (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7`), link-local addresses (`169.254.0.0/16`, `fe80::/10`), and non-standard numeric IP encodings (hex, octal, dword) are identified as private network targets.
+- **Mandatory warning prompt**: In interactive sessions, accessing a private or local address triggers a mandatory permission warning detailing the resolved IP addresses and risks. These prompts cannot be permanently auto-approved (`always: []`), requiring confirmation each time a private target is requested.
+- **Unattended refusal**: In unattended modes (such as background tasks, headless trigger executions, or automated runs), any request resolving to a private or local network address is refused immediately before any connection is made.
+- **DNS pinning**: To prevent DNS rebinding attacks where a hostname resolves to a public IP during inspection but switches to a private IP on connect, YukiOshi pins the connection to the inspected IP address. Redirects are followed manually and inspected independently.
+- **Global `allow_private` configuration**: To allow accessing internal resources after the interactive confirmation warning, set `"allow_private": true` under `"webfetch"` in your global configuration (`~/.config/yukioshi/yukioshi.json`). Project configurations cannot enable this setting. See [Webfetch and private network protection](permissions-and-safety.md#webfetch-and-private-network-protection).
+
 ## Code navigation
 
 With language servers on (`"lsp": true`), adding `"lsp_tool": true` gives the

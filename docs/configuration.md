@@ -52,10 +52,9 @@ Keep API keys out of checked-in config files: use `{env:…}` or
 
 ### Local MCP environment
 
-Local stdio MCP servers inherit only `PATH`, `HOME`, `USER`, `LANG`, `LC_*`,
-`TERM`, `TMPDIR`, `SHELL`, and standard proxy variables. On Windows they also
-inherit `SystemRoot`, `PATHEXT`, `COMSPEC`, `USERPROFILE`, and `APPDATA`.
-Pass anything else explicitly with `environment` (or its `env` alias):
+Local stdio MCP servers run in an isolated environment to prevent ambient credentials and API keys from leaking to child processes. By default, they do not inherit the parent process's environment variables, receiving only essential system variables: `PATH`, `HOME`, `USER`, `LANG`, `LC_*`, `TERM`, `TMPDIR`, `SHELL`, and standard proxy variables (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY`, etc.). On Windows they also inherit `SystemRoot`, `PATHEXT`, `COMSPEC`, `USERPROFILE`, and `APPDATA`.
+
+Pass any required environment variables explicitly with `environment` (or its `env` alias):
 
 ```jsonc
 {
@@ -69,8 +68,7 @@ Pass anything else explicitly with `environment` (or its `env` alias):
 }
 ```
 
-Normal `{env:…}` substitution applies to both aliases. Set `"inherit_env": true`
-only when the server needs the full parent environment, including credentials.
+Normal `{env:…}` substitution applies to both aliases. If a local MCP server strictly requires the full parent environment, including all parent credentials and variables, set `"inherit_env": true` on that server's entry.
 
 ## Common settings
 
@@ -135,6 +133,7 @@ only when the server needs the full parent environment, including credentials.
 | `lsp`, `formatter`     | language servers (off unless `lsp` is `true` or an object) and formatters |                                             |
 | `lsp_tool`             | the `lsp` code navigation tool when language servers are on (off by default) | [Features](features.md#code-navigation) |
 | `web_search`           | the `websearch` tool: `enabled` (off by default), `provider` (`exa` or `parallel`) | [Features](features.md#web-search) |
+| `webfetch`             | webfetch options: `allow_private` (off by default; global only) | [Permissions and safety](permissions-and-safety.md#webfetch-and-private-network-protection) |
 | `compaction`           | how long conversations are summarised to stay within context        |                                             |
 | `goal`                 | `/goal`: `enabled` and `max_rounds` (default 20)                    | [Features](features.md)                     |
 | `loop`                 | `/loop` (off by default): `enabled`, `max_runs` (50), `min_interval` seconds (60) | [Features](features.md#loop) |
@@ -255,6 +254,20 @@ By default (`"enabled": "auto"`), tool search turns on when total MCP tool defin
 
 When search mode is active, the model receives a `tool_search` tool listing available deferred tool names and brief summaries. When the model searches or selects a tool (`select:tool_name`), the tool's full definition is loaded for all subsequent steps in the session.
 
+## Webfetch
+
+The `webfetch` tool fetches HTTP and HTTPS URLs for the agent. By default, it guards against Server-Side Request Forgery (SSRF) by refusing private or local network targets in unattended mode and prompting interactively in attended mode. To allow fetching private or local addresses after the interactive confirmation prompt, set `allow_private` in your global configuration:
+
+```jsonc
+{
+  "webfetch": {
+    "allow_private": true
+  }
+}
+```
+
+This option is accepted in global configuration only (`~/.config/yukioshi/yukioshi.json`); project-level configurations cannot enable private fetches. See [Webfetch and private network protection](permissions-and-safety.md#webfetch-and-private-network-protection).
+
 ## Environment variables
 
 | Variable                              | Effect                                                    |
@@ -274,6 +287,7 @@ When search mode is active, the model receives a `tool_search` tool listing avai
 | `YUKIOSHI_DISABLE_PRUNE`              | do not prune old tool output                              |
 | `YUKIOSHI_DISABLE_AUTOCOMPACT`        | do not compact long conversations automatically           |
 | `YUKIOSHI_DISABLE_MODELS_FETCH`       | do not fetch the model catalog from models.dev            |
+| `YUKIOSHI_MODELS_URL`                 | override the models.dev catalog URL (default `https://models.dev/api.json`) |
 | `YUKIOSHI_DISABLE_MOUSE`              | turn mouse support in the terminal UI off                 |
 | `YUKIOSHI_DISABLE_TERMINAL_TITLE`     | do not set the terminal title                             |
 | `YUKIOSHI_EXPERIMENTAL_PARALLEL_TASKS` | enable the `task_parallel` tool (same as `subagents.parallel`) |

@@ -229,4 +229,4 @@ The ID is the first half of the model name, so the model above is
 `local/qwen2.5-coder`.
 
 The runtime catalog is fetched from [models.dev's API](https://models.dev/api.json), while each release also carries
-a bundled offline snapshot.
+a bundled offline snapshot. You can override the catalog URL with the `YUKIOSHI_MODELS_URL` environment variable.
