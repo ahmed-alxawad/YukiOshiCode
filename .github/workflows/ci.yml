@@ -103,6 +103,46 @@ jobs:
               ;;
           esac
 
+  security-regression:
+    name: security regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - name: Configure Git identity
+        run: |
+          git config --global user.email ci@example.invalid
+          git config --global user.name CI
+      - run: bun install --frozen-lockfile
+      # Drives the real CLI (from source, nothing is built) through the attack scenarios fixed in
+      # v0.3.6. Each file is an independent area, so they run side by side to keep the job short.
+      - name: Run the security scenarios
+        working-directory: packages/opencode
+        shell: bash
+        run: |
+          set -u
+          logs="$RUNNER_TEMP/security"
+          mkdir -p "$logs"
+          files=(test/e2e/security/*.e2e.test.ts)
+          pids=()
+          for file in "${files[@]}"; do
+            name="$(basename "$file" .e2e.test.ts)"
+            bun test --timeout 240000 "$file" > "$logs/$name.log" 2>&1 &
+            pids+=("$!")
+          done
+          status=0
+          for i in "${!pids[@]}"; do
+            name="$(basename "${files[$i]}" .e2e.test.ts)"
+            if wait "${pids[$i]}"; then result=passed; else result=FAILED; status=1; fi
+            echo "::group::security/$name ($result)"
+            cat "$logs/$name.log"
+            echo "::endgroup::"
+          done
+          exit "$status"
+
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
