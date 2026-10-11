@@ -968,7 +968,7 @@ export const RunCommand = effectCmd({
                 budgetBlocked = true
               let err = String(props.error.name)
               if ("data" in props.error && props.error.data && "message" in props.error.data) {
-                err = explainSessionError(props.error as never, String(props.error.data.message))
+                err = explainSessionError(props.error as never, String(props.error.data.message), args.model?.split("/")[0])
               }
               error = error ? error + EOL + err : err
               if (emit("error", { error: props.error })) continue

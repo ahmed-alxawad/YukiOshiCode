@@ -39,4 +39,13 @@ describe("timeout and retry messages", () => {
     )
     expect(text).toBe("WebSocket closed")
   })
+
+  test("the timeout advice names the exact provider setting path", () => {
+    const text = explainSessionError(
+      { name: "APIError", data: { metadata: { code: "ProviderHeaderTimeoutError", timeoutMs: "60000" } } },
+      "Provider response headers timed out after 60000ms",
+      "google",
+    )
+    expect(text).toContain("provider.google.options.headerTimeout")
+  })
 })

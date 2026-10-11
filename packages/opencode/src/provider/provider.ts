@@ -44,8 +44,8 @@ import {
 
 // Interactive requests should never look hung for five minutes. Providers can
 // override either value in configuration when a long-running model needs it.
-const PROVIDER_HEADER_TIMEOUT_DEFAULT = 15_000
-const PROVIDER_CHUNK_TIMEOUT_DEFAULT = 30_000
+const PROVIDER_HEADER_TIMEOUT_DEFAULT = 60_000
+const PROVIDER_CHUNK_TIMEOUT_DEFAULT = 60_000
 
 function wrapSSE(res: Response, ms: number, ctl: AbortController) {
   if (typeof ms !== "number" || ms <= 0) return res

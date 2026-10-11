@@ -192,7 +192,7 @@ function hostOf(url: string | undefined) {
  * Adds the next step to a model-call failure that `yukioshi run` reports: which host could not be reached or
  * refused the key, and what to do. Only the host is named, never the full URL, and the key is never printed.
  */
-export function explainSessionError(error: SessionErrorLike, message: string): string {
+export function explainSessionError(error: SessionErrorLike, message: string, providerID?: string): string {
   const status = error.data?.statusCode
   const host = hostOf(error.data?.metadata?.url)
   const text = Redact.scrubKnown(Redact.mask(message))
@@ -203,9 +203,9 @@ export function explainSessionError(error: SessionErrorLike, message: string): s
   const code = error.data?.metadata?.code
   const seconds = (ms: string | undefined) => (ms && Number(ms) > 0 ? `${Math.round(Number(ms) / 100) / 10}s` : undefined)
   if (code === "ProviderHeaderTimeoutError")
-    return `${text}\nThe provider${host ? ` at ${host}` : ""} accepted the request but sent no response within ${seconds(error.data?.metadata?.timeoutMs) ?? "the limit"}, and the retries (2) did not help. To wait longer, raise provider.<id>.options.headerTimeout (milliseconds, false to disable) in yukioshi.json. To switch models automatically, set or extend fallback.models.`
+    return `${text}\nThe provider${host ? ` at ${host}` : ""} accepted the request but sent no response within ${seconds(error.data?.metadata?.timeoutMs) ?? "the limit"}, and the retries (2) did not help. To wait longer, raise provider.${providerID ?? "<id>"}.options.headerTimeout (milliseconds, false to disable) in yukioshi.json. To switch models automatically, set or extend fallback.models.`
   if (code === "ProviderResponseStreamError" && error.data?.metadata?.timeoutMs)
-    return `${text}\nThe provider${host ? ` at ${host}` : ""} stopped sending data for ${seconds(error.data.metadata.timeoutMs)}, and the retries (2) did not help. To wait longer, raise provider.<id>.options.chunkTimeout (milliseconds, 0 disables the check) in yukioshi.json. To switch models automatically, set or extend fallback.models.`
+    return `${text}\nThe provider${host ? ` at ${host}` : ""} stopped sending data for ${seconds(error.data.metadata.timeoutMs)}, and the retries (2) did not help. To wait longer, raise provider.${providerID ?? "<id>"}.options.chunkTimeout (milliseconds, 0 disables the check) in yukioshi.json. To switch models automatically, set or extend fallback.models.`
   if (status !== undefined && status >= 500)
     return `${text}\nThe provider${host ? ` at ${host}` : ""} answered HTTP ${status} on every attempt (the first try plus 2 retries). Run again later, pick another model with --model provider/model, or set or extend fallback.models to switch automatically.`
   if (status === undefined && host)
