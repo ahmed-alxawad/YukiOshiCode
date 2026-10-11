@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -125,3 +126,31 @@ jobs:
             ./dist/yukioshi-linux-x64/bin/yukioshi debug skill > skills.json
           grep -q '"name": "engineering:code-review"' skills.json
           grep -q '"name": "nightmare"' skills.json
+
+  binary-smoke:
+    name: binary smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - name: Build native binary
+        working-directory: packages/opencode
+        run: bun run script/build.ts --single --skip-embed-web-ui
+      - name: Run release smoke tests
+        shell: bash
+        run: |
+          case "${{ runner.os }}" in
+            Linux) BIN="./packages/opencode/dist/yukioshi-linux-x64/bin/yukioshi" ;;
+            macOS) BIN="./packages/opencode/dist/yukioshi-darwin-arm64/bin/yukioshi" ;;
+            Windows) BIN="./packages/opencode/dist/yukioshi-windows-x64/bin/yukioshi.exe" ;;
+            *) echo "Unsupported runner: ${{ runner.os }}" >&2; exit 1 ;;
+          esac
+          bun packages/opencode/script/smoke.ts "$BIN"
