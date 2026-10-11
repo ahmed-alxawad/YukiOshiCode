@@ -2,12 +2,45 @@
 // (Ctrl-C, SIGTERM from a supervisor, SIGHUP when the terminal closes) none of them is left running on the
 // machine. A child started in its own process group is signalled as a group, so grandchildren go with it.
 import type { ChildProcess } from "node:child_process"
+import { isMainThread } from "node:worker_threads"
 
 type Entry = { pid: number; group: boolean }
 
 const live = new Map<number, Entry>()
 const hooks = new Set<() => Promise<unknown> | unknown>()
 let guarded = false
+
+// Worker threads have their own copy of this module, but a signal only reaches the main thread. A worker
+// therefore reports every child it starts or releases to the main thread, which keeps the list that
+// the signal handlers act on. The channel is separate from the worker's own message port, so it cannot
+// disturb any protocol spoken over that.
+type Report = { op: "track"; pid: number; group: boolean } | { op: "untrack"; pid: number }
+let channel: BroadcastChannel | undefined
+function reports() {
+  if (channel) return channel
+  try {
+    channel = new BroadcastChannel("yukioshi.child-registry")
+    if (isMainThread) {
+      channel.onmessage = (event: MessageEvent<Report>) => {
+        const report = event.data
+        if (report?.op === "track" && typeof report.pid === "number") live.set(report.pid, { pid: report.pid, group: report.group })
+        else if (report?.op === "untrack" && typeof report.pid === "number") live.delete(report.pid)
+      }
+    }
+    ;(channel as unknown as { unref?: () => void }).unref?.()
+  } catch {
+    channel = undefined
+  }
+  return channel
+}
+function report(message: Report) {
+  if (isMainThread) return
+  try {
+    reports()?.postMessage(message)
+  } catch {
+    // Reporting is best effort.
+  }
+}
 
 function send(entry: Entry, signal: NodeJS.Signals) {
   try {
@@ -29,6 +62,7 @@ function alive(entry: Entry) {
 function guard() {
   if (guarded) return
   guarded = true
+  if (isMainThread) reports()
   // Last resort, also covers `process.exit()`: nothing registered may outlive this process.
   process.on("exit", () => {
     for (const entry of live.values()) send(entry, "SIGKILL")
@@ -41,12 +75,19 @@ export function track(proc: Pick<ChildProcess, "pid" | "once">, group: boolean) 
   if (typeof pid !== "number") return
   guard()
   live.set(pid, { pid, group })
-  proc.once("close", () => live.delete(pid))
+  report({ op: "track", pid, group })
+  proc.once("close", () => {
+    live.delete(pid)
+    report({ op: "untrack", pid })
+  })
   proc.once("exit", () => {
     // A group leader that exited may have left grandchildren behind; they stay registered until the
     // group is empty so a later stop still reaches them.
     const entry = live.get(pid)
-    if (entry && !alive(entry)) live.delete(pid)
+    if (entry && !alive(entry)) {
+      live.delete(pid)
+      report({ op: "untrack", pid })
+    }
   })
 }
 
@@ -54,6 +95,7 @@ export function track(proc: Pick<ChildProcess, "pid" | "once">, group: boolean) 
 export function trackPid(pid: number, group: boolean) {
   guard()
   live.set(pid, { pid, group })
+  report({ op: "track", pid, group })
 }
 
 /**
@@ -67,6 +109,7 @@ export function onStop(fn: () => Promise<unknown> | unknown) {
 
 export function untrack(pid: number) {
   live.delete(pid)
+  report({ op: "untrack", pid })
 }
 
 export function count() {
@@ -100,6 +143,8 @@ const exitCodes: Partial<Record<NodeJS.Signals, number>> = { SIGINT: 130, SIGTER
  */
 export function stopOnSignals(signals: NodeJS.Signals[] = ["SIGTERM", "SIGHUP"], exit: (code: number) => void = (code) => process.exit(code)) {
   let stopping = false
+  // Start listening for children that worker threads report, and make sure they die with this process.
+  guard()
   for (const name of signals) {
     process.on(name, () => {
       if (name === "SIGINT" && process.listenerCount("SIGINT") > 1) return
