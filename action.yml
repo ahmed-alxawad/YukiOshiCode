@@ -180,7 +180,7 @@ runs:
         } >> "$GITHUB_STEP_SUMMARY"
 
     - name: Comment on pull request
-      if: ${{ inputs.comment == 'true' && inputs.github_token != '' && github.event.pull_request.number != '' }}
+      if: ${{ inputs.comment == 'true' && inputs.github_token != '' && github.event_name == 'pull_request' && github.event.pull_request.number != '' }}
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github_token }}

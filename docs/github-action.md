@@ -71,10 +71,10 @@ job step summary, then exits with that exact run exit code. In particular,
 budget limits remain failures: 5 for `max_turns` and 6 for `max_cost`; see
 [exit codes](commands.md#exit-codes).
 
-When `comment` is `true`, the action posts `result` only for pull-request
-events and only when `github_token` is nonempty. The token is not used for the
-model provider. Comment-posting failures are reported as a warning so they do
-not replace the YukiOshi run's exit code.
+When `comment` is `true`, the action posts `result` only for `pull_request`
+events and only when `github_token` is nonempty. It does not use the token for
+`pull_request_target` or for the model provider. Comment-posting failures are
+reported as a warning so they do not replace the YukiOshi run's exit code.
 
 `plan` is the safest choice for unattended review prompts because it permits
 only low-risk actions. `review` asks a reviewer model to decide actions that

@@ -490,9 +490,11 @@ Browser automation is off by default. Turn it on in your configuration:
 
 ## GitHub Actions
 
-YukiOshi has no GitHub app; a workflow calls `yukioshi run` itself, with your
-own provider key as a repository secret. This one reviews each pull request
-and posts the review as a comment:
+YukiOshi has no hosted GitHub app. For bounded, headless `review` and `plan`
+runs, use the first-party [GitHub Action](github-action.md), which runs on
+your own runner with a provider secret that you supply. For a workflow that
+needs direct control, call `yukioshi run` itself. This one reviews each pull
+request and posts the review as a comment:
 
 ```yaml
 name: YukiOshi review
@@ -647,11 +649,3 @@ minute intervals or `StartCalendarInterval` for calendar schedules. YukiOshi
 bootstraps the agent with `launchctl` and removes its legacy crontab block once
 that succeeds; if launchctl cannot load the agent, scheduling falls back to the
 existing crontab integration.
-
-## GitHub Action
-
-The repository also ships a first-party composite action for bounded,
-headless `review` and `plan` runs. It is not a hosted bot: your workflow runs
-it on its own runner with a provider secret that you supply. See the
-[GitHub Action](github-action.md) guide for setup, outputs, checksum-verified
-installation, and optional pull-request comments.

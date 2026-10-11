@@ -29,14 +29,27 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      HOME: ${{ runner.temp }}/yukioshi-action-home
-      XDG_CONFIG_HOME: ${{ runner.temp }}/yukioshi-action-config
-      XDG_DATA_HOME: ${{ runner.temp }}/yukioshi-action-data
-      XDG_STATE_HOME: ${{ runner.temp }}/yukioshi-action-state
-      XDG_CACHE_HOME: ${{ runner.temp }}/yukioshi-action-cache
       FAKE_MODEL_TOKEN: local-test-token
     steps:
       - uses: actions/checkout@v4
+
+      - name: Prepare isolated action environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          action_home="$RUNNER_TEMP/yukioshi-action-home"
+          action_config_home="$RUNNER_TEMP/yukioshi-action-config"
+          action_data_home="$RUNNER_TEMP/yukioshi-action-data"
+          action_state_home="$RUNNER_TEMP/yukioshi-action-state"
+          action_cache_home="$RUNNER_TEMP/yukioshi-action-cache"
+          mkdir -p "$action_home" "$action_config_home" "$action_data_home" "$action_state_home" "$action_cache_home"
+          {
+            printf 'HOME=%s\n' "$action_home"
+            printf 'XDG_CONFIG_HOME=%s\n' "$action_config_home"
+            printf 'XDG_DATA_HOME=%s\n' "$action_data_home"
+            printf 'XDG_STATE_HOME=%s\n' "$action_state_home"
+            printf 'XDG_CACHE_HOME=%s\n' "$action_cache_home"
+          } >> "$GITHUB_ENV"
 
       - name: Start local fake model
         shell: bash
