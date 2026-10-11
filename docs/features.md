@@ -364,6 +364,18 @@ with `started`, `finished` and `killed`.
 background subagents of a session. It is read-only and defaults to the latest
 session. A job whose process has gone away shows as `lost`.
 
+`yukioshi tasks --all [--format json]` lists every session of this machine that
+is running something right now, from any terminal or server process: a turn
+(`turn`), a standing goal (`goal`), a background shell job (`shell`) or a
+subagent (`subagent`, a child session with a running turn). Each row has the
+session id, state, how long it has been running, project folder and title. It
+only reads the files YukiOshi already keeps in its state folder (plus one small
+`running-turns` marker per running turn) and the session database; there is no
+daemon. A marker whose process has exited is ignored, and a goal counts as
+running only if it was updated in the last two minutes. It was added to `tasks`
+rather than as a new command because it answers the same question for all
+sessions instead of one.
+
 With the [audit log](permissions-and-safety.md#audit-log) on, start, stop and
 exit of a job are recorded. The `PreToolUse` and `PostToolUse` hooks run for
 `bash`, `monitor`, `job_list` and `job_stop` as for any tool.
@@ -578,6 +590,17 @@ To protect your system, YukiOshi installs only non-executable parts of a Claude 
 - **Agents (`agents/`)**: converted into YukiOshi custom agents (`mode: subagent`), mapping standard attributes (`model`, `temperature`, `top_p`, etc.) and dropping unknown fields.
 - **Hooks and MCP servers are never enabled**: Hooks and MCP servers run arbitrary local programs or network processes. YukiOshi blocks them unconditionally and lists them as `not installed: runs programs` alongside the command lines they would execute, so you can inspect and configure them manually if desired.
 - **Safe git clone**: repositories are cloned with `--depth 1`, `--no-recurse-submodules`, git hooks disabled (`core.hooksPath=/dev/null`), protocol allowlist (`file:git:http:https:ssh`), and symbolic links removed.
+
+## OS sandbox
+
+Off by default. With `"sandbox": { "enabled": true }`, shell commands run inside
+bubblewrap (Linux) or `sandbox-exec` (macOS) with writes limited to the project
+and `writablePaths`, and the file-edit tools are held to the same boundary.
+There is no Windows backend: on Windows, `sandbox.enabled: true` makes shell
+commands fail closed with an explanation, and with it off they run without an OS
+sandbox, protected by permission rules and review mode only. Run
+`yukioshi debug sandbox` to see what applies on your machine. The per-platform
+table is in [Permissions and safety](permissions-and-safety.md#platform-support).
 
 ## Also included
 

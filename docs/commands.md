@@ -128,6 +128,7 @@ Manage recurring prompts run by your operating system's background scheduler (cr
 | `yukioshi import --from claude` | import this folder's newest Claude Code conversation (`--from codex` for Codex) |
 | `yukioshi stats`                | token use and cost (`--days`, `--models`, `--tools`, `--project`) |
 | `yukioshi tasks`                | background shell jobs and background subagents of a session (`--session`, `--format json`; read-only) |
+| `yukioshi tasks --all`          | every session on this machine that is running something now: turn, goal, shell job, subagent (`--format json`; read-only) |
 
 In the TUI, `/changes` shows the files changed by the latest turn. With
 `"loop": { "enabled": true }`, `/loop 5m <prompt>` runs a prompt again on an
@@ -158,6 +159,7 @@ interval; see [Features](features.md#loop).
 | ------------------------------- | ------------------------------------------------------ |
 | `yukioshi debug config`         | print the merged configuration                          |
 | `yukioshi debug paths`          | print YukiOshi's data, config, and cache folders        |
+| `yukioshi debug sandbox`        | whether the OS sandbox can run here, and what `sandbox.enabled` does (`--format json`) |
 | `yukioshi debug skill`          | list the skills it found                                |
 | `yukioshi debug lsp …`, `debug rg …`, `debug file …` | language server, search, and file checks |
 | `yukioshi debug scrap`          | list all known projects                                 |

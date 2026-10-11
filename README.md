@@ -95,7 +95,9 @@ yukioshi run -c "now add a test for it"   # continue the last session
 - **Safe in unfamiliar repositories.** A repository's hooks, plugins, local MCP
   servers, and custom LSP and formatter commands run only after you trust it,
   and trust lapses when that configuration changes. An optional OS sandbox
-  confines shell commands and file edits to the project.
+  confines shell commands and file edits to the project on Linux and macOS;
+  there is no sandbox backend on Windows
+  ([platform support](docs/permissions-and-safety.md#platform-support)).
 - **Credentials stay in your OS keychain**, not in plain files.
 - **Evidence, not claims.** Optional post-turn verification runs your project's
   typecheck, lint, and test commands and reports what passed.

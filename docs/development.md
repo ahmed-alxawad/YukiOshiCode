@@ -65,7 +65,7 @@ Binaries are written to `packages/opencode/dist/yukioshi-<os>-<arch>/bin/`.
 
 ## Releasing
 
-Pushing a tag such as `v0.3.2` starts the release workflow: it builds every
+Pushing a tag such as `v0.3.6` starts the release workflow: it builds every
 platform, writes `SHA256SUMS`, checks the binaries on macOS, Windows, Linux
 ARM, and Alpine, publishes the release, and then tests the installers against
 it. To rebuild an existing tag, run the workflow by hand with that tag.

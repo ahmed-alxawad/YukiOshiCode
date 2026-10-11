@@ -165,6 +165,25 @@ system's sandbox: bubblewrap on Linux (install the `bubblewrap` package) and
   YukiOshi's folders, so a command cannot turn the sandbox off or pre-approve
   itself. List one in `writablePaths` to opt it back in.
 
+### Platform support
+
+| | Linux | macOS | Windows |
+| --- | --- | --- | --- |
+| Backend | bubblewrap (`bubblewrap` package) | `sandbox-exec` | none |
+| Shell commands: writes limited to the project and allowed folders | yes | yes | no |
+| Shell commands: `"network": "deny"` | yes | yes | no |
+| Shell commands: reads limited | no | no | no |
+| File-edit tools (`edit`, `write`, `apply_patch`) held to the write boundary | yes, checked by YukiOshi | yes, checked by YukiOshi | yes, checked by YukiOshi |
+| `sandbox.enabled: true` and the backend is missing | shell commands are refused | shell commands are refused | shell commands are refused |
+| `sandbox.enabled: false` (default) | shell commands run unconfined | shell commands run unconfined | shell commands run unconfined |
+
+On Windows there is no OS sandbox, so with `sandbox.enabled: true` every shell
+command is refused with a message saying so. To use YukiOshi there, leave the
+sandbox off and rely on permission rules and review mode. The same refusal
+applies to any other system without a backend. `yukioshi debug sandbox` (or
+`--format json`) shows what applies on the machine you are on, and
+`yukioshi debug info` includes one line about it.
+
 What the sandbox does not do:
 
 - It restricts writing, not reading. Commands can read any file your user can,
