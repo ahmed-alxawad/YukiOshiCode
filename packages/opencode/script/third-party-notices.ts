@@ -26,7 +26,6 @@ const result = await Bun.build({
   target: "bun",
   metafile: true,
   entrypoints: ["./src/index.ts", "./src/cli/tui/worker.ts"],
-  write: false,
 })
 if (!result.success || !result.metafile) {
   for (const log of result.logs) console.error(String(log))
