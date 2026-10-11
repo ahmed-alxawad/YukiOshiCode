@@ -28,6 +28,6 @@ export function mapBusy<A, R>(self: Effect.Effect<A, Session.BusyError, R>) {
  */
 export function failureEvent(cause: Cause.Cause<unknown>) {
   return Redact.maskRegisteredProviderCredentialsDeep(
-    new NamedError.Unknown({ message: Cause.pretty(cause) }).toObject(),
+    Redact.maskDeep(new NamedError.Unknown({ message: Cause.pretty(cause) }).toObject()),
   )
 }
