@@ -2,6 +2,7 @@ import { Global } from "@yukioshi/core/global"
 import { InstallationVersion } from "@yukioshi/core/installation/version"
 import { Flag } from "@yukioshi/core/flag/flag"
 import os from "os"
+import { sandboxStatus } from "@yukioshi/sandbox"
 import { Duration, Effect } from "effect"
 import { effectCmd } from "../../effect-cmd"
 import { cmd } from "../cmd"
@@ -10,6 +11,7 @@ import { FileCommand } from "./file"
 import { LSPCommand } from "./lsp"
 import { RipgrepCommand } from "./ripgrep"
 import { ScrapCommand } from "./scrap"
+import { SandboxCommand } from "./sandbox"
 import { SkillCommand } from "./skill"
 import { SnapshotCommand } from "./snapshot"
 import { AgentCommand } from "./agent"
@@ -26,6 +28,7 @@ export const DebugCommand = cmd({
       .command(RipgrepCommand)
       .command(FileCommand)
       .command(ScrapCommand)
+      .command(SandboxCommand)
       .command(SkillCommand)
       .command(SnapshotCommand)
       .command(StartupCommand)
@@ -61,6 +64,7 @@ const InfoCommand = effectCmd({
     console.log(`yukioshi version: ${InstallationVersion}`)
     console.log(`os: ${os.type()} ${os.release()} ${os.arch()}`)
     console.log(`terminal: ${terminal || "unknown"}`)
+    console.log(`sandbox: ${sandboxStatus().summary}`)
     console.log("plugins:")
     if (Flag.YUKIOSHI_PURE) {
       console.log("external plugins disabled (--pure)")

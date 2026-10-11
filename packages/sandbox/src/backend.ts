@@ -29,6 +29,10 @@ export interface Backend {
   ) => Effect.Effect<Launch, PlatformError.PlatformError, Scope.Scope>
 }
 
+export const WINDOWS_REASON =
+  "The OS sandbox is not available on Windows, so shell commands cannot be confined and are refused while sandbox.enabled is true. " +
+  "Set sandbox.enabled to false to run them without an OS sandbox, and rely on permission rules and review mode instead."
+
 function unavailable(reason: string): Backend {
   return {
     support: () => ({ available: false, reason }),
@@ -43,13 +47,49 @@ export function select(platform: NodeJS.Platform = process.platform): Backend {
     case "linux":
       return bubblewrap
     case "win32":
-      return unavailable("The Windows sandbox backend is not available")
+      return unavailable(WINDOWS_REASON)
     default:
       return unavailable("No sandbox backend is available for this operating system")
   }
 }
 
 const backend = select()
+
+export interface Status {
+  readonly platform: NodeJS.Platform
+  readonly available: boolean
+  /** One line for `yukioshi debug sandbox`. */
+  readonly summary: string
+}
+
+/** What the sandbox can do on a platform, in words a person can act on. The platform can be injected for tests. */
+export function status(platform: NodeJS.Platform = process.platform, selected: Backend = select(platform)): Status {
+  const support = selected.support()
+  if (platform === "win32") {
+    return {
+      platform,
+      available: false,
+      summary:
+        "not available on Windows: shell commands run without OS sandbox; use permission rules/review mode " +
+        "(with sandbox.enabled: true they are refused instead)",
+    }
+  }
+  if (platform === "linux") {
+    return support.available
+      ? { platform, available: true, summary: "available: bubblewrap found and working" }
+      : {
+          platform,
+          available: false,
+          summary: `bubblewrap missing or unusable: ${support.reason ?? "unknown reason"}. Install it (Debian/Ubuntu: apt install bubblewrap; Fedora: dnf install bubblewrap; Arch: pacman -S bubblewrap)`,
+        }
+  }
+  if (platform === "darwin") {
+    return support.available
+      ? { platform, available: true, summary: "available: sandbox-exec found" }
+      : { platform, available: false, summary: `sandbox-exec missing: ${support.reason ?? "unknown reason"}` }
+  }
+  return { platform, available: false, summary: support.reason ?? "no sandbox backend for this operating system" }
+}
 
 function environment(profile: Profile, launch: Launch, proxy?: ProxyRuntime) {
   const source = { ...launch.environment, ...profile.environment.set }
@@ -84,13 +124,18 @@ function unsupported(command: string, method: string, support: Support) {
 }
 
 export function confine(profile: Profile, launch: Launch) {
+  return confineWith(backend, profile, launch)
+}
+
+/** `confine` against a chosen backend, so the refusal on an unsupported platform can be tested anywhere. */
+export function confineWith(selected: Backend, profile: Profile, launch: Launch) {
   return Effect.gen(function* () {
     const proxy = yield* currentProxy
     const next = { ...launch, environment: environment(profile, launch, proxy) }
     yield* assertProcessNetwork(profile, launch.command)
-    const support = backend.support(profile.network)
+    const support = selected.support(profile.network)
     if (!support.available) return yield* Effect.fail(unsupported(launch.command, "confine", support))
-    return yield* backend.prepare(profile, next, proxy)
+    return yield* selected.prepare(profile, next, proxy)
   })
 }
 
