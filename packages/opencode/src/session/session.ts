@@ -1,6 +1,7 @@
 import { LayerNode } from "@yukioshi/core/effect/layer-node"
 import { PermissionV1 } from "@yukioshi/core/v1/permission"
 import { Slug } from "@yukioshi/core/util/slug"
+import { Redact } from "@yukioshi/core/redact"
 import { SessionV1 } from "@yukioshi/core/v1/session"
 import { serviceUse } from "@yukioshi/core/effect/service-use"
 import path from "path"
@@ -519,7 +520,7 @@ const layer: Layer.Layer<
         path: input.path,
         workspaceID: input.workspaceID,
         parentID: input.parentID,
-        title: input.title ?? (input.parentID ? childTitlePrefix : parentTitlePrefix) + new Date().toISOString(),
+        title: input.title !== undefined ? Redact.mask(input.title) : (input.parentID ? childTitlePrefix : parentTitlePrefix) + new Date().toISOString(),
         agent: input.agent,
         model: input.model,
         metadata: input.metadata,
@@ -753,7 +754,7 @@ const layer: Layer.Layer<
     })
 
     const setTitle = Effect.fn("Session.setTitle")(function* (input: { sessionID: SessionID; title: string }) {
-      yield* patch(input.sessionID, { title: input.title }).pipe(Effect.orDie)
+      yield* patch(input.sessionID, { title: Redact.mask(input.title) }).pipe(Effect.orDie)
     })
 
     const setArchived = Effect.fn("Session.setArchived")(function* (input: { sessionID: SessionID; time?: number }) {

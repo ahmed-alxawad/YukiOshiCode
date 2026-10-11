@@ -71,6 +71,8 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   const hooks = yield* Hooks.Service
   const config = yield* Config.Service
   const ruleset = Permission.merge(input.agent.permission, input.session.permission ?? [])
+  // Live tool metadata (a command's output so far, a file preview) is stored and printed as it streams.
+  const metadataRedact = (yield* config.get()).redact
 
   const context = (args: Record<string, unknown>, options: ToolExecutionOptions): Tool.Context => ({
     sessionID: input.session.id,
@@ -86,8 +88,8 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
         return {
           ...match,
           state: {
-            title: val.title,
-            metadata: val.metadata,
+            title: val.title === undefined ? undefined : Redact.mask(val.title, metadataRedact),
+            metadata: val.metadata === undefined ? undefined : Redact.maskDeep(val.metadata, metadataRedact),
             status: "running",
             input: args,
             time: match.state.status === "running" ? match.state.time : { start: Date.now() },
@@ -200,6 +202,9 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
             const redactCfg = (yield* config.get()).redact
             const finalOutput = {
               ...rawOutput,
+              title: Redact.mask(rawOutput.title, redactCfg),
+              // metadata.preview carries the first lines of what a tool read.
+              metadata: Redact.maskDeep(rawOutput.metadata, redactCfg),
               output: Redact.mask(rawOutput.output, redactCfg),
             }
             yield* plugin.trigger(
