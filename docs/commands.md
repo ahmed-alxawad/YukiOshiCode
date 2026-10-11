@@ -24,7 +24,7 @@ Options for the terminal UI include `-m provider/model`, `--agent`, `-c`
 (continue the last session), `-s <id>` (open a session), `--fork`,
 `--worktree <name>`, `--prompt`, `--auto` (approve everything that is not
 explicitly denied), `--mini` (a minimal interface), `--no-replay`,
-`--replay-limit`, and `--verify` / `--skip-verify` (turn post-turn verification on or off).
+`--replay-limit`, `--port`, `--hostname`, `--mdns`, `--mdns-domain`, `--cors`, and `--verify` / `--skip-verify` (turn post-turn verification on or off).
 
 ### `yukioshi run`
 
@@ -121,7 +121,7 @@ Manage recurring prompts run by your operating system's background scheduler (cr
 
 | Command                         | Does                                                   |
 | ------------------------------- | ------------------------------------------------------ |
-| `yukioshi session list`         | list sessions                                           |
+| `yukioshi session list`         | list sessions (`-n, --max-count`, `--format table\|json`) |
 | `yukioshi session delete <id>`  | delete a session                                        |
 | `yukioshi export [id]`          | export a session as JSON (`--sanitize` redacts sensitive data) |
 | `yukioshi import <file or url>` | import a session: an exported JSON file, a share URL, or a Claude Code or Codex conversation (`.jsonl`) |
@@ -138,10 +138,10 @@ interval; see [Features](features.md#loop).
 
 | Command                                  | Does                                     |
 | ---------------------------------------- | ---------------------------------------- |
-| `yukioshi agent create`, `agent list`    | create or list custom agents             |
+| `yukioshi agent create`, `agent list`    | create or list custom agents (`create` takes `--path`, `--description`, `--mode`, `--permissions`, `--model`) |
 | `yukioshi plugin <module>`               | install an npm plugin and add it to your config (`-g` for the global config, `-f` to replace an installed version) |
 | `yukioshi plugin add <git-url> [plugin]`, `plugin list`, `plugin remove <name>` | install, list, or remove skills, commands, and agents from Claude Code plugins or marketplaces (`--name` sets the folder name; see [Features](features.md#claude-code-plugins-and-marketplaces)) |
-| `yukioshi mcp add`, `list`, `auth`, `logout`, `debug` | manage MCP servers and their sign-in |
+| `yukioshi mcp add`, `list`, `auth`, `logout`, `debug` | manage MCP servers and their sign-in (`add` takes `--url`, `--env`, `--header`) |
 | `yukioshi skill add <git-url> [--name <name>]`, `skill list`, `skill remove <name>` | install, list, or remove skills from a git repository (see [Skills](skills.md#installing-skills-from-git)) |
 
 ## Servers and integrations
@@ -149,8 +149,8 @@ interval; see [Features](features.md#loop).
 | Command                         | Does                                                   |
 | ------------------------------- | ------------------------------------------------------ |
 | `yukioshi serve`                | run without the terminal UI (`--port`, `--hostname`, `--mdns`, `--mdns-domain`, `--cors`; protect it with `YUKIOSHI_SERVER_PASSWORD`) |
-| `yukioshi attach <url>`         | open the terminal UI against a running server (`-p`, `-u`, `--dir`, `-c`, `-s`, `--fork`, `--mini`) |
-| `yukioshi acp`                  | start an Agent Client Protocol server for editors (`--port`, `--hostname`, `--cwd`) |
+| `yukioshi attach <url>`         | open the terminal UI against a running server (`-p`, `-u`, `--dir`, `-c`, `-s`, `--fork`, `--mini`, `--no-replay`, `--replay-limit`) |
+| `yukioshi acp`                  | start an Agent Client Protocol server for editors (`--port`, `--hostname`, `--mdns`, `--mdns-domain`, `--cors`, `--cwd`) |
 | `yukioshi pr <number>`          | check out a pull request and open a session on it       |
 
 ## Troubleshooting
@@ -161,11 +161,11 @@ interval; see [Features](features.md#loop).
 | `yukioshi debug paths`          | print YukiOshi's data, config, and cache folders        |
 | `yukioshi debug sandbox`        | whether the OS sandbox can run here, and what `sandbox.enabled` does (`--format json`) |
 | `yukioshi debug skill`          | list the skills it found                                |
-| `yukioshi debug lsp …`, `debug rg …`, `debug file …` | language server, search, and file checks |
+| `yukioshi debug lsp …`, `debug rg …`, `debug file …` | language server, search, and file checks (`debug rg` takes `--glob`, `--limit`, `--query`) |
 | `yukioshi debug scrap`          | list all known projects                                 |
 | `yukioshi debug snapshot …`     | snapshot checks                                         |
 | `yukioshi debug startup`        | print startup timing                                    |
-| `yukioshi debug agent <name>`   | show an agent's resolved configuration                  |
+| `yukioshi debug agent <name>`   | show an agent's resolved configuration (`--tool`, `--params` run one of its tools) |
 | `yukioshi debug info`           | version and environment details for bug reports         |
 | `yukioshi db [query], db path`  | open an interactive sqlite3 shell, run a query (`--format json\|tsv`), or print the database path |
 | `yukioshi completion`           | print a shell completion script for bash or zsh         |
