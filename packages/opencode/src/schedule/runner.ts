@@ -5,6 +5,7 @@
 import { createOpencodeClient, type OpencodeClient } from "@yukioshi/sdk/v2"
 import { existsSync } from "fs"
 import { ChildRegistry } from "@yukioshi/core/child-registry"
+import { MAX_TIMER_MS } from "@/util/timer"
 import {
   acquireJobLock,
   findJob,
@@ -21,10 +22,23 @@ export type RunJobResult = {
   error?: string
 }
 
-/** A scheduled run that has not finished after this long is stopped (default 2 hours). */
+/** A scheduled run that has not finished after this long is stopped (default 2 hours, at most about 24 days). */
 export function maxRunMs(env: NodeJS.ProcessEnv = process.env) {
   const seconds = Number(env.YUKIOSHI_SCHEDULE_MAX_RUN_SECONDS)
-  return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 2 * 60 * 60 * 1000
+  return Number.isFinite(seconds) && seconds > 0 ? Math.min(seconds * 1000, MAX_TIMER_MS) : 2 * 60 * 60 * 1000
+}
+
+/**
+ * Records how a run ended on its job. Reads the store again instead of writing back the list loaded when the run
+ * started: a run can last hours, and jobs added, edited or removed meanwhile must not be undone.
+ */
+export async function recordResult(jobId: string, lastRunAt: number, lastResult: string) {
+  const jobs = await loadJobs()
+  const current = jobs.find((j) => j.id === jobId)
+  if (!current) return
+  current.lastRunAt = lastRunAt
+  current.lastResult = lastResult
+  await saveJobs(jobs)
 }
 
 function pickModel(value?: string) {
@@ -58,12 +72,13 @@ export async function runJob(id: string): Promise<RunJobResult> {
     const msg = `Job ${job.id} is already running. Skipping.`
     const time = Date.now()
     const logPath = await writeRunLog(job.id, `[${new Date(time).toISOString()}] ${msg}\n`, time)
-    job.lastRunAt = time
-    job.lastResult = "skipped: already running"
-    await saveJobs(jobs)
+    await recordResult(job.id, time, "skipped: already running")
     return { status: "skipped: already running", logPath }
   }
 
+  // Resolved once the run has written its log and result, so a stop signal can wait for that before the process exits.
+  let settle: () => void = () => {}
+  const settled = new Promise<void>((resolve) => (settle = resolve))
   const runTime = Date.now()
   const logLines: string[] = []
   function appendLog(line: string) {
@@ -81,9 +96,7 @@ export async function runJob(id: string): Promise<RunJobResult> {
     const err = `Directory not found: ${job.directory}`
     appendLog(`[ERROR] ${err}`)
     const logPath = await writeRunLog(job.id, logLines.join("\n"), runTime)
-    job.lastRunAt = runTime
-    job.lastResult = `failed: ${err}`
-    await saveJobs(jobs)
+    await recordResult(job.id, runTime, `failed: ${err}`)
     await lock.release()
     return { status: "failed", logPath, error: err }
   }
@@ -176,6 +189,7 @@ export async function runJob(id: string): Promise<RunJobResult> {
     // Stop the run when it takes too long, or when the scheduler or the user ends this process, so its shell
     // commands and subagents are cancelled instead of left running (and the job locked) for hours.
     let timedOut = false
+    let interrupted = false
     const limit = maxRunMs()
     const stopRun = () => sdk.session.abort({ sessionID }).catch(() => undefined)
     const timer = setTimeout(() => {
@@ -185,7 +199,11 @@ export async function runJob(id: string): Promise<RunJobResult> {
       )
       void stopRun()
     }, limit)
-    const unhook = ChildRegistry.onStop(stopRun)
+    const unhook = ChildRegistry.onStop(async () => {
+      interrupted = true
+      await stopRun()
+      await settled
+    })
 
     // Send the prompt
     const promptResult = await sdk.session
@@ -217,6 +235,10 @@ export async function runJob(id: string): Promise<RunJobResult> {
       status = "failed"
       statusText = `failed: timed out after ${Math.round(limit / 1000)}s`
       appendLog(`[${new Date().toISOString()}] ${statusText}`)
+    } else if (interrupted) {
+      status = "failed"
+      statusText = "failed: interrupted (the process was told to stop)"
+      appendLog(`[${new Date().toISOString()}] ${statusText}`)
     } else if (isBudgetExceeded(effectiveError)) {
       status = "skipped: budget"
       statusText = "skipped: budget"
@@ -240,9 +262,7 @@ export async function runJob(id: string): Promise<RunJobResult> {
     }
 
     const logPath = await writeRunLog(job.id, logLines.join("\n"), runTime)
-    job.lastRunAt = runTime
-    job.lastResult = statusText
-    await saveJobs(jobs)
+    await recordResult(job.id, runTime, statusText)
 
     return {
       status,
@@ -254,11 +274,10 @@ export async function runJob(id: string): Promise<RunJobResult> {
     const errorMsg = err.message || String(err)
     appendLog(`[${new Date().toISOString()}] Execution failed: ${errorMsg}`)
     const logPath = await writeRunLog(job.id, logLines.join("\n"), runTime)
-    job.lastRunAt = runTime
-    job.lastResult = `failed: ${errorMsg}`
-    await saveJobs(jobs)
+    await recordResult(job.id, runTime, `failed: ${errorMsg}`)
     return { status: "failed", logPath, error: errorMsg }
   } finally {
     await lock.release()
+    settle()
   }
 }
