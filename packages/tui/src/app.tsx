@@ -963,6 +963,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         category: "System",
         run: () => {
           local.permission.toggle()
+          if (route.data.type === "session") void local.permission.sync(route.data.sessionID)
           dialog.clear()
         },
       },

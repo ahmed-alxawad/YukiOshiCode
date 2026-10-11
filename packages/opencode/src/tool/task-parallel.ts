@@ -86,6 +86,17 @@ export const TaskParallelTool = Tool.define(
         Effect.gen(function* () {
           const taskDef = yield* Tool.init(taskToolInfo)
 
+          // Creating a worktree changes the repository before any task asks for its own permission, so it
+          // needs its own check; plan mode and deny rules stop it here.
+          if (params.tasks.some((task) => task.worktree)) {
+            yield* ctx.ask({
+              permission: "task_parallel",
+              patterns: ["worktree"],
+              always: ["*"],
+              metadata: { tasks: params.tasks.length },
+            })
+          }
+
           // Track worktrees that were successfully created so each one is looked at afterwards,
           // even when the task itself fails (the outcome won't carry .worktree in that case).
           const createdWorktrees = new Map<number, { info: Worktree.Info; base?: string }>()

@@ -8,6 +8,9 @@ import { PermissionV1 } from "@yukioshi/core/v1/permission"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { SafetyGuards } from "@yukioshi/core/permission/guards"
 import { RiskClassifier } from "@yukioshi/core/permission/risk"
+import { Database } from "@yukioshi/core/database/database"
+import { SessionTable } from "@yukioshi/core/session/sql"
+import { eq } from "drizzle-orm"
 import { Hooks } from "@/hooks"
 import { Config } from "@/config/config"
 import { Permission as PermissionSchema } from "@yukioshi/schema/permission"
@@ -74,6 +77,7 @@ const layer = Layer.effect(
     const events = yield* EventV2Bridge.Service
     const hooks = yield* Hooks.Service
     const config = yield* Config.Service
+    const database = yield* Database.Service
     const state = yield* InstanceState.make<State>(
       Effect.fn("Permission.state")(function* (ctx) {
         void ctx
@@ -110,6 +114,29 @@ const layer = Layer.effect(
     )
     yield* Effect.addFinalizer(() => unsubscribe)
 
+    // A subagent session never escapes plan mode: it is in plan mode when it or any ancestor session is.
+    const inheritsPlan = Effect.fnUntraced(function* (
+      sessionID: PermissionV1.Request["sessionID"],
+      modes: Map<PermissionV1.Request["sessionID"], Mode>,
+    ) {
+      const known = (id: string) => (modes.get(id as typeof sessionID) ?? apiModes.get(id)) === "plan"
+      if (![...modes.values(), ...apiModes.values()].includes("plan")) return false
+      const seen = new Set<string>()
+      let current: string | null | undefined = sessionID
+      while (current && !seen.has(current) && seen.size < 16) {
+        if (known(current)) return true
+        seen.add(current)
+        const row: { parent: string | null } | undefined = yield* database.db
+          .select({ parent: SessionTable.parent_id })
+          .from(SessionTable)
+          .where(eq(SessionTable.id, current as never))
+          .get()
+          .pipe(Effect.orDie)
+        current = row?.parent
+      }
+      return false
+    })
+
     const ask = Effect.fn("Permission.ask")(function* (input: PermissionV1.AskInput) {
       const { approved, pending, modes } = yield* InstanceState.get(state)
       const { ruleset, ...request } = input
@@ -125,7 +152,9 @@ const layer = Layer.effect(
         })
       }
 
-      const mode = modes.get(request.sessionID) ?? apiModes.get(request.sessionID) ?? DEFAULT_MODE
+      const mode: Mode = (yield* inheritsPlan(request.sessionID, modes))
+        ? "plan"
+        : (modes.get(request.sessionID) ?? apiModes.get(request.sessionID) ?? DEFAULT_MODE)
       const risk = RiskClassifier.classify(request.permission)
 
       // Plan mode: only low-risk (read-only) actions proceed, regardless of
@@ -354,6 +383,6 @@ export function visibleTools<T>(tools: Record<string, T>, ruleset: PermissionV1.
   return Object.fromEntries(Object.entries(tools).filter(([name]) => !hidden.has(name)))
 }
 
-export const node = LayerNode.make({ service: Service, layer: layer, deps: [EventV2Bridge.node, Hooks.node, Config.node] })
+export const node = LayerNode.make({ service: Service, layer: layer, deps: [EventV2Bridge.node, Hooks.node, Config.node, Database.node] })
 
 export * as Permission from "."

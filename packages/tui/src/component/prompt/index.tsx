@@ -1023,6 +1023,17 @@ export function Prompt(props: PromptProps) {
       sessionID = res.data.id
     }
 
+    // Plan mode has to hold on the server too, so send it before anything runs for this session.
+    if (!(await local.permission.sync(sessionID))) {
+      if (finishMoveProgress) move.finishSubmit()
+      toast.show({
+        title: "Failed to send prompt",
+        message: "Could not apply plan mode to the session.",
+        variant: "error",
+      })
+      return true
+    }
+
     const inputText = expandTrackedPastedText(
       store.prompt.input,
       input.extmarks.getAllForTypeId(promptPartTypeId).flatMap((extmark) => {

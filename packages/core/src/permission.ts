@@ -161,6 +161,19 @@ const layer = Layer.effect(
       return rules.filter((rule) => Wildcard.match(input.action, rule.action))
     }
 
+    // A subagent session never escapes plan mode: it is in plan mode when it or any ancestor session is.
+    const inheritsPlan = EffectRuntime.fnUntraced(function* (sessionID: SessionV2.ID) {
+      if (![...modes.values()].includes("plan")) return false
+      const seen = new Set<string>()
+      let current: SessionV2.ID | undefined = sessionID
+      while (current && !seen.has(current) && seen.size < 16) {
+        if (modes.get(current) === "plan") return true
+        seen.add(current)
+        current = (yield* sessions.get(current))?.parentID
+      }
+      return false
+    })
+
     const evaluateInput = EffectRuntime.fnUntraced(function* (input: AssertInput) {
       // Hard safety blocks: cannot be bypassed by any configured rule,
       // saved approval, or permission mode (including auto-all).
@@ -173,7 +186,7 @@ const layer = Layer.effect(
       const rules = yield* configured(input.sessionID, input.agent)
       if (denied(input, rules)) return { effect: "deny" as const, rules }
 
-      const mode = modes.get(input.sessionID) ?? DEFAULT_MODE
+      const mode = (yield* inheritsPlan(input.sessionID)) ? "plan" : (modes.get(input.sessionID) ?? DEFAULT_MODE)
       const risk = RiskClassifier.classify(input.action)
 
       // Plan mode: the agent may only take low-risk (read-only) actions,
