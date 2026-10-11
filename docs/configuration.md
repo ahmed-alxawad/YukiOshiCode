@@ -256,7 +256,7 @@ When search mode is active, the model receives a `tool_search` tool listing avai
 
 ## Webfetch
 
-The `webfetch` tool fetches HTTP and HTTPS URLs for the agent. By default, it guards against Server-Side Request Forgery (SSRF) by refusing private or local network targets in unattended mode and prompting interactively in attended mode. To allow fetching private or local addresses after the interactive confirmation prompt, set `allow_private` in your global configuration:
+The `webfetch` tool fetches HTTP and HTTPS URLs for the agent. It inspects the address a URL resolves to and pins the connection to it (see [Webfetch and private network protection](permissions-and-safety.md#webfetch-and-private-network-protection)). With the default rules a private address is fetched without a prompt; set `"permission": { "webfetch": "ask" }` to be asked. The `allow_private` setting below is recorded in the prompt but does not change what is allowed today:
 
 ```jsonc
 {

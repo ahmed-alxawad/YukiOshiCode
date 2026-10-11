@@ -231,22 +231,13 @@ applies these checks:
 
 ## Webfetch and private network protection
 
-The built-in `webfetch` tool implements strict protections against Server-Side Request Forgery (SSRF) and unauthorized private network probing:
+What `webfetch` does today:
 
-- **Pre-connection DNS inspection**: Before initiating an HTTP connection, YukiOshi resolves the hostname and evaluates all IP addresses against private and local network definitions:
-  - IPv4 loopback (`127.0.0.0/8`) and unspecified (`0.0.0.0/8`)
-  - Private IPv4 ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`)
-  - Link-local addresses (`169.254.0.0/16` and `fe80::/10`)
-  - IPv6 loopback (`::1`) and unspecified (`::`)
-  - Unique local IPv6 addresses (`fc00::/7`)
-  - IPv4-mapped IPv6 addresses (`::ffff:0:0/96`)
-  - Non-standard numeric encodings (decimal integers, octal, hexadecimal)
-- **Mandatory confirmation prompts**: When a target URL resolves to a private or local network address, YukiOshi forces an interactive permission prompt displaying the resolved addresses and identified risks. The prompt cannot be permanently saved or auto-approved (`always: []`), requiring confirmation on each access.
-- **Unattended execution refusal**: In unattended modes (such as background tasks, headless trigger runs, or automated scripts where `unattended: true`), requests to private or local network addresses are refused immediately without connecting.
-- **DNS pinning**: To prevent DNS rebinding attacks (where a DNS entry returns a benign IP on inspection but resolves to an internal address during connection), the HTTP transport pins the connection strictly to the IP addresses verified during inspection (`pinnedFetch`).
-- **Redirect validation**: Redirects are followed manually (up to a limit of 10 hops) and each hop is independently inspected, prompted, and pinned. Redirects to non-HTTP protocols are rejected.
-- **Streaming response cap**: Responses are streamed and enforced against a maximum size limit of 5 MB (`MAX_RESPONSE_SIZE`) to prevent memory exhaustion.
-- **Global `allow_private` setting**: Access to private addresses after interactive confirmation requires `"allow_private": true` under `"webfetch"` in global configuration (`~/.config/yukioshi/yukioshi.json`). This setting cannot be enabled by project-level configuration files.
+- **Address inspection**: before connecting, YukiOshi resolves the hostname and checks every address: loopback, unspecified, private IPv4 (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), link-local, IPv6 loopback and unique-local, IPv4-mapped IPv6, and unusual numeric encodings.
+- **DNS pinning**: the transport connects only to the addresses that were inspected, and each redirect is inspected again.
+- **Prompt**: when your rules ask before `webfetch`, a private target adds a warning with the resolved addresses, and the answer cannot be saved as "always".
+
+Limits you should know: the default rules allow `webfetch`, and an allow rule skips the prompt, so by default a private address is fetched without asking. Use `"permission": { "webfetch": "ask" }` to be asked every time. Unattended runs do not refuse private addresses automatically. A change that makes the private-address prompt override allow rules is planned.
 
 ## Hard blocks
 

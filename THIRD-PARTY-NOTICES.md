@@ -4,7 +4,7 @@ YukiOshi Code bundles the open-source packages below. Each one is used under its
 
 This file is generated. Do not edit it by hand. Regenerate it with `bun run notices` from the repo root.
 
-Packages listed: 512
+Packages listed: 513
 
 ## @agentclientprotocol/sdk@0.21.0
 
@@ -24493,6 +24493,38 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ``````
 
+## fast-json-stringify@7.0.1
+
+- Licence: MIT
+- Repository: https://github.com/fastify/fast-json-stringify
+
+Licence text (LICENSE):
+
+``````text
+MIT License
+
+Copyright (c) 2016-present Matteo Collina
+Copyright (c) 2016-present The Fastify team <https://github.com/fastify/fastify#team>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+``````
+
 ## fast-querystring@1.1.2
 
 - Licence: MIT
@@ -24528,7 +24560,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ``````
 
-## fast-uri@3.1.2
+## fast-uri@3.1.7
 
 - Licence: BSD-3-Clause
 - Repository: https://github.com/fastify/fast-uri
@@ -24599,7 +24631,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ``````
 
-## fastify@5.8.5
+## fastify@5.12.2
 
 - Licence: MIT
 - Repository: https://github.com/fastify/fastify
@@ -29901,7 +29933,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ``````
 
-## process-warning@5.0.0
+## process-warning@5.1.0
 
 - Licence: MIT
 - Repository: https://github.com/fastify/process-warning
@@ -29911,7 +29943,7 @@ Licence text (LICENSE):
 ``````text
 MIT License
 
-Copyright (c) Fastify
+Copyright (c) 2020-present The Fastify team <https://github.com/fastify/fastify#team>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -31246,7 +31278,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ``````
 
-## tar@7.5.15
+## tar@7.5.21
 
 - Licence: BlueOak-1.0.0
 - Repository: https://github.com/isaacs/node-tar
