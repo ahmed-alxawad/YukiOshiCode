@@ -15,6 +15,8 @@ import { SessionStatus } from "@/session/status"
 import { SessionSummary } from "@/session/summary"
 import { Todo } from "@/session/todo"
 import { MessageID, PartID, SessionID } from "@/session/schema"
+import { Config } from "@/config/config"
+import { Redact } from "@yukioshi/core/redact"
 import { Effect, Option, Schema, Scope } from "effect"
 import * as Stream from "effect/Stream"
 import { InstanceState } from "@/effect/instance-state"
@@ -58,7 +60,16 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
     const todoSvc = yield* Todo.Service
     const summary = yield* SessionSummary.Service
     const events = yield* EventV2Bridge.Service
+    const configSvc = yield* Config.Service
     const scope = yield* Scope.Scope
+
+    const redactSessionResponse = <T>(value: T) =>
+      configSvc.get().pipe(
+        Effect.map((config) => {
+          Redact.registerProviderCredentials(config.provider)
+          return Redact.maskRegisteredProviderCredentialsDeep(value)
+        }),
+      )
 
     const list = Effect.fn("SessionHttpApi.list")(function* (ctx: { query: typeof ListQuery.Type }) {
       const directory = ctx.query.directory ? yield* InstanceState.directory : undefined
@@ -116,7 +127,9 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       }
       yield* requireSession(ctx.params.sessionID)
       if (ctx.query.limit === undefined || ctx.query.limit === 0) {
-        return yield* SessionError.mapStorageNotFound(session.messages({ sessionID: ctx.params.sessionID }))
+        return yield* redactSessionResponse(
+          yield* SessionError.mapStorageNotFound(session.messages({ sessionID: ctx.params.sessionID })),
+        )
       }
 
       const page = yield* SessionError.mapStorageNotFound(
@@ -126,7 +139,7 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
           before: ctx.query.before,
         }),
       )
-      if (!page.cursor) return page.items
+      if (!page.cursor) return yield* redactSessionResponse(page.items)
 
       const request = yield* HttpServerRequest.HttpServerRequest
       // toURL() honors the Host + x-forwarded-proto headers, so the Link
@@ -134,7 +147,7 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       const url = Option.getOrElse(HttpServerRequest.toURL(request), () => new URL(request.url, "http://localhost"))
       url.searchParams.set("limit", ctx.query.limit.toString())
       url.searchParams.set("before", page.cursor)
-      return HttpServerResponse.jsonUnsafe(page.items, {
+      return HttpServerResponse.jsonUnsafe(yield* redactSessionResponse(page.items), {
         headers: {
           "Access-Control-Expose-Headers": "Link, X-Next-Cursor",
           Link: `<${url.toString()}>; rel="next"`,
@@ -146,8 +159,10 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
     const message = Effect.fn("SessionHttpApi.message")(function* (ctx: {
       params: { sessionID: SessionID; messageID: MessageID }
     }) {
-      return yield* SessionError.mapStorageNotFound(
-        MessageV2.get({ sessionID: ctx.params.sessionID, messageID: ctx.params.messageID }),
+      return yield* redactSessionResponse(
+        yield* SessionError.mapStorageNotFound(
+          MessageV2.get({ sessionID: ctx.params.sessionID, messageID: ctx.params.messageID }),
+        ),
       )
     })
 
@@ -302,9 +317,12 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
           sessionID: ctx.params.sessionID,
         })
         .pipe(Effect.mapError(() => new HttpApiError.BadRequest({})))
-      return HttpServerResponse.stream(Stream.make(JSON.stringify(message)).pipe(Stream.encodeText), {
-        contentType: "application/json",
-      })
+      return HttpServerResponse.stream(
+        Stream.make(JSON.stringify(yield* redactSessionResponse(message))).pipe(Stream.encodeText),
+        {
+          contentType: "application/json",
+        },
+      )
     })
 
     const promptAsync = Effect.fn("SessionHttpApi.promptAsync")(function* (ctx: {
@@ -332,9 +350,11 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       payload: typeof CommandPayload.Type
     }) {
       yield* requireSession(ctx.params.sessionID)
-      return yield* promptSvc
-        .command({ ...ctx.payload, sessionID: ctx.params.sessionID })
-        .pipe(Effect.mapError(() => new HttpApiError.BadRequest({})))
+      return yield* redactSessionResponse(
+        yield* promptSvc
+          .command({ ...ctx.payload, sessionID: ctx.params.sessionID })
+          .pipe(Effect.mapError(() => new HttpApiError.BadRequest({}))),
+      )
     })
 
     const shell = Effect.fn("SessionHttpApi.shell")(function* (ctx: {
@@ -342,7 +362,9 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       payload: typeof ShellPayload.Type
     }) {
       yield* requireSession(ctx.params.sessionID)
-      return yield* SessionError.mapBusy(promptSvc.shell({ ...ctx.payload, sessionID: ctx.params.sessionID }))
+      return yield* redactSessionResponse(
+        yield* SessionError.mapBusy(promptSvc.shell({ ...ctx.payload, sessionID: ctx.params.sessionID })),
+      )
     })
 
     const revert = Effect.fn("SessionHttpApi.revert")(function* (ctx: {

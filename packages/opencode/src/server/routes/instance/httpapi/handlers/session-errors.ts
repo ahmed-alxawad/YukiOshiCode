@@ -27,5 +27,7 @@ export function mapBusy<A, R>(self: Effect.Effect<A, Session.BusyError, R>) {
  * response, a config file or a command, so it is masked before any client sees it.
  */
 export function failureEvent(cause: Cause.Cause<unknown>) {
-  return Redact.maskDeep(new NamedError.Unknown({ message: Cause.pretty(cause) }).toObject())
+  return Redact.maskRegisteredProviderCredentialsDeep(
+    new NamedError.Unknown({ message: Cause.pretty(cause) }).toObject(),
+  )
 }

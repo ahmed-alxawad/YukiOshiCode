@@ -11,6 +11,7 @@ import { HttpApiBuilder } from "effect/unstable/httpapi"
 import { InstanceHttpApi } from "../api"
 import { ProviderAuthApiError } from "../groups/provider"
 import { ProviderV2 } from "@yukioshi/core/provider"
+import { Redact } from "@yukioshi/core/redact"
 
 function mapProviderAuthError<A, R>(self: Effect.Effect<A, ProviderAuth.Error, R>) {
   return self.pipe(
@@ -63,7 +64,7 @@ export const providerHandlers = HttpApiBuilder.group(InstanceHttpApi, "provider"
         visibleConnected,
       )
       return {
-        all: Object.values(providers).map(Provider.toPublicInfo),
+        all: Object.values(providers).map((item) => Redact.maskProviderCredentials(Provider.toPublicInfo(item))),
         default: Provider.defaultModelIDs(providers),
         connected: Object.keys(providers).filter((id) => id in visibleConnected || credentials[id]),
       }

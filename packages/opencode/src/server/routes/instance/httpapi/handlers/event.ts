@@ -1,7 +1,10 @@
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { InstanceState } from "@/effect/instance-state"
 import { GlobalBus } from "@/bus/global"
+import { Config } from "@/config/config"
+import { Session } from "@/session/session"
 import { EventV2 } from "@yukioshi/core/event"
+import { Redact } from "@yukioshi/core/redact"
 import { Effect, Queue } from "effect"
 import * as Stream from "effect/Stream"
 import { HttpServerResponse } from "effect/unstable/http"
@@ -26,6 +29,8 @@ function eventResponse(events: EventV2.Interface) {
   return Effect.gen(function* () {
     const instance = yield* InstanceState.context
     const workspaceID = yield* InstanceState.workspaceID
+    const config = yield* Config.Service
+    Redact.registerProviderCredentials((yield* config.get()).provider)
     // Listener registration is eager, so events published after this point cannot
     // be lost while the HTTP body fiber is starting or emitting server.connected.
     const queue = yield* Queue.unbounded<EventV2.Payload>()
@@ -37,7 +42,10 @@ function eventResponse(events: EventV2.Interface) {
           event.location?.directory === instance.directory &&
           (event.location.workspaceID === undefined || event.location.workspaceID === workspaceID),
       ),
-      Stream.map((event) => ({ id: event.id, type: event.type, properties: event.data })),
+      Stream.map((event) => {
+        const payload = { id: event.id, type: event.type, properties: event.data }
+        return event.type === Session.Event.Error.type ? Redact.maskRegisteredProviderCredentialsDeep(payload) : payload
+      }),
     )
     const disposed = Stream.callback<{ id: string; type: string; properties: unknown }>((queue) => {
       const listener = (event: {

@@ -343,3 +343,175 @@ export function scrubKnown(text: string): string {
   if (result.includes("Bearer")) result = result.replace(BEARER, `$1${PLACEHOLDER_PREFIX}bearer-token]`)
   return result
 }
+
+const PROVIDER_CREDENTIAL_PLACEHOLDER = `${PLACEHOLDER_PREFIX}provider-key]`
+const providerSecrets = new Set<string>()
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && [Object.prototype, null].includes(Object.getPrototypeOf(value))
+}
+
+function isProviderCredentialReference(value: string): boolean {
+  return /^\$(?:\{[^}]+\}|[A-Za-z_][A-Za-z0-9_]*)$/.test(value)
+}
+
+function isProviderCredentialPlaceholder(value: unknown): value is string {
+  return value === PROVIDER_CREDENTIAL_PLACEHOLDER
+}
+
+function isProviderCredentialKey(key: string, providerEntry: boolean): boolean {
+  const normalized = key.toLowerCase().replaceAll(/[_-]/g, "")
+  if (providerEntry && normalized === "key") return true
+  if (normalized === "authorization" || normalized === "proxyauthorization") return true
+  if (normalized === "apikey" || normalized === "apikeys" || normalized.endsWith("apikey")) return true
+  if (normalized === "token" || normalized.endsWith("token") || normalized.endsWith("tokens")) return true
+  if (normalized === "secret" || normalized.endsWith("secret") || normalized === "secretaccesskey") return true
+  if (normalized === "password" || normalized.endsWith("password")) return true
+  if (normalized === "credential" || normalized.endsWith("credential") || normalized.endsWith("credentials"))
+    return true
+  return normalized === "accesskey"
+}
+
+function isProviderEntry(value: Record<string, unknown>): boolean {
+  return "models" in value
+}
+
+function rememberProviderCredential(value: string): void {
+  if (!value || isProviderCredentialPlaceholder(value) || isProviderCredentialReference(value)) return
+  providerSecrets.add(value)
+  registerSecret(value)
+  const bearer = /^Bearer\s+(.+)$/i.exec(value)
+  if (!bearer?.[1]) return
+  providerSecrets.add(bearer[1])
+  registerSecret(bearer[1])
+}
+
+function registerProviderCredentialValue(value: unknown): void {
+  if (typeof value === "string") {
+    rememberProviderCredential(value)
+    return
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) registerProviderCredentialValue(item)
+    return
+  }
+  registerProviderCredentialFields(value)
+}
+
+function registerProviderCredentialFields(value: unknown): void {
+  if (Array.isArray(value)) {
+    for (const item of value) registerProviderCredentialFields(item)
+    return
+  }
+  if (!isPlainRecord(value)) return
+  const providerEntry = isProviderEntry(value)
+  for (const [key, item] of Object.entries(value)) {
+    if (isProviderCredentialKey(key, providerEntry)) registerProviderCredentialValue(item)
+    else registerProviderCredentialFields(item)
+  }
+}
+
+function maskProviderCredentialValue(value: unknown): unknown {
+  if (typeof value === "string") {
+    if (!value || isProviderCredentialPlaceholder(value) || isProviderCredentialReference(value)) return value
+    rememberProviderCredential(value)
+    return PROVIDER_CREDENTIAL_PLACEHOLDER
+  }
+  if (Array.isArray(value)) return value.map(maskProviderCredentialValue)
+  return maskProviderCredentialFields(value)
+}
+
+function maskProviderCredentialFields(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(maskProviderCredentialFields)
+  if (!isPlainRecord(value)) return value
+  const providerEntry = isProviderEntry(value)
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [
+      key,
+      isProviderCredentialKey(key, providerEntry)
+        ? maskProviderCredentialValue(item)
+        : maskProviderCredentialFields(item),
+    ]),
+  )
+}
+
+function restoreProviderCredentialValue(current: unknown, next: unknown): unknown {
+  if (isProviderCredentialPlaceholder(next)) {
+    if (typeof current === "string" && !isProviderCredentialPlaceholder(current)) {
+      rememberProviderCredential(current)
+      return current
+    }
+    return next
+  }
+  if (Array.isArray(next)) {
+    return next.map((item, index) =>
+      restoreProviderCredentialValue(Array.isArray(current) ? current[index] : undefined, item),
+    )
+  }
+  return restoreProviderCredentialFields(current, next)
+}
+
+function restoreProviderCredentialFields(current: unknown, next: unknown): unknown {
+  if (Array.isArray(next)) {
+    return next.map((item, index) =>
+      restoreProviderCredentialFields(Array.isArray(current) ? current[index] : undefined, item),
+    )
+  }
+  if (!isPlainRecord(next)) return next
+  const previous = isPlainRecord(current) ? current : {}
+  const providerEntry = isProviderEntry(next)
+  return Object.fromEntries(
+    Object.entries(next).map(([key, item]) => [
+      key,
+      isProviderCredentialKey(key, providerEntry)
+        ? restoreProviderCredentialValue(previous[key], item)
+        : restoreProviderCredentialFields(previous[key], item),
+    ]),
+  )
+}
+
+function scrubRegisteredProviderCredentials(text: string): string {
+  if (!text) return text
+  let result = text
+  const secrets = new Set([...knownSecrets, ...providerSecrets])
+  for (const secret of [...secrets].sort((left, right) => right.length - left.length)) {
+    if (result.includes(secret)) result = result.split(secret).join(PROVIDER_CREDENTIAL_PLACEHOLDER)
+  }
+  return result
+}
+
+/**
+ * Remember credential-bearing fields from provider configuration or public provider information.
+ * This intentionally does not inspect arbitrary text or unrelated configuration sections.
+ */
+export function registerProviderCredentials(value: unknown): void {
+  registerProviderCredentialFields(value)
+}
+
+/**
+ * Mask credential-bearing fields from provider configuration or public provider information.
+ * Unlike maskDeep(), arbitrary text is preserved so callers can keep user-authored content intact.
+ */
+export function maskProviderCredentials<T>(value: T): T {
+  return maskProviderCredentialFields(value) as T
+}
+
+/**
+ * Restore real provider credentials when a client sends back a response placeholder during a config update.
+ */
+export function restoreProviderCredentials<T>(current: unknown, next: T): T {
+  return restoreProviderCredentialFields(current, next) as T
+}
+
+/**
+ * Replace only registered provider credentials in a response payload. This is deliberately narrower than maskDeep().
+ */
+export function maskRegisteredProviderCredentialsDeep<T>(value: T): T {
+  const walk = (item: unknown): unknown => {
+    if (typeof item === "string") return scrubRegisteredProviderCredentials(item)
+    if (Array.isArray(item)) return item.map(walk)
+    if (isPlainRecord(item)) return Object.fromEntries(Object.entries(item).map(([key, entry]) => [key, walk(entry)]))
+    return item
+  }
+  return walk(value) as T
+}
