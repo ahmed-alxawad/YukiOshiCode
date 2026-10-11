@@ -3,6 +3,7 @@ import { InstanceState } from "@/effect/instance-state"
 import { SessionID } from "./schema"
 import { Effect, Layer, Context } from "effect"
 import { EventV2Bridge } from "@/event-v2-bridge"
+import * as RunningTurns from "./running"
 import { SessionStatusEvent } from "@yukioshi/schema/session-status-event"
 
 export const Info = SessionStatusEvent.Info
@@ -40,10 +41,12 @@ const layer = Layer.effect(
       const data = yield* InstanceState.get(state)
       yield* events.publish(Event.Status, { sessionID, status })
       if (status.type === "idle") {
+        RunningTurns.clear(sessionID)
         yield* events.publish(Event.Idle, { sessionID })
         data.delete(sessionID)
         return
       }
+      RunningTurns.mark(sessionID)
       data.set(sessionID, status)
     })
 

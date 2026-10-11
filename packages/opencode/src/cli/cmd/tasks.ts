@@ -1,8 +1,14 @@
+import type { Argv } from "yargs"
 import { Effect } from "effect"
 import { effectCmd, fail } from "../effect-cmd"
 import { Session } from "@/session/session"
 import { SessionID } from "@/session/schema"
 import { BackgroundShell } from "@/background/shell"
+import * as RunningTurns from "@/session/running"
+import * as Goal from "@/session/goal"
+import { Global } from "@yukioshi/core/global"
+import fs from "fs"
+import path from "path"
 
 function age(ms: number) {
   const seconds = Math.max(0, Math.round(ms / 1000))
@@ -20,12 +26,97 @@ interface Row {
   last?: string[]
 }
 
+/** An active goal counts as running only while it keeps being updated (a crashed process leaves the file behind). */
+export const GOAL_FRESH_MS = 120_000
+
+export interface RunningSession {
+  sessionID: string
+  project: string
+  directory: string
+  title: string
+  parentID?: string
+  /** What is running: a turn, a goal, background shell jobs, or a subagent (a child session with a running turn). */
+  state: string[]
+  shellJobs: number
+  age: string
+  ageMs: number
+}
+
+function ids(dir: string) {
+  try {
+    return fs
+      .readdirSync(dir)
+      .filter((name) => name.endsWith(".json"))
+      .map((name) => name.slice(0, -5))
+  } catch {
+    return []
+  }
+}
+
+/** Sessions of this machine that have a running turn, goal, background shell job or subagent. Reads state files only. */
+export const collectRunning = Effect.fn("Cli.tasks.collectRunning")(function* (now = Date.now()) {
+  const sessions = yield* Session.Service
+  const found = new Map<string, { turn?: number; goal?: boolean; shells: number; startedAt: number[] }>()
+  const entry = (id: string) => {
+    let value = found.get(id)
+    if (!value) found.set(id, (value = { shells: 0, startedAt: [] }))
+    return value
+  }
+  for (const marker of RunningTurns.live()) {
+    const e = entry(marker.sessionID)
+    e.turn = marker.pid
+    e.startedAt.push(marker.startedAt)
+  }
+  for (const id of ids(BackgroundShell.stateDir())) {
+    const running = BackgroundShell.readStored(id).filter((job) => job.state === "running" && !job.lost)
+    if (running.length === 0) continue
+    const e = entry(id)
+    e.shells = running.length
+    e.startedAt.push(...running.map((job) => job.startedAt))
+  }
+  for (const id of ids(path.join(Global.Path.state, "goals"))) {
+    const goal = yield* Effect.promise(() => Goal.get(id))
+    if (!goal || goal.status !== "active" || now - goal.updated > GOAL_FRESH_MS) continue
+    entry(id).goal = true
+    entry(id).startedAt.push(goal.updated)
+  }
+  const rows: RunningSession[] = []
+  for (const [id, e] of found) {
+    const session = yield* sessions.get(id as SessionID).pipe(Effect.catch(() => Effect.succeed(undefined)))
+    if (!session) continue
+    const state = [
+      ...(e.turn !== undefined ? [session.parentID ? "subagent" : "turn"] : []),
+      ...(e.goal ? ["goal"] : []),
+      ...(e.shells > 0 ? ["shell"] : []),
+    ]
+    const since = e.startedAt.length ? Math.min(...e.startedAt) : session.time.created
+    rows.push({
+      sessionID: id,
+      project: path.basename(session.directory) || session.directory,
+      directory: session.directory,
+      title: session.title,
+      ...(session.parentID ? { parentID: session.parentID } : {}),
+      state,
+      shellJobs: e.shells,
+      age: age(now - since),
+      ageMs: Math.max(0, now - since),
+    })
+  }
+  return rows.sort((a, b) => a.ageMs - b.ageMs)
+})
+
 /** `yukioshi tasks`: background shell jobs and background subagents of one session. Read-only. */
 export const TasksCommand = effectCmd({
   command: "tasks",
-  describe: "list the background jobs and background subagents of a session (read-only)",
-  builder: (yargs) =>
+  describe: "list the background jobs and background subagents of a session, or with --all every running session (read-only)",
+  instance: (args) => !args.all,
+  builder: (yargs: Argv) =>
     yargs
+      .option("all", {
+        describe: "list every session of this machine that is running something now (turn, goal, shell job, subagent)",
+        type: "boolean",
+        default: false,
+      })
       .option("session", {
         alias: ["s"],
         describe: "session id (default: the latest session of this project)",
@@ -38,6 +129,23 @@ export const TasksCommand = effectCmd({
         default: "table",
       }),
   handler: Effect.fn("Cli.tasks")(function* (args) {
+    if (args.all) {
+      const rows = yield* collectRunning()
+      if (args.format === "json") {
+        process.stdout.write(JSON.stringify({ sessions: rows }, null, 2) + "\n")
+        return
+      }
+      if (rows.length === 0) {
+        process.stdout.write("No running sessions.\n")
+        return
+      }
+      for (const row of rows) {
+        process.stdout.write(
+          `${row.sessionID}  ${row.state.join("+") || "-"}  ${row.age}  ${row.project}  ${row.title}\n`,
+        )
+      }
+      return
+    }
     const sessions = yield* Session.Service
     let id = args.session as string | undefined
     if (!id) {
