@@ -29,7 +29,7 @@ export type ShareData =
 
 /** Extract share ID from a share URL like https://opncd.ai/share/abc123 */
 export function parseShareUrl(url: string): string | null {
-  const match = url.match(/^https?:\/\/[^/]+\/share\/([a-zA-Z0-9_-]+)$/)
+  const match = url.match(/^https?:\/\/[^/]+\/share\/([a-zA-Z0-9_-]+)(?:[?#].*)?$/)
   return match ? match[1] : null
 }
 
