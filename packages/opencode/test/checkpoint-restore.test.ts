@@ -42,7 +42,8 @@ describe("checkpoint restore fidelity", () => {
     rmSync(directory, { recursive: true, force: true })
   })
 
-  test("preserves executable bit on restored files", () => {
+  // Windows has no POSIX executable bit (statSync().mode never has 0o111 set)
+  test.skipIf(process.platform === "win32")("preserves executable bit on restored files", () => {
     const directory = mkdtempSync(path.join(tmpdir(), "yk-cp-exec-"))
     git(directory, "init", "-q")
     git(directory, "config", "user.name", "Test")
