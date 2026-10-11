@@ -13,6 +13,8 @@ import { SessionGoal } from "./goal"
 import { SessionRepeat } from "./repeat"
 import { TuiEvent } from "@/server/tui-event"
 import { SessionFallback } from "./fallback"
+import * as RunningTurns from "./running"
+import { isRecord } from "@/util/record"
 import { Provider } from "@/provider/provider"
 import { Redact } from "@yukioshi/core/redact"
 
@@ -1317,6 +1319,39 @@ const layer = Layer.effect(
           return next
         })
         const session = yield* sessions.get(sessionID).pipe(Effect.orDie)
+
+        // A turn whose process was killed (kill -9, power loss) leaves an assistant message that never completed
+        // and tools still marked running. Close them as interrupted, unless another live process owns this turn.
+        yield* Effect.gen(function* () {
+          if (RunningTurns.live().some((marker) => marker.sessionID === sessionID && marker.pid !== process.pid)) return
+          const all = yield* MessageV2.filterCompactedEffect(sessionID).pipe(
+            Effect.provideService(Database.Service, database),
+          )
+          for (const item of all) {
+            if (item.info.role !== "assistant" || item.info.time.completed) continue
+            const now = Date.now()
+            for (const part of item.parts) {
+              if (part.type !== "tool" || (part.state.status !== "running" && part.state.status !== "pending")) continue
+              const metadata = "metadata" in part.state && isRecord(part.state.metadata) ? part.state.metadata : {}
+              yield* sessions.updatePart({
+                ...part,
+                state: {
+                  ...part.state,
+                  status: "error",
+                  error: "Tool execution was interrupted: the process running it ended unexpectedly",
+                  metadata: { ...metadata, interrupted: true },
+                  time: { start: "time" in part.state ? part.state.time.start : now, end: now },
+                },
+              })
+            }
+            item.info.error ??= MessageV2.fromError(new DOMException("Aborted", "AbortError"), {
+              providerID: item.info.providerID,
+              aborted: true,
+            })
+            item.info.time.completed = now
+            yield* sessions.updateMessage(item.info)
+          }
+        }).pipe(Effect.ignore)
 
         while (true) {
           yield* status.set(sessionID, { type: "busy" })
