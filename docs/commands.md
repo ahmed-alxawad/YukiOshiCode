@@ -67,6 +67,9 @@ explicitly denied), `--mini` (a minimal interface), `--no-replay`,
 | 4    | a goal used all its rounds (`goal.max_rounds`); `/goal resume` continues it |
 | 5    | stopped at `--max-turns` |
 | 6    | stopped by a spending limit: `--max-cost` or the `budget` setting |
+| 129  | terminated by `SIGHUP` (cleanly stopped registered child processes) |
+| 130  | terminated by `SIGINT` (Ctrl+C; cleanly stopped registered child processes) |
+| 143  | terminated by `SIGTERM` (cleanly stopped registered child processes) |
 
 For 3 to 6, the reason is printed on stderr. With `--format json`, a run ends
 with a `result` event that carries the same information:

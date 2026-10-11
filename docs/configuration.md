@@ -143,7 +143,7 @@ only when the server needs the full parent environment, including credentials.
 | `tool_search`          | load MCP tool schemas on demand (`auto`, `true`, `false`) and size threshold | [MCP tool search](#mcp-tool-search) |
 | `webhooks`             | optional outgoing notifications for turns, permission asks, and questions | [Webhooks](#webhooks) |
 | `budget`               | optional dollar/token limits for a session, day, or month | [Spending limits](#spending-limits) |
-| `delegate`             | hand tasks to other coding agents over ACP: `enabled`, `agents` (off by default) | [Features](features.md#delegating-to-other-agents) |
+| `delegate`             | hand tasks to other coding agents over ACP: `enabled`, `agents`, per-agent `timeout` (off by default) | [Features](features.md#delegating-to-other-agents) |
 | `browser`              | browser automation via Playwright MCP: `enabled` (off by default), `headless` (default true), `engine` (`chrome`, `chromium`, `firefox`, `webkit`, `msedge`) | [Features](features.md#browser-automation) |
 | `checkpoints`          | durable git commits on `refs/yukioshi/checkpoints/*` (off by default) | [Features](features.md#git-checkpoints) |
 | `audit`                | local log of tool calls and approvals: `enabled` (off by default; global config only) | [Permissions and safety](permissions-and-safety.md#audit-log) |
@@ -236,7 +236,7 @@ turn continues:
 MCP tools are named `<server>_<tool>`. A tool that reports progress is stopped after 30 minutes whatever its limit (see [MCP servers](permissions-and-safety.md#mcp-servers)). A single number applies to every tool. `"*"` covers every tool not named, except
 `bash` (it has its own `timeout`), `task`, `task_parallel`, `question`, and
 `plan_exit`, which wait on a command, a subagent, or you; name one of them to
-limit it anyway. `0` turns a limit off.
+limit it anyway. `0` turns a limit off. Built-in operations (git commands, ripgrep search, formatters, HTTP fetches, and upgrades) have their own safeguards; see [Built-in operation timeouts](permissions-and-safety.md#built-in-operation-timeouts).
 
 ## MCP tool search
 
@@ -279,4 +279,10 @@ When search mode is active, the model receives a `tool_search` tool listing avai
 | `YUKIOSHI_EXPERIMENTAL_PARALLEL_TASKS` | enable the `task_parallel` tool (same as `subagents.parallel`) |
 | `YUKIOSHI_EXPERIMENTAL_BACKGROUND_SUBAGENTS` | enable background subagents (same as `subagents.background`) |
 | `YUKIOSHI_BACKGROUND_SHELL` | enable background shell commands (same as `background_shell.enabled`) |
+| `YUKIOSHI_SCHEDULE_MAX_RUN_SECONDS` | max runtime for scheduled task runs in seconds (default `7200` / 2 hours) |
+| `YUKIOSHI_FORMATTER_TIMEOUT_SECONDS` | timeout for file formatters in seconds (default `60`)     |
+| `YUKIOSHI_GIT_TIMEOUT_MS`             | timeout for git operations in milliseconds (default `120000` / 2 minutes) |
+| `YUKIOSHI_RIPGREP_TIMEOUT_MS`         | timeout for ripgrep search in milliseconds (default `120000` / 2 minutes) |
+| `YUKIOSHI_UPGRADE_TIMEOUT_MS`         | timeout for `yukioshi upgrade` in milliseconds (default `300000` / 5 minutes) |
+| `YUKIOSHI_FETCH_TIMEOUT_MS`           | timeout for HTTP requests and downloads in milliseconds (default `30000` / 30 seconds) |
 | `YUKIOSHI_SERVER_PASSWORD`, `YUKIOSHI_SERVER_USERNAME` | protect `yukioshi serve` with a password ([details](permissions-and-safety.md#the-headless-server)) |

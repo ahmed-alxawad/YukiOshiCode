@@ -83,7 +83,9 @@ yukioshi upgrade 0.3.1      # a specific version
 ```
 
 `yukioshi upgrade` runs the installer that belongs to the release you are
-moving to, with the same checksum check and backup.
+moving to, with the same checksum check and backup. Downloads and installation
+enforce a default 5-minute timeout (`300000` ms, configurable via
+`YUKIOSHI_UPGRADE_TIMEOUT_MS`).
 
 ### Automatic updates
 

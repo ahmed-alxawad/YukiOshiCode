@@ -285,6 +285,10 @@ files) is created with owner-only permissions (`0700`), and YukiOshi sets that
 mode on an existing directory at start-up. Credential files are created with
 mode `0600` from the start, so they are never readable by others, even briefly.
 
+### Sign-in and OAuth timeouts
+
+Sign-in requests and OAuth token exchanges enforce a 30-second request timeout (`30000` ms) to prevent network stalls. Interactive device-code flows (such as GitHub Copilot, OpenAI Codex, or Snowflake Cortex) poll for authorization with a 15-minute deadline (`900000` ms) before expiring.
+
 ## Secret redaction
 
 YukiOshi masks unmistakable secrets before anything is sent to the model provider. Redaction is on by default (`redact: { enabled: true }`).
@@ -407,6 +411,43 @@ The `POST /trigger` endpoint on `yukioshi serve` accepts HTTP requests to start 
 - **Payload limits**: Request bodies are capped at 64 KB and strictly validated to reject unknown fields.
 - **Concurrency locking**: Only one run per directory may execute at any given time. Concurrent attempts return HTTP 409 Conflict until the active run finishes.
 - **Audit logging**: When audit logging is enabled (`audit.enabled`), every accepted trigger is logged to the local audit trail as a `trigger` event with session ID, directory, mode, the model if one was sent, and the masked prompt.
+
+## Built-in operation timeouts
+
+Operations that invoke external binaries or network requests enforce built-in timeout safeguards so a frozen process, lock contention, or network interruption cannot hang YukiOshi indefinitely:
+
+| Operation | Default timeout | Override variable / setting | Details |
+| --------- | --------------- | --------------------------- | ------- |
+| **Git commands** | 120 seconds (`120000` ms) | `YUKIOSHI_GIT_TIMEOUT_MS` | Covers internal git status, diff, and revision checks |
+| **Ripgrep searches** | 120 seconds (`120000` ms) | `YUKIOSHI_RIPGREP_TIMEOUT_MS` | Kills search processes that stop responding |
+| **Code formatters** | 60 seconds | `YUKIOSHI_FORMATTER_TIMEOUT_SECONDS` | Limits formatter execution after file edits |
+| **HTTP fetches** | 30 seconds (`30000` ms) | `YUKIOSHI_FETCH_TIMEOUT_MS` | Covers response headers and inter-chunk delays |
+| **CLI upgrades** | 5 minutes (`300000` ms) | `YUKIOSHI_UPGRADE_TIMEOUT_MS` | Governs release downloads during `yukioshi upgrade` |
+| **Scheduled jobs** | 2 hours (`7200` s) | `YUKIOSHI_SCHEDULE_MAX_RUN_SECONDS` | Stops unattended scheduled runs that exceed runtime |
+| **ACP agent delegation** | 30 minutes (`1800000` ms) | `delegate.agents.<name>.timeout` | Session execution limit for delegated ACP agents |
+| **ACP protocol handshake** | 60 seconds (`60000` ms) | — | Step limit for ACP `initialize` and session setup |
+| **OAuth requests** | 30 seconds (`30000` ms) | — | Per-request timeout for auth endpoints |
+| **Device-code sign-in** | 15 minutes (`900000` ms) | — | Total expiration window for device authorization |
+
+## Process lifecycle and signals
+
+Every child process and worker process that YukiOshi starts is tracked in an internal process registry (`ChildRegistry`). When YukiOshi terminates or receives an operating system signal:
+
+- **Signal trapping**: YukiOshi catches `SIGINT` (Ctrl+C), `SIGTERM` (termination signal from process supervisors or containers), and `SIGHUP` (terminal closure or hangup).
+- **Graceful shutdown**: Before exiting, YukiOshi runs registered shutdown hooks (giving running turns up to two seconds to abort cleanly) and then terminates all registered child processes. Children started in their own process groups are signalled as a group, ensuring grandchildren are terminated as well. Processes that do not exit after a two-second grace period receive `SIGKILL`.
+- **Worker thread propagation**: Worker threads report child processes back to the main thread over a dedicated broadcast channel, ensuring signal handlers cleanly terminate worker-spawned processes too.
+- **Exit codes**: YukiOshi exits with standard POSIX signal exit codes:
+  - `130` for `SIGINT`
+  - `143` for `SIGTERM`
+  - `129` for `SIGHUP`
+
+## Session recovery
+
+If the YukiOshi process terminates abruptly (such as from `SIGKILL`, system reboot, or power loss), turns may have been left running on disk:
+
+- **Running turn markers**: Active sessions maintain small running-turn marker files containing the session ID and owner process PID in `<state>/running-turns/`. When inspecting active sessions or loading a session, YukiOshi checks process liveness and removes stale markers left behind by dead processes.
+- **Interrupted turn cleanup**: When a session with an orphaned running turn is loaded or a new prompt is sent, YukiOshi detects that the owning process is no longer alive. Incomplete assistant messages are closed and marked as aborted (`MessageAbortedError`), and any pending or in-progress tool executions are updated to status `error` with `interrupted: true` ("Tool execution was interrupted: the process running it ended unexpectedly").
+- **Clean session state**: This recovery mechanism guarantees sessions never remain permanently locked in a "busy" state after unexpected crashes, allowing you to resume work, run new prompts, or safely export session history.
 
 ## Reporting a security problem
 

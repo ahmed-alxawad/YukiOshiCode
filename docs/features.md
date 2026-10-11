@@ -125,7 +125,7 @@ approves them all, or `--review`, which has a small model approve or refuse
 each action that is not low-risk (see
 [review mode](permissions-and-safety.md#review-mode)).
 
-Each execution runs like `yukioshi run` in the job's directory, creates a normal session titled `Scheduled: <name>`, writes a persistent log to `<state>/schedule/<id>/<timestamp>.log` (retaining the last 50 logs per job), and enforces a lock per job so two copies of the same job never run at the same time, even when started at the same moment. A second copy is logged as `skipped: already running`. Spending limits (`budget`) are strictly respected: if a budget limit is reached, the run is logged as `skipped: budget`.
+Each execution runs like `yukioshi run` in the job's directory, creates a normal session titled `Scheduled: <name>`, writes a persistent log to `<state>/schedule/<id>/<timestamp>.log` (retaining the last 50 logs per job), and enforces a lock per job so two copies of the same job never run at the same time, even when started at the same moment. A second copy is logged as `skipped: already running`. Spending limits (`budget`) are strictly respected: if a budget limit is reached, the run is logged as `skipped: budget`. Scheduled runs enforce a maximum execution timeout of 2 hours (7200 seconds by default, configurable with `YUKIOSHI_SCHEDULE_MAX_RUN_SECONDS`); runs exceeding this limit are aborted to avoid hung processes.
 
 ```bash
 # Add a scheduled task (standard 5-field cron)
@@ -416,7 +416,8 @@ Delegation is **off by default**. It is enabled in your configuration when `dele
     "enabled": true,
     "agents": {
       "claude": {
-        "command": ["npx", "-y", "@agentclientprotocol/claude-agent-acp"]
+        "command": ["npx", "-y", "@agentclientprotocol/claude-agent-acp"],
+        "timeout": 1800000
       },
       "codex": {
         "command": ["npx", "-y", "@agentclientprotocol/codex-acp"]
@@ -431,6 +432,11 @@ Delegation is **off by default**. It is enabled in your configuration when `dele
 
 ### Authentication and Billing
 Delegated agents use their own existing authentication and logins (such as `~/.claude/` for Claude Code, `~/.codex/` for Codex, or `gemini login` for Gemini). Your own subscription or API plan with that external tool pays for any model requests it makes.
+
+### Timeouts
+
+- **Session timeout**: Set `timeout` (in milliseconds) on an agent under `delegate.agents.<name>` to bound the delegated task duration. It defaults to 30 minutes (`1800000` ms).
+- **Handshake limit**: ACP connection steps (`initialize` and session creation) enforce an independent 60-second limit (`60000` ms) so an agent that hangs during startup does not block the turn for the full session timeout.
 
 ### What the delegated agent can see
 
