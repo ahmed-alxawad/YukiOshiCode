@@ -20,6 +20,7 @@ import {
 import { InstallationVersion } from "@yukioshi/core/installation/version"
 import { mergeEnv, planSpawn } from "./spawn"
 import { Redact } from "@yukioshi/core/redact"
+import { ChildRegistry } from "@yukioshi/core/child-registry"
 import { DEFAULT_TIMEOUT, type Agent as ConfigAgent } from "@yukioshi/core/v1/config/delegate"
 
 export interface DelegateRunOptions {
@@ -28,6 +29,8 @@ export interface DelegateRunOptions {
   prompt: string
   cwd: string
   abortSignal: AbortSignal
+  /** Limit for each ACP handshake step in milliseconds; defaults to HANDSHAKE_TIMEOUT. For tests. */
+  handshakeTimeoutMs?: number
   onProgress?: (title: string, metadata?: Record<string, unknown>) => void
   askPermission: (
     toolCall: ToolCallUpdate,
@@ -192,6 +195,9 @@ const STDERR_MAX = 64 * 1024
 /**
  * Run a delegated task to an external coding agent over ACP.
  */
+/** How long an agent may take to answer the ACP handshake (initialize and new session), each. */
+export const HANDSHAKE_TIMEOUT = 60_000
+
 export async function runDelegate(options: DelegateRunOptions): Promise<DelegateRunResult> {
   const {
     agentName,
@@ -231,6 +237,8 @@ export async function runDelegate(options: DelegateRunOptions): Promise<Delegate
     }
     throw new Error(`Agent "${agentName}" failed to spawn: ${err.message}`)
   }
+
+  ChildRegistry.track(child, process.platform !== "win32")
 
   let stderrBuffer = ""
   child.stderr?.on("data", (chunk: Buffer) => {
@@ -407,6 +415,25 @@ export async function runDelegate(options: DelegateRunOptions): Promise<Delegate
     )
   })
 
+  // The ACP handshake (initialize, new session) has its own short limit: an agent that starts but never answers
+  // must not hold the turn for the whole delegation timeout (30 minutes by default).
+  const handshakeMs = Math.min(timeoutMs, options.handshakeTimeoutMs ?? HANDSHAKE_TIMEOUT)
+  const handshake = <T>(step: Promise<T>) => {
+    let timer: NodeJS.Timeout | undefined
+    const limit = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () =>
+          reject(
+            new Error(
+              `Agent "${agentName}" started but did not answer the ACP handshake within ${Math.round(handshakeMs / 1000)}s. Check that "${cmd}" speaks the Agent Client Protocol (ACP) and is logged in, or raise delegate.agents.${agentName}.timeout (milliseconds).`,
+            ),
+          ),
+        handshakeMs,
+      )
+    })
+    return Promise.race([step, limit]).finally(() => clearTimeout(timer))
+  }
+
   try {
     // Race initialize against early exit / abort / timeout
     const initPromise = connection.initialize({
@@ -420,14 +447,14 @@ export async function runDelegate(options: DelegateRunOptions): Promise<Delegate
       },
     })
 
-    await Promise.race([initPromise, exitPromise, abortPromise, timeoutPromise])
+    await Promise.race([handshake(initPromise), exitPromise, abortPromise, timeoutPromise])
 
     // Create session
     const sessionPromise = connection.newSession({
       cwd,
       mcpServers: [],
     })
-    const sessionResponse = await Promise.race([sessionPromise, exitPromise, abortPromise, timeoutPromise])
+    const sessionResponse = await Promise.race([handshake(sessionPromise), exitPromise, abortPromise, timeoutPromise])
     activeSessionId = sessionResponse.sessionId
 
     onProgress?.(`Delegate (${agentName}): session started`, { sessionId: activeSessionId })
