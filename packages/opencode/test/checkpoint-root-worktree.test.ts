@@ -24,6 +24,8 @@ const checkpointLayer = Layer.mergeAll(
   testInstanceStoreLayer,
 )
 
+const samePath = (a: string | undefined, b: string) => a !== undefined && path.normalize(a) === path.normalize(b)
+
 const it = testEffect(checkpointLayer)
 
 describe("checkpoint in session where worktree is root", () => {
@@ -53,7 +55,8 @@ describe("checkpoint in session where worktree is root", () => {
         // Create checkpoint: should resolve root to ctx.directory (tmp), NOT ctx.worktree ("/")
         const created = yield* cp.create({ sessionID: "ses_root_test", prompt: "first checkpoint" })
         expect(created).toBeDefined()
-        expect(created?.root).toBe(tmp)
+        // git reports forward slashes on Windows; compare separator-insensitively
+        expect(samePath(created?.root, tmp)).toBe(true)
         expect(created?.turn).toBe(1)
 
         // List checkpoints: must run against ctx.directory
@@ -72,7 +75,7 @@ describe("checkpoint in session where worktree is root", () => {
           sessionID: "ses_safety",
           yes: true,
         })
-        expect(restoredRoot).toBe(tmp)
+        expect(samePath(restoredRoot, tmp)).toBe(true)
         expect(readFileSync(path.join(tmp, "file.txt"), "utf8")).toBe("version 2")
       })
 
