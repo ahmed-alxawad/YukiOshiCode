@@ -252,6 +252,11 @@ fork bombs; force-pushing or deleting `main`, `master`, or `trunk`; and running
 `shutdown`, `reboot`, `halt`, or `poweroff`. Ordinary commands that merely
 mention those words, such as `grep -rn shutdown src`, are allowed.
 
+The same hard blocks cover download-to-shell pipelines (`curl`/`wget` into
+`sh`/`bash`), recursive chmod of catastrophic roots, `find -delete` and
+`find -exec rm`, destructive `xargs rm`/`timeout rm` wrappers targeting a
+catastrophic path, and attempts to remove `..` or its parent path.
+
 The shell itself can still read files the file tools refuse (for example
 `cat .env`). Use permission rules and the sandbox to control the shell.
 
@@ -401,4 +406,3 @@ The `POST /trigger` endpoint on `yukioshi serve` accepts HTTP requests to start 
 ## Reporting a security problem
 
 Please report vulnerabilities privately; see [SECURITY.md](../SECURITY.md).
-

@@ -97,8 +97,9 @@ function isProtectedPath(resource: string): boolean {
 
 // Unconditionally destructive shell commands: irreversible bulk deletion,
 // disk-level destruction, fork bombs, and force-pushes/branch deletion of
-// protected branches. Deliberately conservative (false negatives over
-// false positives) - this is a backstop, not the primary review mechanism.
+// protected branches. The matcher deliberately recognizes only narrow,
+// overtly destructive command forms (false negatives over false positives) -
+// this is a backstop, not the primary review mechanism.
 interface ShellWord {
   readonly value: string
   readonly plain: boolean
@@ -108,8 +109,15 @@ interface ShellWord {
 
 type ShellCommand = ShellWord[]
 
-function shellCommands(source: string): ShellCommand[] {
-  const commands: ShellCommand[] = []
+type ShellSeparator = "|" | "||" | ";" | "&&" | "&" | "\n"
+
+interface ParsedShellCommand {
+  readonly words: ShellCommand
+  readonly separator?: ShellSeparator
+}
+
+function parsedShellCommands(source: string): ParsedShellCommand[] {
+  const commands: ParsedShellCommand[] = []
 
   function parse(start: number, terminator?: ")" | "`"): number {
     let index = start
@@ -129,9 +137,9 @@ function shellCommands(source: string): ShellCommand[] {
       started = false
     }
 
-    const finishCommand = () => {
+    const finishCommand = (separator?: ShellSeparator) => {
       finishWord()
-      if (words.length > 0) commands.push(words)
+      if (words.length > 0) commands.push({ words, separator })
       words = []
     }
 
@@ -212,7 +220,7 @@ function shellCommands(source: string): ShellCommand[] {
         continue
       }
       if (char === "\n") {
-        finishCommand()
+        finishCommand("\n")
         index++
         continue
       }
@@ -222,9 +230,10 @@ function shellCommands(source: string): ShellCommand[] {
         continue
       }
       if (char === ";" || char === "|" || char === "&") {
-        finishCommand()
-        if (source[index + 1] === char) index++
-        index++
+        const doubled = source[index + 1] === char
+        const separator = (doubled ? `${char}${char}` : char) as ShellSeparator
+        finishCommand(separator)
+        index += doubled ? 2 : 1
         continue
       }
 
@@ -300,7 +309,8 @@ function programName(word: ShellWord | undefined): string | undefined {
 
 const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/
 // Wrappers that run the next word as a program without changing what it does.
-const TRANSPARENT_WRAPPERS = new Set(["env", "command", "nohup", "time", "exec", "nice"])
+const TRANSPARENT_WRAPPERS = new Set(["env", "command", "nohup", "time", "exec", "nice", "timeout"])
+const TIMEOUT_OPTIONS_WITH_ARGUMENT = new Set(["-k", "-s", "--kill-after", "--signal"])
 
 function executable(command: ShellCommand): { name: string; index: number } | undefined {
   let index = 0
@@ -320,6 +330,23 @@ function executable(command: ShellCommand): { name: string; index: number } | un
     }
     if (wrapper && TRANSPARENT_WRAPPERS.has(wrapper)) {
       index++
+      if (wrapper === "timeout") {
+        while (index < command.length) {
+          const option = command[index]!.value
+          if (ASSIGNMENT.test(option)) {
+            index++
+            continue
+          }
+          if (!option.startsWith("-")) {
+            index++ // timeout's duration
+            break
+          }
+          const name = option.includes("=") ? option.slice(0, option.indexOf("=")) : option
+          index++
+          if (TIMEOUT_OPTIONS_WITH_ARGUMENT.has(name) && !option.includes("=") && index < command.length) index++
+        }
+        continue
+      }
       while (index < command.length && (command[index].value.startsWith("-") || ASSIGNMENT.test(command[index].value)))
         index++
       continue
@@ -332,10 +359,20 @@ function executable(command: ShellCommand): { name: string; index: number } | un
 
 const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh"])
 const POWER_COMMANDS = new Set(["shutdown", "reboot", "halt", "poweroff"])
-const DANGEROUS_RM_LITERAL_TARGETS = new Set(["/", ".", "./"])
+const DANGEROUS_RM_LITERAL_TARGETS = new Set(["/", ".", "./", "..", "../"])
 const DANGEROUS_RM_EXPANDING_TARGETS = new Set(["/*", "~", "~/", "~/*", "$HOME", "${HOME}", "$HOME/", "*"])
 // `$HOME` still expands inside double quotes, unlike `~` and globs.
 const DANGEROUS_RM_HOME_TARGETS = new Set(["$HOME", "${HOME}", "$HOME/", "${HOME}/"])
+
+function catastrophicTarget(target: ShellWord): boolean {
+  // `//`, `/.` and `/./` all name the filesystem root.
+  const value = /^\/(?:\.?\/)*\.?$/.test(target.value) ? "/" : target.value
+  return (
+    DANGEROUS_RM_LITERAL_TARGETS.has(value) ||
+    (target.plain && DANGEROUS_RM_EXPANDING_TARGETS.has(value)) ||
+    (!target.singleQuoted && DANGEROUS_RM_HOME_TARGETS.has(value))
+  )
+}
 
 function isDangerousRm(command: ShellCommand, programIndex: number): boolean {
   let destructiveFlag = false
@@ -360,15 +397,7 @@ function isDangerousRm(command: ShellCommand, programIndex: number): boolean {
   }
 
   if (!destructiveFlag) return false
-  return targets.some((target) => {
-    // `//`, `/.` and `/./` all name the filesystem root.
-    const value = /^\/(?:\.?\/)*\.?$/.test(target.value) ? "/" : target.value
-    return (
-      DANGEROUS_RM_LITERAL_TARGETS.has(value) ||
-      (target.plain && DANGEROUS_RM_EXPANDING_TARGETS.has(value)) ||
-      (!target.singleQuoted && DANGEROUS_RM_HOME_TARGETS.has(value))
-    )
-  })
+  return targets.some(catastrophicTarget)
 }
 
 function isProtectedBranch(value: string): boolean {
@@ -386,6 +415,15 @@ function isDestructiveGit(command: ShellCommand, programIndex: number): boolean 
     // `-f`, `--force`, `--force-with-lease`, or a `+branch` refspec all force the update.
     const forced = args.some((arg) => /^--force(?:-with-lease)?(?:=|$)/.test(arg) || /^-[a-zA-Z]*f[a-zA-Z]*$/.test(arg))
     if (args.some((arg) => arg.startsWith("+") && isProtectedBranch(arg.slice(1)))) return true
+    const deleteIndex = args.indexOf("--delete")
+    if (deleteIndex !== -1) {
+      // `git push --delete <remote> <ref>...` names the remote after the flag,
+      // while `git push <remote> --delete <ref>...` puts it before the flag.
+      const remoteBeforeDelete = args.slice(1, deleteIndex).some((arg) => !arg.startsWith("-"))
+      const deleteTargets = args.slice(deleteIndex + 1).filter((arg) => !arg.startsWith("-"))
+      if ((remoteBeforeDelete ? deleteTargets : deleteTargets.slice(1)).some(isProtectedBranch)) return true
+    }
+    if (args.some((arg) => arg.startsWith(":") && isProtectedBranch(arg.slice(1)))) return true
     return forced && args.some(isProtectedBranch)
   }
   if (args[0] === "branch") {
@@ -395,8 +433,74 @@ function isDestructiveGit(command: ShellCommand, programIndex: number): boolean 
 }
 
 function isDestructiveChmod(command: ShellCommand, programIndex: number): boolean {
-  const args = command.slice(programIndex + 1).map((word) => word.value)
-  return (args.includes("-R") || args.includes("--recursive")) && args.includes("000") && args.includes("/")
+  let recursive = false
+  let parseOptions = true
+  const operands: ShellWord[] = []
+  for (const word of command.slice(programIndex + 1)) {
+    const value = word.value
+    if (parseOptions && value === "--") {
+      parseOptions = false
+      continue
+    }
+    if (parseOptions && /^--recursive(?:=|$)/.test(value)) {
+      recursive = true
+      continue
+    }
+    if (parseOptions && /^-[^-]/.test(value)) {
+      if (value.slice(1).includes("R")) recursive = true
+      continue
+    }
+    operands.push(word)
+  }
+  if (!recursive) return false
+  const targets = operands.length > 1 ? operands.slice(1) : operands
+  return targets.some(catastrophicTarget)
+}
+
+function isDestructiveFind(command: ShellCommand, programIndex: number): boolean {
+  const args = command.slice(programIndex + 1)
+  for (let index = 0; index < args.length; index++) {
+    const value = args[index]!.value
+    if (value !== "-exec" && value !== "-execdir") continue
+    const end = args.findIndex((word, offset) => offset > index && (word.value === ";" || word.value === "+"))
+    const execArgs = args.slice(index + 1, end === -1 ? args.length : end)
+    if (executable(execArgs)?.name === "rm") return true
+  }
+
+  return args.some((word) => word.value === "-delete")
+}
+
+const XARGS_OPTIONS_WITH_ARGUMENT = new Set([
+  "-E",
+  "-I",
+  "-L",
+  "-P",
+  "-a",
+  "-d",
+  "-n",
+  "-s",
+  "--arg-file",
+  "--delimiter",
+  "--eof",
+  "--max-args",
+  "--max-chars",
+  "--max-lines",
+  "--max-procs",
+  "--replace",
+])
+
+function isDestructiveXargs(command: ShellCommand, programIndex: number): boolean {
+  const args = command.slice(programIndex + 1)
+  let index = 0
+  while (index < args.length && args[index]!.value.startsWith("-")) {
+    const option = args[index]!.value
+    const name = option.includes("=") ? option.slice(0, option.indexOf("=")) : option
+    index += 1
+    if (XARGS_OPTIONS_WITH_ARGUMENT.has(name) && !option.includes("=") && index < args.length) index += 1
+  }
+  const nested = args.slice(index)
+  const nestedProgram = executable(nested)
+  return nestedProgram?.name === "rm"
 }
 
 function unquotedShellText(source: string): string {
@@ -428,7 +532,17 @@ function unquotedShellText(source: string): string {
 }
 
 function isDestructiveCommand(command: string): boolean {
-  for (const shellCommand of shellCommands(command)) {
+  const parsed = parsedShellCommands(command)
+  for (let index = 0; index < parsed.length; index++) {
+    const left = executable(parsed[index]!.words)
+    if (!left || (left.name !== "curl" && left.name !== "wget")) continue
+    for (let next = index + 1; next < parsed.length && parsed[next - 1]!.separator === "|"; next++) {
+      const right = executable(parsed[next]!.words)
+      if (right && SHELLS.has(right.name)) return true
+    }
+  }
+
+  for (const { words: shellCommand } of parsed) {
     const program = executable(shellCommand)
     if (!program) continue
     if (POWER_COMMANDS.has(program.name)) return true
@@ -438,6 +552,8 @@ function isDestructiveCommand(command: string): boolean {
       if (flag !== -1 && rest[flag + 1] !== undefined && isDestructiveCommand(rest[flag + 1])) return true
     }
     if (program.name === "rm" && isDangerousRm(shellCommand, program.index)) return true
+    if (program.name === "find" && isDestructiveFind(shellCommand, program.index)) return true
+    if (program.name === "xargs" && isDestructiveXargs(shellCommand, program.index)) return true
     if (/^mkfs(?:\.|$)/.test(program.name)) return true
     if (
       program.name === "dd" &&
@@ -449,7 +565,9 @@ function isDestructiveCommand(command: string): boolean {
   }
 
   const syntax = unquotedShellText(command)
-  return />\s*\/dev\/(?:disk|[sh]d|nvme)/i.test(syntax) || /:\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:/.test(syntax)
+  const compact = syntax.replace(/\s+/g, "")
+  const forkBomb = /([A-Za-z_][A-Za-z0-9_]*|:)\(\)\{\1\|\1&\};\1/.test(compact)
+  return />\s*\/dev\/(?:disk|[sh]d|nvme)/i.test(syntax) || forkBomb
 }
 
 const PATH_ACTIONS = new Set(["read", "edit", "write", "apply_patch"])
