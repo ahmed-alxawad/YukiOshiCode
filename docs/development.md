@@ -26,7 +26,6 @@ ln -s "$(pwd)/packages/opencode/bin/yukioshi-dev" ~/.local/bin/yukioshi
 | `packages/codemode`              | confined code execution and interpreter runtime over schema tools      |
 | `packages/core`                  | configuration, permissions, security guards, provider catalog, storage |
 | `packages/effect-drizzle-sqlite` | Drizzle ORM SQLite database integration for Effect-TS                  |
-| `packages/effect-sqlite-node`    | Node.js SQLite driver layer and database service for Effect-TS         |
 | `packages/http-recorder`         | cassette recorder and replayer for deterministic HTTP testing          |
 | `packages/httpapi-codegen`       | OpenAPI codegen generator for Effect HTTP API endpoints                |
 | `packages/indexing`              | semantic code search, chunking, and local symbol indexing engine       |

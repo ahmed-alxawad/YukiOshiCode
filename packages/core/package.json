@@ -87,7 +87,6 @@
     "@npmcli/arborist": "9.4.0",
     "@npmcli/config": "10.8.1",
     "@yukioshi/effect-drizzle-sqlite": "workspace:*",
-    "@yukioshi/effect-sqlite-node": "workspace:*",
     "@yukioshi/llm": "workspace:*",
     "@yukioshi/schema": "workspace:*",
     "@yukioshi/plugin": "workspace:*",
