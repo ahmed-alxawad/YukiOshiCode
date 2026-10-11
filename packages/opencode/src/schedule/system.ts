@@ -224,7 +224,7 @@ export function schedulerWarning(platform: NodeJS.Platform = process.platform): 
   return [
     "Warning: on macOS, scheduled jobs run through launchd:",
     "  - the YukiOshi binary may need Full Disk Access to read ~/Documents, ~/Desktop or ~/Downloads (System Settings > Privacy & Security).",
-    "  - calendar jobs missed while the Mac is asleep run after wake; interval jobs wait for their next interval.",
+    "  - calendar jobs missed while the Mac is asleep run after wake.",
     "  - Keychain access still depends on an active user login session and an unlocked login Keychain.",
   ].join("\n")
 }
@@ -249,7 +249,8 @@ async function syncCronSchedule(
 /**
  * Synchronizes the list of configured jobs with the host system's scheduler:
  * - On Linux: updates the "# BEGIN yukioshi schedule" block in crontab.
- * - On macOS: creates one LaunchAgent per enabled job, falling back to the crontab block if launchctl fails.
+ * - On macOS: creates one LaunchAgent per enabled job, falling back to the crontab block if launchd cannot
+ *   safely represent or install the schedule.
  * - On Windows: creates or deletes tasks in Task Scheduler via schtasks.exe.
  */
 export async function syncSystemSchedule(jobs: ScheduleJob[], options: SystemScheduleOptions = {}): Promise<void> {

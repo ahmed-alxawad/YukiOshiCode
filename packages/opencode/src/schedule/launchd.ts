@@ -20,9 +20,7 @@ export interface LaunchdCalendarInterval {
   Weekday?: number
 }
 
-export type LaunchdSchedule =
-  | { type: "interval"; seconds: number }
-  | { type: "calendar"; intervals: LaunchdCalendarInterval[] }
+export type LaunchdSchedule = { type: "calendar"; intervals: LaunchdCalendarInterval[] }
 
 /** Invokes launchctl without involving a shell. Tests can provide a fake runner. */
 export type LaunchctlRunner = (args: string[]) => Promise<void>
@@ -99,37 +97,9 @@ function addCalendarIntervals(
   }
 }
 
-function runsEveryMinute(cron: ParsedCron): boolean {
-  return (
-    cron.minutes.size === 60 &&
-    cron.hours.size === 24 &&
-    cron.daysOfMonth.size === 31 &&
-    cron.months.size === 12 &&
-    cron.daysOfWeek.size === 7
-  )
-}
-
-function minuteIntervalSeconds(rawCron: string, cron: ParsedCron): number | undefined {
-  if (runsEveryMinute(cron)) return 60
-
-  const [minutes, hours, dayOfMonth, month, dayOfWeek] = rawCron.split(/\s+/)
-  if (hours !== "*" || dayOfMonth !== "*" || month !== "*" || dayOfWeek !== "*") return undefined
-
-  const match = /^\*\/(\d+)$/.exec(minutes)
-  if (!match) return undefined
-  const minutesPerRun = Number.parseInt(match[1], 10)
-
-  // A cron step restarts at the top of each hour. It is a true fixed interval only when it divides an hour.
-  if (minutesPerRun < 60 && 60 % minutesPerRun === 0) return minutesPerRun * 60
-  return undefined
-}
-
-/** Maps supported five-field cron syntax to the launchd scheduling keys. */
+/** Maps supported five-field cron syntax to exact launchd calendar scheduling keys. */
 export function cronToLaunchdSchedule(cronExpression: string): LaunchdSchedule {
   const cron = validateCron(cronExpression)
-  const intervalSeconds = minuteIntervalSeconds(cron.raw, cron)
-  if (intervalSeconds !== undefined) return { type: "interval", seconds: intervalSeconds }
-
   const intervals: LaunchdCalendarInterval[] = []
   if (cron.domRestricted && cron.dowRestricted) {
     // Cron uses OR semantics when both day-of-month and day-of-week are restricted. launchd arrays are ORed.
@@ -202,10 +172,6 @@ function renderCalendarInterval(interval: LaunchdCalendarInterval, indent: strin
 }
 
 function renderSchedule(schedule: LaunchdSchedule): string[] {
-  if (schedule.type === "interval") {
-    return ["  <key>StartInterval</key>", `  <integer>${schedule.seconds}</integer>`]
-  }
-
   const lines = ["  <key>StartCalendarInterval</key>"]
   if (schedule.intervals.length === 1) return lines.concat(renderCalendarInterval(schedule.intervals[0], "  "))
   lines.push("  <array>")
@@ -282,6 +248,29 @@ function isNotLoadedError(error: unknown): boolean {
   return /could not find service|no such process|not loaded/i.test(String(error))
 }
 
+async function assertManagedPlistNotSymlink(plistPath: string): Promise<void> {
+  try {
+    if ((await fs.lstat(plistPath)).isSymbolicLink()) {
+      throw new Error(`Refusing to manage LaunchAgent plist symbolic link: ${plistPath}`)
+    }
+  } catch (error: any) {
+    if (error?.code === "ENOENT") return
+    throw error
+  }
+}
+
+async function writeManagedPlist(plistPath: string, plist: string): Promise<void> {
+  await assertManagedPlistNotSymlink(plistPath)
+  await fs.writeFile(plistPath, plist, { encoding: "utf8", mode: 0o600 })
+  await assertManagedPlistNotSymlink(plistPath)
+  await fs.chmod(plistPath, 0o600)
+}
+
+async function removeManagedPlist(plistPath: string): Promise<void> {
+  await assertManagedPlistNotSymlink(plistPath)
+  await fs.rm(plistPath, { force: true })
+}
+
 async function bootoutLaunchAgent(runner: LaunchctlRunner, uid: number, plistPath: string): Promise<void> {
   try {
     await runner(launchctlBootoutArgs(uid, plistPath))
@@ -294,6 +283,53 @@ async function bootoutLaunchAgent(runner: LaunchctlRunner, uid: number, plistPat
 interface ManagedLaunchAgent {
   id: string
   plistPath: string
+}
+
+interface PlannedLaunchAgent {
+  job: ScheduleJob
+  plistPath: string
+  plist: string
+}
+
+interface LaunchAgentBackup {
+  plistPath: string
+  backupPath: string
+}
+
+function launchdBackupPath(plistPath: string): string {
+  return `${plistPath}.yukioshi-backup`
+}
+
+async function createLaunchAgentBackup(plistPath: string): Promise<LaunchAgentBackup> {
+  await assertManagedPlistNotSymlink(plistPath)
+  const contents = await fs.readFile(plistPath, "utf8")
+  const backupPath = launchdBackupPath(plistPath)
+  try {
+    await fs.writeFile(backupPath, contents, { encoding: "utf8", mode: 0o600, flag: "wx" })
+    await assertManagedPlistNotSymlink(backupPath)
+    await fs.chmod(backupPath, 0o600)
+  } catch (error: any) {
+    if (error?.code === "EEXIST") {
+      throw new Error(`Refusing to update LaunchAgent with an existing backup: ${backupPath}`)
+    }
+    throw error
+  }
+  return { plistPath, backupPath }
+}
+
+async function discardLaunchAgentBackup(backup: LaunchAgentBackup): Promise<void> {
+  try {
+    await fs.rm(backup.backupPath, { force: true })
+  } catch {
+    // The active or restored agent is safe. Keep an undeletable backup for manual recovery.
+  }
+}
+
+function recoveryFailure(plistPath: string, backupPath: string, updateError: unknown, recoveryError: unknown): Error {
+  return new Error(
+    `Failed to update LaunchAgent ${plistPath}: ${String(updateError)}. ` +
+      `Recovery failed: ${String(recoveryError)}. Original plist backup preserved at ${backupPath}`,
+  )
 }
 
 async function managedLaunchAgents(directory: string): Promise<ManagedLaunchAgent[]> {
@@ -315,7 +351,10 @@ async function managedLaunchAgents(directory: string): Promise<ManagedLaunchAgen
       continue
     }
     const plistPath = path.join(directory, name)
-    if (path.dirname(plistPath) === directory) agents.push({ id, plistPath })
+    if (path.dirname(plistPath) === directory) {
+      await assertManagedPlistNotSymlink(plistPath)
+      agents.push({ id, plistPath })
+    }
   }
   return agents
 }
@@ -328,54 +367,109 @@ function launchdUid(uid: number | undefined): number {
   return result
 }
 
+async function cleanupFailedNewLaunchAgent(runner: LaunchctlRunner, uid: number, plistPath: string): Promise<void> {
+  try {
+    await assertManagedPlistNotSymlink(plistPath)
+    await bootoutLaunchAgent(runner, uid, plistPath)
+  } catch {
+    // A failed bootstrap can leave the service absent, partially loaded, or already removed.
+  }
+  try {
+    await removeManagedPlist(plistPath)
+  } catch {
+    // Never remove a plist that has become a symlink while handling a failed update.
+  }
+}
+
+async function installLaunchAgent(runner: LaunchctlRunner, uid: number, agent: PlannedLaunchAgent): Promise<void> {
+  await assertManagedPlistNotSymlink(agent.plistPath)
+  try {
+    await writeManagedPlist(agent.plistPath, agent.plist)
+    await runner(launchctlBootstrapArgs(uid, agent.plistPath))
+  } catch (error) {
+    await cleanupFailedNewLaunchAgent(runner, uid, agent.plistPath)
+    throw error
+  }
+}
+
+async function restoreLaunchAgentBackup(
+  runner: LaunchctlRunner,
+  uid: number,
+  backup: LaunchAgentBackup,
+): Promise<void> {
+  await assertManagedPlistNotSymlink(backup.plistPath)
+  await bootoutLaunchAgent(runner, uid, backup.plistPath)
+  await removeManagedPlist(backup.plistPath)
+  await assertManagedPlistNotSymlink(backup.backupPath)
+  const originalPlist = await fs.readFile(backup.backupPath, "utf8")
+  await writeManagedPlist(backup.plistPath, originalPlist)
+  await runner(launchctlBootstrapArgs(uid, backup.plistPath))
+}
+
+async function updateLaunchAgent(runner: LaunchctlRunner, uid: number, agent: PlannedLaunchAgent): Promise<void> {
+  const backup = await createLaunchAgentBackup(agent.plistPath)
+  try {
+    await bootoutLaunchAgent(runner, uid, agent.plistPath)
+    await writeManagedPlist(agent.plistPath, agent.plist)
+    await runner(launchctlBootstrapArgs(uid, agent.plistPath))
+  } catch (updateError) {
+    try {
+      await restoreLaunchAgentBackup(runner, uid, backup)
+    } catch (recoveryError) {
+      throw recoveryFailure(agent.plistPath, backup.backupPath, updateError, recoveryError)
+    }
+    await discardLaunchAgentBackup(backup)
+    throw updateError
+  }
+  await discardLaunchAgentBackup(backup)
+}
+
+async function removeLaunchAgent(runner: LaunchctlRunner, uid: number, plistPath: string): Promise<void> {
+  await assertManagedPlistNotSymlink(plistPath)
+  await bootoutLaunchAgent(runner, uid, plistPath)
+  await removeManagedPlist(plistPath)
+}
+
 /** Writes, reloads, and removes the LaunchAgents owned by YukiOshi. */
 export async function syncLaunchdSchedule(jobs: ScheduleJob[], options: LaunchdSyncOptions): Promise<void> {
   const uid = launchdUid(options.uid)
   const runner = options.launchctl ?? runLaunchctl
   const directory = launchdDirectory(options.home)
-  const enabled = new Map<string, ScheduleJob>()
+  const enabled = new Map<string, PlannedLaunchAgent>()
   for (const job of jobs) {
     assertSafeJobId(job.id)
     if (!job.enabled) continue
     if (enabled.has(job.id)) throw new Error(`Duplicate scheduled job ID for launchd: ${job.id}`)
-    enabled.set(job.id, job)
+    const plistPath = launchdPlistPath(options.home, job.id)
+    enabled.set(job.id, {
+      job,
+      plistPath,
+      // Render every plist before changing any LaunchAgent so cron fallback cannot leave a partial sync.
+      plist: launchdPlist(job, options.binary, options.home, options.pathEnv, options.env),
+    })
   }
 
   await fs.mkdir(directory, { recursive: true, mode: 0o700 })
   const existing = await managedLaunchAgents(directory)
   const existingById = new Map(existing.map((agent) => [agent.id, agent]))
-  const touched = new Set<string>()
-  const bootstrapped: string[] = []
+  const newlyInstalled: PlannedLaunchAgent[] = []
 
   try {
-    for (const agent of existing) {
-      if (enabled.has(agent.id)) continue
-      await bootoutLaunchAgent(runner, uid, agent.plistPath)
-      await fs.rm(agent.plistPath, { force: true })
+    for (const agent of enabled.values()) {
+      if (existingById.has(agent.job.id)) {
+        await updateLaunchAgent(runner, uid, agent)
+      } else {
+        await installLaunchAgent(runner, uid, agent)
+        newlyInstalled.push(agent)
+      }
     }
 
-    for (const job of enabled.values()) {
-      const plistPath = launchdPlistPath(options.home, job.id)
-      if (existingById.has(job.id)) {
-        touched.add(plistPath)
-        await bootoutLaunchAgent(runner, uid, plistPath)
-      }
-      const plist = launchdPlist(job, options.binary, options.home, options.pathEnv, options.env)
-      touched.add(plistPath)
-      await fs.writeFile(plistPath, plist, { encoding: "utf8", mode: 0o600 })
-      await fs.chmod(plistPath, 0o600)
-      await runner(launchctlBootstrapArgs(uid, plistPath))
-      bootstrapped.push(plistPath)
+    for (const agent of existing) {
+      if (enabled.has(agent.id)) continue
+      await removeLaunchAgent(runner, uid, agent.plistPath)
     }
   } catch (error) {
-    await Promise.all(
-      bootstrapped.map(async (plistPath) => {
-        try {
-          await runner(launchctlBootoutArgs(uid, plistPath))
-        } catch {}
-      }),
-    )
-    await Promise.all([...touched].map((plistPath) => fs.rm(plistPath, { force: true }).catch(() => {})))
+    await Promise.all(newlyInstalled.map((agent) => cleanupFailedNewLaunchAgent(runner, uid, agent.plistPath)))
     throw error
   }
 }
