@@ -29,29 +29,6 @@
         "turbo": "2.10.2",
       },
     },
-    "packages/client": {
-      "name": "@yukioshi/client",
-      "dependencies": {
-        "@yukioshi/protocol": "workspace:*",
-        "@yukioshi/schema": "workspace:*",
-      },
-      "devDependencies": {
-        "@effect/platform-node": "catalog:",
-        "@tsconfig/bun": "catalog:",
-        "@types/bun": "catalog:",
-        "@typescript/native-preview": "catalog:",
-        "@yukioshi/core": "workspace:*",
-        "@yukioshi/httpapi-codegen": "workspace:*",
-        "@yukioshi/server": "workspace:*",
-        "effect": "catalog:",
-      },
-      "peerDependencies": {
-        "effect": "4.0.0-beta.83",
-      },
-      "optionalPeers": [
-        "effect",
-      ],
-    },
     "packages/code-graph": {
       "name": "@yukioshi/code-graph",
       "version": "0.0.0",
@@ -199,18 +176,6 @@
       },
       "peerDependencies": {
         "effect": "4.0.0-beta.83",
-      },
-    },
-    "packages/httpapi-codegen": {
-      "name": "@yukioshi/httpapi-codegen",
-      "dependencies": {
-        "effect": "catalog:",
-        "prettier": "3.6.2",
-      },
-      "devDependencies": {
-        "@tsconfig/bun": "catalog:",
-        "@types/bun": "catalog:",
-        "@typescript/native-preview": "catalog:",
       },
     },
     "packages/indexing": {
@@ -472,20 +437,6 @@
         "@types/semver": "^7.5.8",
       },
     },
-    "packages/sdk-next": {
-      "name": "@yukioshi/sdk-next",
-      "dependencies": {
-        "@yukioshi/client": "workspace:*",
-        "@yukioshi/core": "workspace:*",
-        "@yukioshi/server": "workspace:*",
-        "effect": "catalog:",
-      },
-      "devDependencies": {
-        "@tsconfig/bun": "catalog:",
-        "@types/bun": "catalog:",
-        "@typescript/native-preview": "catalog:",
-      },
-    },
     "packages/sdk/js": {
       "name": "@yukioshi/sdk",
       "version": "1.18.32",
@@ -514,46 +465,6 @@
         "@tsconfig/bun": "catalog:",
         "@types/bun": "catalog:",
         "@typescript/native-preview": "catalog:",
-      },
-    },
-    "packages/session-ui": {
-      "name": "@yukioshi/session-ui",
-      "version": "1.18.32",
-      "dependencies": {
-        "@kobalte/core": "catalog:",
-        "@pierre/diffs": "catalog:",
-        "@shikijs/stream": "catalog:",
-        "@shikijs/transformers": "3.9.2",
-        "@solid-primitives/bounds": "0.1.3",
-        "@solid-primitives/event-listener": "2.4.5",
-        "@solid-primitives/media": "2.3.3",
-        "@solid-primitives/resize-observer": "2.1.3",
-        "@solidjs/meta": "catalog:",
-        "@yukioshi/client": "workspace:*",
-        "@yukioshi/core": "workspace:*",
-        "@yukioshi/sdk": "workspace:*",
-        "@yukioshi/ui": "workspace:*",
-        "diff": "catalog:",
-        "dompurify": "3.3.1",
-        "fuzzysort": "catalog:",
-        "luxon": "catalog:",
-        "marked": "catalog:",
-        "morphdom": "2.7.8",
-        "motion": "12.34.5",
-        "remeda": "catalog:",
-        "remend": "catalog:",
-        "shiki": "catalog:",
-        "solid-js": "catalog:",
-        "solid-list": "catalog:",
-        "strip-ansi": "7.1.2",
-      },
-      "devDependencies": {
-        "@tsconfig/node22": "catalog:",
-        "@types/bun": "catalog:",
-        "@types/luxon": "catalog:",
-        "@typescript/native-preview": "catalog:",
-        "typescript": "catalog:",
-        "vite": "catalog:",
       },
     },
     "packages/tui": {
@@ -1801,8 +1712,6 @@
 
     "@vercel/oidc": ["@vercel/oidc@3.2.0", "", {}, "sha512-UycprH3T6n3jH0k44NHMa7pnFHGu/N05MjojYr+Mc6I7obkoLIJujSWwin1pCvdy/eOxrI/l3uDLQsmcrOb4ug=="],
 
-    "@yukioshi/client": ["@yukioshi/client@workspace:packages/client"],
-
     "@yukioshi/code-graph": ["@yukioshi/code-graph@workspace:packages/code-graph"],
 
     "@yukioshi/codemode": ["@yukioshi/codemode@workspace:packages/codemode"],
@@ -1812,8 +1721,6 @@
     "@yukioshi/effect-drizzle-sqlite": ["@yukioshi/effect-drizzle-sqlite@workspace:packages/effect-drizzle-sqlite"],
 
     "@yukioshi/http-recorder": ["@yukioshi/http-recorder@workspace:packages/http-recorder"],
-
-    "@yukioshi/httpapi-codegen": ["@yukioshi/httpapi-codegen@workspace:packages/httpapi-codegen"],
 
     "@yukioshi/indexing": ["@yukioshi/indexing@workspace:packages/indexing"],
 
@@ -1831,11 +1738,7 @@
 
     "@yukioshi/sdk": ["@yukioshi/sdk@workspace:packages/sdk/js"],
 
-    "@yukioshi/sdk-next": ["@yukioshi/sdk-next@workspace:packages/sdk-next"],
-
     "@yukioshi/server": ["@yukioshi/server@workspace:packages/server"],
-
-    "@yukioshi/session-ui": ["@yukioshi/session-ui@workspace:packages/session-ui"],
 
     "@yukioshi/tui": ["@yukioshi/tui@workspace:packages/tui"],
 
@@ -2991,7 +2894,7 @@
 
     "ulid": ["ulid@3.0.1", "", { "bin": { "ulid": "dist/cli.js" } }, "sha512-dPJyqPzx8preQhqq24bBG1YNkvigm87K8kVEHCD+ruZg24t6IFEFv00xMWfxcC4djmFtiTLdFuADn4+DOz6R7Q=="],
 
-    "undici": ["undici@8.3.0", "", {}, "sha512-TkUDgb6tl7KOGZ+7e8E3d2FYgUQgF6z5YypqjWmixVQSQERFcVrVg0ySADm2LVLRh5ljAaHTCR5Fmz3Q34rB7Q=="],
+    "undici": ["undici@6.28.0", "", {}, "sha512-LIY910g9TI13YS95lrMFrs8Rm/u/irgHeTWoKCoteeJ04CUJ92eEfj0rVn+7VKMPBpUPiUoBKfhNyLI23EE/KA=="],
 
     "undici-types": ["undici-types@7.16.0", "", {}, "sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw=="],
 
@@ -3191,8 +3094,6 @@
 
     "@ai-sdk/provider-utils/@standard-schema/spec": ["@standard-schema/spec@1.1.0", "", {}, "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="],
 
-    "@ai-sdk/provider-utils/undici": ["undici@6.28.0", "", {}, "sha512-LIY910g9TI13YS95lrMFrs8Rm/u/irgHeTWoKCoteeJ04CUJ92eEfj0rVn+7VKMPBpUPiUoBKfhNyLI23EE/KA=="],
-
     "@ai-sdk/togetherai/@ai-sdk/openai-compatible": ["@ai-sdk/openai-compatible@2.0.62", "", { "dependencies": { "@ai-sdk/provider": "3.0.14", "@ai-sdk/provider-utils": "4.0.40" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-lRe54zvyIS1a60N8UVhnwKZRI5I+GSV8uhKkPpId+aiKO7z7UgSbNqFmXkBBMD3yc9UrLnQnATV2EQyXNhzEkA=="],
 
     "@ai-sdk/togetherai/@ai-sdk/provider": ["@ai-sdk/provider@3.0.14", "", { "dependencies": { "json-schema": "^0.4.0" } }, "sha512-5X1k57JBJ4H7H1QjX7CnJYAB1I19r/trVZTMcSms7/kLNZ8RaU4Nt2agcwZzv82Hfx6Q7/TOLU7agAKeFfc8cA=="],
@@ -3363,6 +3264,8 @@
 
     "@bufbuild/protoplugin/typescript": ["typescript@5.4.5", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-vcI4UpRgg81oIRUFwR0WSIHKt11nJ7SAVlYNIu+QpqeyXP+gpQJy/Z4+F0aGxSE4MqwjyXvW/TzgkLAx2AGHwQ=="],
 
+    "@effect/platform-node/undici": ["undici@8.3.0", "", {}, "sha512-TkUDgb6tl7KOGZ+7e8E3d2FYgUQgF6z5YypqjWmixVQSQERFcVrVg0ySADm2LVLRh5ljAaHTCR5Fmz3Q34rB7Q=="],
+
     "@hey-api/json-schema-ref-parser/js-yaml": ["js-yaml@4.1.1", "", { "dependencies": { "argparse": "^2.0.1" }, "bin": { "js-yaml": "bin/js-yaml.js" } }, "sha512-qQKT4zQxXl8lLwBtHMWwaTcGfFOZviOJet3Oy/xmGk2gZH677CJM9EvtfdSkgWcATZhj/55JZ0rmy3myCT5lsA=="],
 
     "@hey-api/openapi-ts/commander": ["commander@14.0.2", "", {}, "sha512-TywoWNNRbhoD0BXs1P3ZEScW8W5iKrnbithIl0YH+uCmBd0QpPOA8yc82DS3BIE5Ma6FnBVUsJ7wVUDz4dvOWQ=="],
@@ -3432,8 +3335,6 @@
     "@pierre/diffs/diff": ["diff@8.0.3", "", {}, "sha512-qejHi7bcSD4hQAZE0tNAawRK1ZtafHDmMTMkrrIGgSLl7hTnQHmKCeB45xAcbfTqK2zowkM3j3bHt/4b/ARbYQ=="],
 
     "@protobuf-ts/plugin/typescript": ["typescript@3.9.10", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-w6fIxVE/H1PkLKcCPsFqKE7Kv7QUwhU8qQY2MueZXWx5cPZdwFupLgKK3vntcK98BtNHZtAF4LA/yl2a7k8R6Q=="],
-
-    "@qdrant/js-client-rest/undici": ["undici@6.28.0", "", {}, "sha512-LIY910g9TI13YS95lrMFrs8Rm/u/irgHeTWoKCoteeJ04CUJ92eEfj0rVn+7VKMPBpUPiUoBKfhNyLI23EE/KA=="],
 
     "@shikijs/core/@shikijs/types": ["@shikijs/types@4.2.0", "", { "dependencies": { "@shikijs/vscode-textmate": "^10.0.2", "@types/hast": "^3.0.4" } }, "sha512-VT/MKtlpOhEPZloSH3Pb9WCZEBDoQVMa9jedp5UAwmJOar1DVc9DRODAxmYPW9M93IK4ryuqRejFfmlvlVDemw=="],
 
@@ -3623,11 +3524,7 @@
 
     "@ai-sdk/amazon-bedrock/@ai-sdk/provider-utils/@standard-schema/spec": ["@standard-schema/spec@1.1.0", "", {}, "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="],
 
-    "@ai-sdk/amazon-bedrock/@ai-sdk/provider-utils/undici": ["undici@6.28.0", "", {}, "sha512-LIY910g9TI13YS95lrMFrs8Rm/u/irgHeTWoKCoteeJ04CUJ92eEfj0rVn+7VKMPBpUPiUoBKfhNyLI23EE/KA=="],
-
     "@ai-sdk/anthropic/@ai-sdk/provider-utils/@standard-schema/spec": ["@standard-schema/spec@1.1.0", "", {}, "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="],
-
-    "@ai-sdk/anthropic/@ai-sdk/provider-utils/undici": ["undici@6.28.0", "", {}, "sha512-LIY910g9TI13YS95lrMFrs8Rm/u/irgHeTWoKCoteeJ04CUJ92eEfj0rVn+7VKMPBpUPiUoBKfhNyLI23EE/KA=="],
 
     "@ai-sdk/azure/@ai-sdk/provider-utils/@standard-schema/spec": ["@standard-schema/spec@1.1.0", "", {}, "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="],
 

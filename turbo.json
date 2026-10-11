@@ -27,10 +27,6 @@
     "@yukioshi/ui#test": {
       "dependsOn": ["^build"],
       "outputs": []
-    },
-    "@yukioshi/session-ui#test": {
-      "dependsOn": ["^build"],
-      "outputs": []
     }
   }
 }
