@@ -33,6 +33,10 @@ function normalize(text: string): string {
       // (the harness now uses FileSystem.makeTempDirectoryScoped under the
       // hood). A `[a-z0-9]+` regex would leave uppercase chars trailing.
       [new RegExp(`<TMPDIR>${PATH_SEP}oc-cli-[A-Za-z0-9]+`, "g"), "<HOME>"],
+      // The child may report the tmpdir in a different spelling than this
+      // process's os.tmpdir() (Windows 8.3 short names RUNNER~1 vs runneradmin),
+      // so also collapse any absolute path ending in the harness subdir.
+      [new RegExp(`"(?:[A-Za-z]:)?[^"\\s]*?${PATH_SEP}oc-cli-[A-Za-z0-9]+"`, "g"), '"<HOME>"'],
       [/\s+\[string\] \[default: "<HOME>"\]/g, ' [string] [default: "<HOME>"]'],
     ],
   })
