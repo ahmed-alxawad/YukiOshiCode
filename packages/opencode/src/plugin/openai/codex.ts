@@ -515,7 +515,15 @@ export async function CodexAuthPlugin(input: PluginInput, options: CodexAuthPlug
                       device_auth_id: deviceData.device_auth_id,
                       user_code: deviceData.user_code,
                     }),
+                  }).catch((error: unknown) => {
+                    // One slow poll is not a failed sign-in: the user may still be approving. Ask again after the interval.
+                    if ((error as Error | undefined)?.name === "TimeoutError") return undefined
+                    throw error
                   })
+                  if (!response) {
+                    await sleep(interval + OAUTH_POLLING_SAFETY_MARGIN_MS)
+                    continue
+                  }
 
                   if (response.ok) {
                     const data = (await response.json()) as {

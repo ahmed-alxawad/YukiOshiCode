@@ -281,7 +281,15 @@ export async function CopilotAuthPlugin(input: PluginInput): Promise<Hooks> {
                       device_code: deviceData.device_code,
                       grant_type: "urn:ietf:params:oauth:grant-type:device_code",
                     }),
+                  }).catch((error: unknown) => {
+                    // One slow poll is not a failed sign-in: the user may still be approving. Ask again after the interval.
+                    if ((error as Error | undefined)?.name === "TimeoutError") return undefined
+                    throw error
                   })
+                  if (!response) {
+                    await sleep(deviceData.interval * 1000 + OAUTH_POLLING_SAFETY_MARGIN_MS)
+                    continue
+                  }
 
                   if (!response.ok) return { type: "failed" as const }
 

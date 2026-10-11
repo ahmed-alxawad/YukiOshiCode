@@ -173,7 +173,15 @@ export async function pollDeviceCodeToken(
         client_id: CLIENT_ID,
         device_code: device.device_code,
       }).toString(),
+    }).catch((error: unknown) => {
+      // One slow poll is not a failed sign-in: the user may still be approving. Ask again after the interval.
+      if ((error as Error | undefined)?.name === "TimeoutError") return undefined
+      throw error
     })
+    if (!response) {
+      await sleep(Math.min(intervalMs + OAUTH_POLLING_SAFETY_MARGIN_MS, Math.max(0, deadline - now())))
+      continue
+    }
     if (response.ok) return (await response.json()) as TokenResponse
 
     const body = (await response.json().catch(() => ({}))) as DeviceTokenErrorBody
