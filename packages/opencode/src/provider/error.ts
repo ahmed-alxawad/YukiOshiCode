@@ -15,9 +15,16 @@ export class HeaderTimeoutError extends Error {
 export class ResponseStreamError extends Error {
   public override readonly name = "ProviderResponseStreamError"
 
-  constructor(message: string, options?: ErrorOptions) {
+  constructor(
+    message: string,
+    options?: ErrorOptions & { timeoutMs?: number },
+  ) {
     super(message, options)
+    this.timeoutMs = options?.timeoutMs
   }
+
+  /** Set when the stream ended because no data arrived within this many milliseconds. */
+  public readonly timeoutMs?: number
 }
 
 function isOpenAiErrorRetryable(e: APICallError) {

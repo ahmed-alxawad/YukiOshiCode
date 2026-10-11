@@ -693,6 +693,7 @@ function convertError(
           isRetryable: true,
           metadata: {
             code: e.name,
+            ...(e.timeoutMs !== undefined ? { timeoutMs: String(e.timeoutMs) } : {}),
           },
         },
         { cause: e },

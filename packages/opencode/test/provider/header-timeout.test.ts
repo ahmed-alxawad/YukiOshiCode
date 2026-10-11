@@ -119,7 +119,7 @@ it.live("configured chunkTimeout raises a retryable response stream error when S
           expect(error).toBeInstanceOf(ProviderError.ResponseStreamError)
           expect(
             SessionRetry.retryable(MessageV2.fromError(error, { providerID: model.providerID }), model.providerID),
-          ).toEqual({ message: "SSE read timed out" })
+          ).toEqual({ message: "Provider stream stalled: no data for 50ms" })
         }),
       { config: providerConfig(server.url, { chunkTimeout: 50 }) },
     )
