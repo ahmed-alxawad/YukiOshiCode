@@ -199,15 +199,15 @@ export function explainSessionError(error: SessionErrorLike, message: string): s
   if (error.name === "ProviderAuthError" || status === 401 || status === 403)
     return `${text}\nThe provider${host ? ` at ${host}` : ""} did not accept your credentials. Run \`yukioshi providers login\` to add or replace the key, or fix the API key in your environment or yukioshi.json.`
   if (status === 429)
-    return `${text}\nThe provider${host ? ` at ${host}` : ""} is rate limiting you or your quota is used up. Wait a moment and run again, pick another model with --model provider/model, or set fallback.models to switch automatically.`
+    return `${text}\nThe provider${host ? ` at ${host}` : ""} is rate limiting you or your quota is used up. Wait a moment and run again, pick another model with --model provider/model, or set or extend fallback.models to switch automatically.`
   const code = error.data?.metadata?.code
   const seconds = (ms: string | undefined) => (ms && Number(ms) > 0 ? `${Math.round(Number(ms) / 100) / 10}s` : undefined)
   if (code === "ProviderHeaderTimeoutError")
-    return `${text}\nThe provider${host ? ` at ${host}` : ""} accepted the request but sent no response within ${seconds(error.data?.metadata?.timeoutMs) ?? "the limit"}, and the retries (2) did not help. To wait longer, raise provider.<id>.options.headerTimeout (milliseconds, false to disable) in yukioshi.json. To switch models automatically, set fallback.models.`
+    return `${text}\nThe provider${host ? ` at ${host}` : ""} accepted the request but sent no response within ${seconds(error.data?.metadata?.timeoutMs) ?? "the limit"}, and the retries (2) did not help. To wait longer, raise provider.<id>.options.headerTimeout (milliseconds, false to disable) in yukioshi.json. To switch models automatically, set or extend fallback.models.`
   if (code === "ProviderResponseStreamError" && error.data?.metadata?.timeoutMs)
-    return `${text}\nThe provider${host ? ` at ${host}` : ""} stopped sending data for ${seconds(error.data.metadata.timeoutMs)}, and the retries (2) did not help. To wait longer, raise provider.<id>.options.chunkTimeout (milliseconds, 0 disables the check) in yukioshi.json. To switch models automatically, set fallback.models.`
+    return `${text}\nThe provider${host ? ` at ${host}` : ""} stopped sending data for ${seconds(error.data.metadata.timeoutMs)}, and the retries (2) did not help. To wait longer, raise provider.<id>.options.chunkTimeout (milliseconds, 0 disables the check) in yukioshi.json. To switch models automatically, set or extend fallback.models.`
   if (status !== undefined && status >= 500)
-    return `${text}\nThe provider${host ? ` at ${host}` : ""} answered HTTP ${status} on every attempt (the first try plus 2 retries). Run again later, pick another model with --model provider/model, or set fallback.models to switch automatically.`
+    return `${text}\nThe provider${host ? ` at ${host}` : ""} answered HTTP ${status} on every attempt (the first try plus 2 retries). Run again later, pick another model with --model provider/model, or set or extend fallback.models to switch automatically.`
   if (status === undefined && host)
     return `${text}\nYukiOshi could not reach ${host}. Check your internet connection, VPN or proxy, and the provider's baseURL. Your API key is only sent to that host and is never written to the logs.`
   return text
