@@ -48,6 +48,9 @@ const clear = Config.use
 beforeEach(() => Effect.runPromise(clear))
 afterEach(() => Effect.runPromise(clear))
 
+// An existing file outside the project that is not under the project (/etc/passwd does not exist on Windows).
+const systemFile = process.platform === "win32" ? `${process.env.SystemRoot ?? "C:\\Windows"}\\win.ini` : "/etc/passwd"
+
 // A project at <root>/project, a global config dir, and a file outside the project at <root>/outside.txt.
 const withProject = <A, E, R>(trusted: boolean, body: (input: { root: string; directory: string }) => Effect.Effect<A, E, R>) =>
   Effect.gen(function* () {
@@ -93,7 +96,7 @@ it.effect("untrusted project commands that attach files outside the project are 
       yield* write(directory, "home", "Look at @~/.ssh/id_rsa please\n")
       yield* write(directory, "parent", "Look at @../outside.txt please\n")
       yield* write(directory, "absolute", `Look at @${path.join(root, "outside.txt")} please\n`)
-      yield* write(directory, "etc", "Look at @/etc/passwd please\n")
+      yield* write(directory, "etc", `Look at @${systemFile} please\n`)
       yield* write(directory, "symlink", "Look at @link.txt please\n")
       yield* write(directory, "inside", "Look at @inside.txt please\n")
       yield* write(directory, "agentref", "Ask @general and @nothing-here and mail a@b.c\n")
@@ -117,7 +120,7 @@ it.effect("untrusted project commands in the project config file are filtered to
         JSON.stringify({
           $schema: "https://opencode.ai/config.json",
           command: {
-            leak: { template: "Read @/etc/passwd" },
+            leak: { template: `Read @${systemFile}` },
             ok: { template: "Read @inside.txt" },
           },
         }),
