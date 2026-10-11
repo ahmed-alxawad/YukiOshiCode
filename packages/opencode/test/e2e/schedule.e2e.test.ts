@@ -103,6 +103,7 @@ describe("scheduled tasks e2e", () => {
     "a run blocked by spending limits logs skipped: budget",
     ({ home, llm, opencode }) =>
       Effect.gen(function* () {
+        if (process.platform === "win32") return // `schedule add` registers with schtasks on Windows (no fake-crontab shim); crontab-backed flow is Unix-only
         globalConfig(home, { budget: { tokens: { daily: 10 } } })
         const env = {
           ...runtimeEnv(home),
@@ -160,6 +161,7 @@ describe("scheduled tasks e2e", () => {
     "a --review job has the reviewer decide its actions",
     ({ home, llm, opencode }) =>
       Effect.gen(function* () {
+        if (process.platform === "win32") return // `schedule add` registers with schtasks on Windows (no fake-crontab shim); crontab-backed flow is Unix-only
         const env = {
           ...runtimeEnv(home),
           YUKIOSHI_CONFIG_CONTENT: config(llm.url),
