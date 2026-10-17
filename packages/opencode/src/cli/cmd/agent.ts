@@ -9,8 +9,13 @@ import matter from "gray-matter"
 import { EOL } from "os"
 import type { Argv } from "yargs"
 import { Effect } from "effect"
-import { effectCmd } from "../effect-cmd"
+import { effectCmd, fail } from "../effect-cmd"
 import { requireTerminal } from "../needs-terminal"
+import { ConfigAgentV1 } from "@yukioshi/core/v1/config/agent"
+import { Glob } from "@yukioshi/core/util/glob"
+import { ConfigMarkdown } from "@/config/markdown"
+import { ConfigParse } from "@/config/parse"
+import { configEntryNameFromPath } from "@/config/entry-name"
 
 type AgentMode = "all" | "primary" | "subagent"
 
@@ -37,6 +42,174 @@ export function agentTargetDirectory(
   if ("path" in input) return path.join(input.path, "agents")
   const root = input.scope === "global" ? input.globalConfig : path.join(input.worktree, ".yukioshi")
   return path.join(root, "agents")
+}
+
+// --- `agent validate` / `agent show` helpers (exported for unit tests) ---
+
+export interface AgentFileReport {
+  file: string
+  /** Resolved agent name (frontmatter `name` or filename-derived); undefined when the frontmatter does not parse. */
+  name?: string
+  problems: string[]
+}
+
+export interface AgentValidationReport {
+  files: AgentFileReport[]
+  /** Total problems across all files. */
+  problems: number
+}
+
+/** Returns true/false when the provider's model list is known; undefined when it is not (offline/custom). */
+export type KnownModelLookup = (providerID: string, modelID: string) => boolean | undefined
+
+/** Builds a KnownModelLookup from the models.dev catalog and the configured providers. */
+export function knownModelLookup(
+  catalog: Record<string, { models?: Record<string, unknown> } | undefined>,
+  providers: Record<string, { models?: Record<string, unknown> } | undefined> | undefined,
+): KnownModelLookup {
+  return (providerID, modelID) => {
+    const configured = providers?.[providerID]?.models
+    if (configured && modelID in configured) return true
+    const listed = catalog[providerID]?.models
+    if (listed && modelID in listed) return true
+    // Flag only on positive knowledge of the provider's model list.
+    if (configured || listed) return false
+    return undefined
+  }
+}
+
+/** Checks a `model` frontmatter value: inherit/Claude aliases pass, otherwise `provider/model` is required. */
+export function modelProblem(model: string, knownModel: KnownModelLookup = () => undefined): string | undefined {
+  const trimmed = model.trim()
+  if (ConfigAgentV1.INHERIT_MODELS.has(trimmed.toLowerCase())) return undefined
+  const slash = trimmed.indexOf("/")
+  if (slash <= 0 || slash === trimmed.length - 1) {
+    return `invalid model "${model}": expected "<provider>/<model>", "inherit", or a Claude alias (sonnet, opus, haiku)`
+  }
+  const providerID = trimmed.slice(0, slash)
+  const modelID = trimmed.slice(slash + 1)
+  if (knownModel(providerID, modelID) === false) return `unknown model "${providerID}/${modelID}"`
+  return undefined
+}
+
+function toolEntries(tools: string | readonly unknown[]): string[] {
+  return (typeof tools === "string" ? tools.split(",") : tools)
+    .map((item) => (typeof item === "string" ? item.trim() : String(item)))
+    .filter((item) => item.length > 0)
+}
+
+/** Flags `tools`/`disallowedTools` entries that map to a permission id YukiOshi does not know. */
+export function toolProblems(field: "tools" | "disallowedTools", value: unknown): string[] {
+  if (typeof value === "string" || Array.isArray(value)) {
+    return toolEntries(value as string | string[])
+      .map((entry) => ({ entry, permission: ConfigAgentV1.toolPermission(entry) }))
+      .filter(({ permission }) => !ConfigAgentV1.KNOWN_PERMISSIONS.has(permission))
+      .map(({ entry, permission }) => `${field} entry "${entry}" maps to unknown permission "${permission}"`)
+  }
+  // Record form (tools only): keys are tool/permission names; write/edit/patch all gate on `edit`.
+  if (value && typeof value === "object") {
+    return Object.keys(value)
+      .filter((key) => !ConfigAgentV1.KNOWN_PERMISSIONS.has(key === "write" || key === "patch" ? "edit" : key))
+      .map((key) => `tools key "${key}" is not a known permission`)
+  }
+  return []
+}
+
+/** Flags frontmatter fields the agent schema does not know. */
+export function unknownFieldProblems(data: Record<string, unknown>): string[] {
+  return Object.keys(data)
+    .filter((key) => !ConfigAgentV1.KNOWN_KEYS.has(key))
+    .map((key) => `unknown frontmatter field "${key}"`)
+}
+
+export function permissionModeProblem(value: unknown): string | undefined {
+  if (typeof value === "string" && value.trim().toLowerCase() === "bypasspermissions") {
+    return `permissionMode "bypassPermissions" is not supported and is ignored`
+  }
+  return undefined
+}
+
+/** Runs the same schema decode as the config loader and turns failures into problem strings. */
+export function schemaProblems(file: string, name: string, data: Record<string, unknown>, prompt: string): string[] {
+  try {
+    ConfigParse.schema(ConfigAgentV1.Info, { name, ...data, prompt }, file)
+    return []
+  } catch (error) {
+    const issues =
+      (error as { issues?: { message: string; path: string[] }[] }).issues ??
+      (error as { data?: { issues?: { message: string; path: string[] }[] } }).data?.issues
+    if (Array.isArray(issues) && issues.length > 0) {
+      return issues.map(
+        (issue) => `invalid frontmatter: ${issue.path.length ? issue.path.join(".") + ": " : ""}${issue.message}`,
+      )
+    }
+    const detail = (error as { data?: { message?: string } }).data?.message
+    return [`invalid frontmatter: ${detail ?? (error instanceof Error ? error.message : String(error))}`]
+  }
+}
+
+/**
+ * Scans the same agent markdown files as normal config discovery
+ * (`{agent,agents}/**\/*.md` under each config directory) and reports per-file problems.
+ * Directories must be in config-merge order: later directories win, which is also how
+ * duplicate-name resolution below decides the winning file.
+ */
+export async function scanAgentFiles(
+  directories: string[],
+  opts: { knownModel?: KnownModelLookup } = {},
+): Promise<AgentFileReport[]> {
+  const reports: AgentFileReport[] = []
+  for (const dir of directories) {
+    for (const file of await Glob.scan("{agent,agents}/**/*.md", {
+      cwd: dir,
+      absolute: true,
+      dot: true,
+      symlink: true,
+    })) {
+      const derived = configEntryNameFromPath(path.relative(dir, file), ["agent/", "agents/"])
+      const md = await ConfigMarkdown.parse(file).catch((error: unknown) => error as Error)
+      if (md instanceof Error) {
+        const detail = (md as { data?: { message?: string } }).data?.message ?? md.message
+        reports.push({ file, problems: [`failed to parse frontmatter: ${detail}`] })
+        continue
+      }
+      const data = md.data as Record<string, unknown>
+      const name = typeof data.name === "string" && data.name.trim() ? data.name.trim() : derived
+      const problems = [
+        ...unknownFieldProblems(data),
+        ...toolProblems("tools", data.tools),
+        ...toolProblems("disallowedTools", data.disallowedTools),
+      ]
+      const permissionMode = permissionModeProblem(data.permissionMode)
+      if (permissionMode) problems.push(permissionMode)
+      if (typeof data.model === "string") {
+        const model = modelProblem(data.model, opts.knownModel)
+        if (model) problems.push(model)
+      }
+      problems.push(...schemaProblems(file, name, data, md.content.trim()))
+      reports.push({ file, name, problems })
+    }
+  }
+  return reports
+}
+
+/** Scans all agent files and additionally flags duplicate resolved names, naming the winning file. */
+export async function validateAgentFiles(
+  directories: string[],
+  opts: { knownModel?: KnownModelLookup } = {},
+): Promise<AgentValidationReport> {
+  const files = await scanAgentFiles(directories, opts)
+  const winners = new Map<string, string>()
+  for (const report of files) {
+    if (report.name) winners.set(report.name, report.file)
+  }
+  for (const report of files) {
+    const winner = report.name ? winners.get(report.name) : undefined
+    if (report.name && winner && winner !== report.file) {
+      report.problems.push(`duplicate agent name "${report.name}"; ${winner} wins`)
+    }
+  }
+  return { files, problems: files.reduce((total, report) => total + report.problems.length, 0) }
 }
 
 const AgentCreateCommand = effectCmd({
@@ -272,9 +445,100 @@ const AgentListCommand = effectCmd({
   }),
 })
 
+const AgentValidateCommand = effectCmd({
+  command: "validate",
+  describe: "check agent markdown files for problems",
+  builder: (yargs: Argv) =>
+    yargs.option("format", {
+      type: "string",
+      describe: "output format",
+      choices: ["table", "json"] as const,
+      default: "table" as const,
+    }),
+  handler: Effect.fn("Cli.agent.validate")(function* (args) {
+    const { Config } = yield* Effect.promise(() => import("@/config/config"))
+    const { ModelsDev } = yield* Effect.promise(() => import("@yukioshi/core/models-dev"))
+    const dirs = yield* Config.Service.use((svc) => svc.directories())
+    const cfg = yield* Config.Service.use((svc) => svc.get())
+    const catalog = yield* ModelsDev.Service.use((svc) => svc.get()).pipe(
+      Effect.catch(() => Effect.succeed({} as Record<string, { models?: Record<string, unknown> }>)),
+    )
+    const report = yield* Effect.promise(() =>
+      validateAgentFiles(dirs, { knownModel: knownModelLookup(catalog, cfg.provider) }),
+    )
+
+    if (args.format === "json") {
+      process.stdout.write(
+        JSON.stringify({ ok: report.problems === 0, files: report.files, problems: report.problems }, null, 2) + EOL,
+      )
+    } else {
+      for (const file of report.files) {
+        const label = file.name ? `${file.file} (${file.name})` : file.file
+        if (file.problems.length === 0) {
+          process.stdout.write(`${label}: ok` + EOL)
+          continue
+        }
+        process.stdout.write(label + EOL)
+        for (const problem of file.problems) process.stdout.write(`  - ${problem}` + EOL)
+      }
+      process.stdout.write(
+        report.problems === 0
+          ? `All ${report.files.length} agent file(s) are valid` + EOL
+          : `${report.problems} problem(s) in ${report.files.length} agent file(s)` + EOL,
+      )
+    }
+    if (report.problems > 0) return yield* fail(`agent validation found ${report.problems} problem(s)`)
+  }),
+})
+
+const AgentShowCommand = effectCmd({
+  command: "show <name>",
+  describe: "print the resolved configuration of an agent as JSON",
+  builder: (yargs: Argv) =>
+    yargs.positional("name", {
+      type: "string",
+      demandOption: true,
+      describe: "agent name",
+    }),
+  handler: Effect.fn("Cli.agent.show")(function* (args) {
+    const { Agent } = yield* Effect.promise(() => import("../../agent/agent"))
+    const { Config } = yield* Effect.promise(() => import("@/config/config"))
+    const agent: import("../../agent/agent").Info | undefined = yield* Agent.Service.use((svc) => svc.get(args.name))
+    if (!agent) return yield* fail(`Unknown agent "${args.name}" (see \`yukioshi agent list\`)`)
+
+    // Locate the markdown file this agent came from, if any. The same scan order as
+    // config loading applies, so the last file with the resolved name is the winner.
+    const dirs = yield* Config.Service.use((svc) => svc.directories())
+    const files = yield* Effect.promise(() => scanAgentFiles(dirs))
+    const source = files.findLast((file) => file.name === agent.name)?.file ?? null
+
+    process.stdout.write(
+      JSON.stringify(
+        {
+          name: agent.name,
+          source,
+          description: agent.description ?? null,
+          mode: agent.mode,
+          model: agent.model ? `${agent.model.providerID}/${agent.model.modelID}` : null,
+          steps: agent.steps ?? null,
+          permission: agent.permission,
+        },
+        null,
+        2,
+      ) + EOL,
+    )
+  }),
+})
+
 export const AgentCommand = cmd({
   command: "agent",
   describe: "manage agents",
-  builder: (yargs) => yargs.command(AgentCreateCommand).command(AgentListCommand).demandCommand(),
+  builder: (yargs) =>
+    yargs
+      .command(AgentCreateCommand)
+      .command(AgentListCommand)
+      .command(AgentValidateCommand)
+      .command(AgentShowCommand)
+      .demandCommand(),
   async handler() {},
 })

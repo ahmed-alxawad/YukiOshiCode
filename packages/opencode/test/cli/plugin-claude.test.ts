@@ -116,6 +116,9 @@ describe("Claude Code plugins and marketplaces", () => {
         // Commands, agents, and skills exist
         expect(fs.existsSync(path.join(pluginDir, "commands/review-diff.md"))).toBe(true)
         expect(fs.existsSync(path.join(pluginDir, "agents/code-reviewer.md"))).toBe(true)
+        const installedAgent = fs.readFileSync(path.join(pluginDir, "agents/code-reviewer.md"), "utf8")
+        expect(installedAgent).toContain("tools:")
+        expect(installedAgent).not.toContain("unknown_setting")
         expect(fs.existsSync(path.join(pluginDir, "skills/review-checklist/SKILL.md"))).toBe(true)
         // .git is removed
         expect(fs.existsSync(path.join(pluginDir, ".git"))).toBe(false)

@@ -315,6 +315,14 @@ on either way in your config:
 `YUKIOSHI_EXPERIMENTAL_PARALLEL_TASKS=1` also turn these on. `subagent_depth`
 (default 1) sets whether subagents may start subagents of their own.
 
+Custom subagents are Markdown files under `agent/` or `agents/` in `.yukioshi/`,
+legacy `.opencode/`, or the global config folder. Claude Code-style
+`tools`/`disallowedTools` lists, `maxTurns`, `model: inherit`, and
+`permissionMode` frontmatter are accepted; `bypassPermissions` is always
+ignored. `yukioshi agent validate` checks the discovered files and
+`yukioshi agent show <name>` prints the resolved source, model, steps, and
+merged permission rules.
+
 ## Background shell commands
 
 The agent can start a long command, such as a dev server or a build, and keep

@@ -18,8 +18,21 @@ const AgentSchema = Schema.StructWithRest(
     temperature: Schema.optional(Schema.Finite),
     top_p: Schema.optional(Schema.Finite),
     prompt: Schema.optional(Schema.String),
-    tools: Schema.optional(Schema.Record(Schema.String, Schema.Boolean)).annotate({
-      description: "@deprecated Use 'permission' field instead",
+    tools: Schema.optional(
+      Schema.Union([Schema.Record(Schema.String, Schema.Boolean), Schema.String, Schema.Array(Schema.String)]),
+    ).annotate({
+      description:
+        "@deprecated Use 'permission' field instead. A record maps tool names to on/off; a comma-separated string or string list is an allowlist of Claude/Qwen-style tool names.",
+    }),
+    disallowedTools: Schema.optional(Schema.Union([Schema.String, Schema.Array(Schema.String)])).annotate({
+      description: "Claude-style list of tools to deny, applied after 'tools' and 'permission' (last match wins)",
+    }),
+    maxTurns: Schema.optional(PositiveInt).annotate({
+      description: "Claude-style alias for 'steps'; ignored when 'steps' is set",
+    }),
+    permissionMode: Schema.optional(Schema.String).annotate({
+      description:
+        "Claude-style permission mode: 'default', 'acceptEdits', or 'plan'. 'bypassPermissions' is never honored.",
     }),
     disable: Schema.optional(Schema.Boolean),
     description: Schema.optional(Schema.String).annotate({ description: "Description of when to use the agent" }),
@@ -40,7 +53,10 @@ const AgentSchema = Schema.StructWithRest(
   [Schema.Record(Schema.String, Schema.Any)],
 )
 
-const KNOWN_KEYS = new Set([
+// Frontmatter keys the agent schema understands; everything else is collected into
+// `options` by the decode below. Exported so `yukioshi agent validate` can flag unknown
+// keys against the same list instead of drifting from it.
+export const KNOWN_KEYS: ReadonlySet<string> = new Set([
   "name",
   "model",
   "variant",
@@ -53,11 +69,106 @@ const KNOWN_KEYS = new Set([
   "color",
   "steps",
   "maxSteps",
+  "maxTurns",
   "options",
   "permission",
   "disable",
   "tools",
+  "disallowedTools",
+  "permissionMode",
 ])
+
+// Permission ids YukiOshi knows: the typed keys of ConfigPermissionV1 plus the
+// runtime-only ids the permissionMode mapping below can emit. Not exhaustive — MCP
+// tools and custom permission keys resolve to other ids — so use this for linting,
+// not for rejecting config.
+export const KNOWN_PERMISSIONS: ReadonlySet<string> = new Set([
+  "*",
+  "read",
+  "edit",
+  "glob",
+  "grep",
+  "list",
+  "bash",
+  "task",
+  "external_directory",
+  "todowrite",
+  "question",
+  "webfetch",
+  "websearch",
+  "lsp",
+  "doom_loop",
+  "skill",
+  "delegate",
+  "memory_save",
+  "skill_save",
+])
+
+// Claude/Qwen tool names mapped to YukiOshi permission ids. Lookup is
+// case-insensitive; unknown names pass through lowercased so they stay
+// representable as permission keys.
+const TOOL_PERMISSION: Record<string, string> = {
+  read: "read",
+  edit: "edit",
+  write: "edit",
+  multiedit: "edit",
+  patch: "edit",
+  bash: "bash",
+  grep: "grep",
+  glob: "glob",
+  webfetch: "webfetch",
+  websearch: "websearch",
+  task: "task",
+  todowrite: "todowrite",
+  read_file: "read",
+  read_many_files: "read",
+  write_file: "edit",
+  run_shell_command: "bash",
+  grep_search: "grep",
+  web_fetch: "webfetch",
+  web_search: "websearch",
+  todo_write: "todowrite",
+}
+
+export const toolPermission = (name: string): string => {
+  const lowered = name.trim().toLowerCase()
+  const known = TOOL_PERMISSION[lowered]
+  if (known) return known
+  if (lowered.startsWith("mcp__")) {
+    // Claude writes MCP tools as mcp__<server>__<tool>; YukiOshi permission ids join the
+    // sanitized server and tool name with a single underscore (see McpCatalog.toolName).
+    return lowered
+      .slice("mcp__".length)
+      .split("__")
+      .filter((part) => part.length > 0)
+      .join("_")
+      .replace(/[^a-z0-9_*-]/g, "_")
+  }
+  return lowered
+}
+
+const toolList = (tools: string | readonly string[]): string[] =>
+  (typeof tools === "string" ? tools.split(",") : tools).map((item) => item.trim()).filter((item) => item.length > 0)
+
+// Model values that mean "no own model": the runtime inherits the parent model.
+export const INHERIT_MODELS: ReadonlySet<string> = new Set(["inherit", "sonnet", "opus", "haiku"])
+
+// Plan mode keeps read-only capabilities (read/grep/glob/list/websearch/question and
+// other low-risk lookups) usable and denies everything that changes files, runs
+// commands, or reaches outside the project.
+const PLAN_DENY = [
+  "edit",
+  "bash",
+  "webfetch",
+  "task",
+  "delegate",
+  "external_directory",
+  "todowrite",
+  "memory_save",
+  "skill_save",
+  "lsp",
+  "skill",
+]
 
 const normalize = (agent: Schema.Schema.Type<typeof AgentSchema>): Schema.Schema.Type<typeof AgentSchema> => {
   const options: Record<string, unknown> = { ...agent.options }
@@ -66,18 +177,41 @@ const normalize = (agent: Schema.Schema.Type<typeof AgentSchema>): Schema.Schema
   }
 
   const permission: ConfigPermissionV1.Info = {}
-  for (const [tool, enabled] of Object.entries(agent.tools ?? {})) {
-    const action = enabled ? "allow" : "deny"
-    if (tool === "write" || tool === "edit" || tool === "patch") {
-      permission.edit = action
-      continue
+  if (Array.isArray(agent.tools) || typeof agent.tools === "string") {
+    // String/list form is an allowlist: explicit permissions come first, then deny
+    // everything, then allow only the listed tools.
+    globalThis.Object.assign(permission, agent.permission)
+    permission["*"] = "deny"
+    for (const name of toolList(agent.tools)) {
+      permission[toolPermission(name)] = "allow"
     }
-    permission[tool] = action
+  } else {
+    for (const [tool, enabled] of Object.entries(agent.tools ?? {})) {
+      const action = enabled ? "allow" : "deny"
+      if (tool === "write" || tool === "edit" || tool === "patch") {
+        permission.edit = action
+        continue
+      }
+      permission[tool] = action
+    }
+    globalThis.Object.assign(permission, agent.permission)
   }
-  globalThis.Object.assign(permission, agent.permission)
 
-  const steps = agent.steps ?? agent.maxSteps
-  return { ...agent, options, permission, ...(steps !== undefined ? { steps } : {}) }
+  // Rules are last-match-wins, so later assignments here are stronger: permissionMode
+  // overrides explicit permissions, and disallowedTools overrides everything.
+  const permissionMode = agent.permissionMode?.trim().toLowerCase()
+  if (permissionMode === "acceptedits") permission.edit = "allow"
+  if (permissionMode === "plan") {
+    for (const key of PLAN_DENY) permission[key] = "deny"
+  }
+  for (const name of toolList(agent.disallowedTools ?? [])) {
+    permission[toolPermission(name)] = "deny"
+  }
+
+  const steps = agent.steps ?? agent.maxTurns ?? agent.maxSteps
+  const result = { ...agent, options, permission, ...(steps !== undefined ? { steps } : {}) }
+  if (agent.model !== undefined && INHERIT_MODELS.has(agent.model.trim().toLowerCase())) delete result.model
+  return result
 }
 
 export const Info = AgentSchema.pipe(

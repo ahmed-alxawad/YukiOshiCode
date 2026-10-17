@@ -30,6 +30,10 @@ export const KNOWN_AGENT_KEYS = new Set([
   "disable",
   "temperature",
   "top_p",
+  "tools",
+  "disallowedTools",
+  "maxTurns",
+  "permissionMode",
 ])
 
 export const KNOWN_COMMAND_KEYS = new Set([

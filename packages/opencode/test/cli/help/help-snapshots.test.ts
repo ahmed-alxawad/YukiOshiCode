@@ -86,6 +86,8 @@ const SUBCOMMANDS = [
   ["providers", "logout"],
   ["agent", "create"],
   ["agent", "list"],
+  ["agent", "validate"],
+  ["agent", "show"],
   ["session", "list"],
   ["session", "delete"],
   ["db", "path"],

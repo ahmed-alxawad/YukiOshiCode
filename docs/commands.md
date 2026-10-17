@@ -142,6 +142,8 @@ interval; see [Features](features.md#loop).
 | Command                                  | Does                                     |
 | ---------------------------------------- | ---------------------------------------- |
 | `yukioshi agent create`, `agent list`    | create or list custom agents (`create` takes `--path`, `--description`, `--mode`, `--permissions`, `--model`) |
+| `yukioshi agent validate`                 | check every discovered agent markdown file for unknown fields/tools, invalid models, duplicate names, and ignored `bypassPermissions` (`--format json`) |
+| `yukioshi agent show <name>`              | print the resolved agent as JSON: source file, description, model, steps, and final merged permission rules |
 | `yukioshi plugin <module>`               | install an npm plugin and add it to your config (`-g` for the global config, `-f` to replace an installed version) |
 | `yukioshi plugin add <git-url> [plugin]`, `plugin list`, `plugin remove <name>` | install, list, or remove skills, commands, and agents from Claude Code plugins or marketplaces (`--name` sets the folder name; see [Features](features.md#claude-code-plugins-and-marketplaces)) |
 | `yukioshi mcp add`, `list`, `auth`, `logout`, `debug` | manage MCP servers and their sign-in (`add` takes `--url`, `--env`, `--header`) |
