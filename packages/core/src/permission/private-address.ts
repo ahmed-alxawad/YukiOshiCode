@@ -80,6 +80,20 @@ function privateIPv6Reason(address: string): string | undefined {
     return detail ? `IPv4-mapped IPv6 address (${detail})` : "IPv4-mapped IPv6 address"
   }
 
+  // NAT64 (64:ff9b::/96) and 6to4 (2002::/16) carry an IPv4 address that a gateway connects to, so a
+  // private IPv4 hidden in them is refused like any other spelling of that address.
+  const embedded =
+    words[0] === 0x64 && words[1] === 0xff9b && words.slice(2, 6).every((word) => word === 0)
+      ? { name: "NAT64", high: words[6]!, low: words[7]! }
+      : words[0] === 0x2002
+        ? { name: "6to4", high: words[1]!, low: words[2]! }
+        : undefined
+  if (embedded) {
+    const ipv4 = `${embedded.high >>> 8}.${embedded.high & 0xff}.${embedded.low >>> 8}.${embedded.low & 0xff}`
+    const detail = privateIPv4Reason(ipv4)
+    if (detail) return `${embedded.name} IPv6 address embedding a private IPv4 address (${detail})`
+  }
+
   if (words.every((word) => word === 0)) return "unspecified IPv6 address"
   if (words.slice(0, 7).every((word) => word === 0) && words[7] === 1) return "IPv6 loopback address"
   if ((words[0]! & 0xffc0) === 0xfe80) return "IPv6 link-local address"
