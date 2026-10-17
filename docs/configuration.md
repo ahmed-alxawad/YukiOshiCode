@@ -153,7 +153,7 @@ Normal `{env:…}` substitution applies to both aliases. If a local MCP server s
 | `default_agent`        | the primary agent used when none is chosen (default `build`)       |                                             |
 | `subagent_depth`       | how deep subagents may nest (default 1: no subagents of subagents) | [Features](features.md#subagents)           |
 | `snapshot`             | file snapshots for undo (default true)                             |                                             |
-| `autoupdate`           | update behaviour                                                    | [Installation](installation.md)             |
+| `autoupdate`           | daily background updates: not set or `true` installs newer minor and patch releases, `"notify"` only notifies, `false` never checks (global config only) | [Installation](installation.md#automatic-updates) |
 
 In a repository you have not trusted, `hooks`, `plugin`, `delegate`, `webhooks`,
 `browser`, local MCP servers, `lsp` and `formatter` entries with their own command, and
@@ -276,7 +276,7 @@ With `allow_private: true`, private addresses are fetched under your normal `web
 | `YUKIOSHI_CONFIG_DIR`                 | load an extra config folder                               |
 | `YUKIOSHI_CONFIG_CONTENT`             | load inline JSON config                                   |
 | `YUKIOSHI_DISABLE_PROJECT_CONFIG`     | ignore project config files                               |
-| `YUKIOSHI_DISABLE_AUTOUPDATE`         | never check for updates                                   |
+| `YUKIOSHI_DISABLE_AUTOUPDATE`         | never check for updates (a set `CI` variable does the same) |
 | `YUKIOSHI_DISABLE_KEYCHAIN`           | store credentials in a file instead of the OS keychain    |
 | `YUKIOSHI_DISABLE_CLAUDE_CODE_SKILLS` | do not read skills from `.claude/` folders                |
 | `YUKIOSHI_SKIP_VERIFY`                | turn post-turn verification off                           |

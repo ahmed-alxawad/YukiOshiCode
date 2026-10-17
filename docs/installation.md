@@ -89,22 +89,53 @@ enforce a default 5-minute timeout (`300000` ms, configurable via
 
 ### Automatic updates
 
-When the terminal UI starts, YukiOshi checks for a newer release. By default it
-installs patch releases (for example 0.3.1 to 0.3.2) on its own and only tells
-you about minor and major releases. Change this in `yukioshi.json`:
+When you start the terminal UI or `yukioshi run`, YukiOshi checks for a newer
+release at most once a day. The check runs in a separate background process, so
+it never slows down startup and keeps going after a short `yukioshi run` exits.
+
+For an install made with the install script (`~/.yukioshi/bin`, or a binary in
+`~/.local/bin`), a newer minor or patch release (for example 0.4.1 to 0.5.0) is
+downloaded in the background, checked against the release's `SHA256SUMS`, and
+started once with `--version` before anything is replaced. The current binary is
+kept next to it as `yukioshi.old` (`yukioshi.exe.old` on Windows), and the new
+version is used from the next start. You see one line about it: a toast in the
+terminal UI, or one line on stderr in `yukioshi run`.
+
+A major release (for example 1.x to 2.0) is never installed automatically; you
+are only told about it. You are also only told, with the command to run, when
+YukiOshi was installed with npm, pnpm, yarn, bun, Homebrew, Scoop or Chocolatey,
+when it cannot tell how it was installed, or when it cannot replace its own
+binary (the file or its folder is not writable).
+
+If anything fails (no network, a checksum that does not match, a release without
+`SHA256SUMS`, a new binary that does not start), the current binary stays as it
+is and you are told once. Only one yukioshi process updates at a time.
+
+There is no check at all when:
+
+- `"autoupdate": false` is set,
+- `YUKIOSHI_DISABLE_AUTOUPDATE=1` is set,
+- the `CI` environment variable is set (any value except empty, `0` and `false`),
+- `yukioshi run` is used with `--format json` (its output stays pure JSON),
+- YukiOshi runs from a source checkout instead of a release binary.
+
+Set the behaviour in your global `~/.config/yukioshi/yukioshi.json` (a
+project's config cannot change it):
 
 ```json
 { "autoupdate": "notify" }
 ```
 
-| Value         | Behaviour                                         |
-| ------------- | ------------------------------------------------- |
-| not set       | install patch releases, notify about the rest     |
-| `true`        | same as not set                                   |
-| `"notify"`    | only notify                                       |
-| `false`       | never check                                       |
+| Value         | Behaviour                                                       |
+| ------------- | --------------------------------------------------------------- |
+| not set       | install newer minor and patch releases, notify about major ones |
+| `true`        | same as not set                                                 |
+| `"notify"`    | only notify                                                     |
+| `false`       | never check                                                     |
 
-`YUKIOSHI_DISABLE_AUTOUPDATE=1` turns the check off as well.
+The time of the last check and its result are kept in
+`autoupdate.json` in the state folder (`~/.local/state/yukioshi` on Linux and
+macOS); delete that file to check again on the next start.
 
 ### Rolling back
 
