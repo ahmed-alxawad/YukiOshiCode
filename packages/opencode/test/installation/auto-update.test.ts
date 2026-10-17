@@ -1,0 +1,355 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import fs from "fs"
+import path from "path"
+import { createHash } from "crypto"
+import { spawnSync } from "child_process"
+import { Global } from "@yukioshi/core/global"
+import { Flock } from "@yukioshi/core/util/flock"
+import { AutoUpdate } from "../../src/installation/auto-update"
+import { backgroundUpdate } from "../../src/cli/upgrade"
+import { tmpdir } from "../fixture/fixture"
+
+const DAY = 24 * 60 * 60 * 1000
+
+describe("automatic update rules", () => {
+  const base = { autoupdate: undefined, disabledByEnv: false, ci: false, current: "0.4.1" } as const
+
+  test("a release build with default settings may check", () => {
+    expect(AutoUpdate.blocked(base)).toBeUndefined()
+  })
+
+  test('"autoupdate": false turns the check off', () => {
+    expect(AutoUpdate.blocked({ ...base, autoupdate: false })).toContain("autoupdate")
+  })
+
+  test("YUKIOSHI_DISABLE_AUTOUPDATE turns the check off", () => {
+    expect(AutoUpdate.blocked({ ...base, disabledByEnv: true })).toContain("YUKIOSHI_DISABLE_AUTOUPDATE")
+  })
+
+  test("CI turns the check off", () => {
+    expect(AutoUpdate.blocked({ ...base, ci: true })).toContain("CI")
+    expect(AutoUpdate.isCI({ CI: "true" })).toBe(true)
+    expect(AutoUpdate.isCI({ CI: "1" })).toBe(true)
+    expect(AutoUpdate.isCI({})).toBe(false)
+    expect(AutoUpdate.isCI({ CI: "false" })).toBe(false)
+  })
+
+  test("a development build never checks", () => {
+    expect(AutoUpdate.blocked({ ...base, current: "local" })).toContain("not a release")
+  })
+
+  test("checks at most once a day", () => {
+    const now = 1_000 * DAY
+    expect(AutoUpdate.isDue({}, now)).toBe(true)
+    expect(AutoUpdate.isDue({ checkedAt: now - DAY + 60_000 }, now)).toBe(false)
+    expect(AutoUpdate.isDue({ checkedAt: now - DAY }, now)).toBe(true)
+    expect(AutoUpdate.isDue({ checkedAt: now + 60_000 }, now)).toBe(true)
+  })
+
+  const curl = { current: "0.4.1", autoupdate: undefined, method: "curl", writable: true } as const
+
+  test("installs newer minor and patch versions of a curl install", () => {
+    expect(AutoUpdate.decide({ ...curl, latest: "0.5.0" })).toEqual({ action: "install", version: "0.5.0" })
+    expect(AutoUpdate.decide({ ...curl, latest: "0.4.2" })).toEqual({ action: "install", version: "0.4.2" })
+    expect(AutoUpdate.decide({ ...curl, autoupdate: true, latest: "0.4.2" }).action).toBe("install")
+  })
+
+  test("does nothing when already on the latest version", () => {
+    expect(AutoUpdate.decide({ ...curl, latest: "0.4.1" }).action).toBe("none")
+    expect(AutoUpdate.decide({ ...curl, latest: "0.4.0" }).action).toBe("none")
+  })
+
+  test("a major version only notifies", () => {
+    expect(AutoUpdate.decide({ ...curl, current: "1.2.3", latest: "2.0.0" })).toEqual({
+      action: "notify",
+      version: "2.0.0",
+      reason: "major",
+    })
+  })
+
+  test('"autoupdate": "notify" only notifies', () => {
+    expect(AutoUpdate.decide({ ...curl, autoupdate: "notify", latest: "0.5.0" })).toMatchObject({
+      action: "notify",
+      reason: "notify",
+    })
+  })
+
+  test("package managers and unknown installs only notify, with the right command", () => {
+    expect(AutoUpdate.decide({ ...curl, method: "npm", latest: "0.5.0" })).toMatchObject({
+      action: "notify",
+      reason: "package-manager",
+    })
+    expect(AutoUpdate.decide({ ...curl, method: "brew", latest: "0.5.0" }).action).toBe("notify")
+    expect(AutoUpdate.decide({ ...curl, method: "unknown", latest: "0.5.0" })).toMatchObject({
+      action: "notify",
+      reason: "unknown-method",
+    })
+    expect(AutoUpdate.upgradeCommand("npm", "0.5.0")).toBe("npm install -g yukioshi-ai@0.5.0")
+    expect(AutoUpdate.upgradeCommand("brew", "0.5.0")).toBe("brew upgrade yukioshi")
+    expect(AutoUpdate.upgradeCommand("curl", "0.5.0")).toBe("yukioshi upgrade")
+    expect(AutoUpdate.upgradeCommand("unknown", "0.5.0", "linux")).toContain("/install | bash")
+    expect(AutoUpdate.upgradeCommand("unknown", "0.5.0", "win32")).toContain("install.ps1 | iex")
+  })
+
+  test("a binary that cannot be replaced only notifies", () => {
+    expect(AutoUpdate.decide({ ...curl, writable: false, latest: "0.5.0" })).toMatchObject({
+      action: "notify",
+      reason: "not-writable",
+    })
+  })
+
+  test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "detects a binary it cannot replace",
+    async () => {
+      await using tmp = await tmpdir()
+      const bin = path.join(tmp.path, "yukioshi")
+      fs.writeFileSync(bin, "x")
+      expect(AutoUpdate.canReplace(bin)).toBe(true)
+      fs.chmodSync(tmp.path, 0o555)
+      try {
+        expect(AutoUpdate.canReplace(bin)).toBe(false)
+      } finally {
+        fs.chmodSync(tmp.path, 0o755)
+      }
+    },
+  )
+
+  test("only a compiled binary starts the background check", () => {
+    expect(AutoUpdate.isCompiledBinary("/$bunfs/root/yukioshi")).toBe(true)
+    expect(AutoUpdate.isCompiledBinary("B:/~BUN/root/yukioshi.exe")).toBe(true)
+    expect(AutoUpdate.isCompiledBinary("/home/me/YukiOshiCode/packages/opencode/src/index.ts")).toBe(false)
+    expect(AutoUpdate.isCompiledBinary()).toBe(false)
+  })
+
+  test("release archive names match the install script", () => {
+    expect(AutoUpdate.assetName({ platform: "linux", arch: "x64", musl: false, baseline: false })).toBe(
+      "yukioshi-linux-x64.tar.gz",
+    )
+    expect(AutoUpdate.assetName({ platform: "linux", arch: "x64", musl: true, baseline: true })).toBe(
+      "yukioshi-linux-x64-baseline-musl.tar.gz",
+    )
+    expect(AutoUpdate.assetName({ platform: "darwin", arch: "arm64", musl: false, baseline: false })).toBe(
+      "yukioshi-darwin-arm64.zip",
+    )
+    expect(AutoUpdate.assetName({ platform: "win32", arch: "x64", musl: false, baseline: false })).toBe(
+      "yukioshi-windows-x64.zip",
+    )
+    expect(AutoUpdate.assetName({ platform: "freebsd", arch: "x64", musl: false, baseline: false })).toBeUndefined()
+  })
+
+  test("notices say which version was installed", () => {
+    const installed = { kind: "installed", version: "0.5.0", from: "0.4.1", at: 0 } as const
+    expect(AutoUpdate.noticeText(installed, "0.4.1")).toContain("v0.5.0 was installed in the background")
+    expect(AutoUpdate.noticeText(installed, "0.5.0")).toContain("updated to v0.5.0")
+    const failed = { kind: "failed", version: "0.5.0", from: "0.4.1", reason: "boom", at: 0 } as const
+    expect(AutoUpdate.noticeText(failed, "0.4.1")).toContain("failed (boom); still using v0.4.1")
+  })
+
+  test("an outcome is shown only once", async () => {
+    await using tmp = await tmpdir()
+    AutoUpdate.writeState(tmp.path, {
+      checkedAt: 1,
+      outcome: { kind: "installed", version: "0.5.0", from: "0.4.1", at: 1 },
+    })
+    expect(AutoUpdate.takeNotice(tmp.path)?.version).toBe("0.5.0")
+    expect(AutoUpdate.takeNotice(tmp.path)).toBeUndefined()
+    expect(AutoUpdate.readState(tmp.path).checkedAt).toBe(1)
+  })
+
+  test("SHA256SUMS lines are matched by exact file name", () => {
+    const sum = "a".repeat(64)
+    const sums = `${"b".repeat(64)}  yukioshi-linux-x64-musl.tar.gz\n${sum} *yukioshi-linux-x64.tar.gz\n`
+    expect(AutoUpdate.checksumFor(sums, "yukioshi-linux-x64.tar.gz")).toBe(sum)
+    expect(AutoUpdate.checksumFor(sums, "yukioshi-linux-arm64.tar.gz")).toBeUndefined()
+  })
+})
+
+// A fake GitHub release server: /releases.atom names the latest version and
+// /releases/download/v<version>/<file> serves the archives and SHA256SUMS.
+type Release = { version: string; script?: string; sums?: "ok" | "missing" | "wrong" | "unlisted" }
+
+function archive(dir: string, script: string) {
+  const stage = fs.mkdtempSync(path.join(dir, "stage-"))
+  fs.writeFileSync(path.join(stage, "yukioshi"), script, { mode: 0o755 })
+  const out = path.join(stage, "release.tar.gz")
+  const tar = spawnSync("tar", ["-czf", out, "-C", stage, "yukioshi"])
+  if (tar.status !== 0) throw new Error(String(tar.stderr))
+  return fs.readFileSync(out)
+}
+
+function fakeRelease(dir: string, asset: string, release: Release) {
+  const requests: string[] = []
+  const body = archive(dir, release.script ?? `#!/bin/sh\necho ${release.version}\n`)
+  const hash = createHash("sha256").update(body).digest("hex")
+  const server = Bun.serve({
+    port: 0,
+    fetch(req) {
+      const url = new URL(req.url)
+      requests.push(url.pathname)
+      if (url.pathname === "/releases.atom")
+        return new Response(
+          `<feed><entry><link href="https://github.com/x/y/releases/tag/v${release.version}"/></entry></feed>`,
+        )
+      const prefix = `/releases/download/v${release.version}/`
+      if (url.pathname === prefix + asset) return new Response(body)
+      if (url.pathname === prefix + "SHA256SUMS") {
+        if (release.sums === "missing") return new Response("not found", { status: 404 })
+        if (release.sums === "unlisted") return new Response(`${hash}  yukioshi-other.tar.gz\n`)
+        return new Response(`${release.sums === "wrong" ? "0".repeat(64) : hash}  ${asset}\n`)
+      }
+      return new Response("not found", { status: 404 })
+    },
+  })
+  return { server, requests, url: server.url.toString().replace(/\/$/, "") }
+}
+
+const unix = process.platform === "linux"
+
+describe.skipIf(!unix)("installRelease", () => {
+  const asset = "yukioshi-linux-x64.tar.gz"
+
+  async function setup(release: Release) {
+    const tmp = await tmpdir()
+    const binDir = path.join(tmp.path, "bin")
+    fs.mkdirSync(binDir)
+    const execPath = path.join(binDir, "yukioshi")
+    fs.writeFileSync(execPath, "#!/bin/sh\necho 0.4.1\n", { mode: 0o755 })
+    const fake = fakeRelease(tmp.path, asset, release)
+    const install = () =>
+      AutoUpdate.installRelease({
+        version: release.version,
+        asset,
+        execPath,
+        workDir: path.join(tmp.path, "work"),
+        baseUrl: fake.url,
+      })
+    return {
+      tmp,
+      binDir,
+      execPath,
+      install,
+      version: () => spawnSync(execPath, ["--version"], { encoding: "utf8" }).stdout.trim(),
+      [Symbol.asyncDispose]: async () => {
+        void fake.server.stop(true)
+        await tmp[Symbol.asyncDispose]()
+      },
+    }
+  }
+
+  test("installs a verified release and keeps the old binary as a backup", async () => {
+    await using env = await setup({ version: "0.5.0" })
+    await env.install()
+    expect(env.version()).toBe("0.5.0")
+    expect(fs.readFileSync(env.execPath + ".old", "utf8")).toContain("echo 0.4.1")
+    expect(fs.readdirSync(env.binDir).sort()).toEqual(["yukioshi", "yukioshi.old"])
+  })
+
+  test("refuses an archive that does not match SHA256SUMS", async () => {
+    await using env = await setup({ version: "0.5.0", sums: "wrong" })
+    await expect(env.install()).rejects.toThrow("does not match its SHA256SUMS checksum")
+    expect(env.version()).toBe("0.4.1")
+    expect(fs.readdirSync(env.binDir)).toEqual(["yukioshi"])
+  })
+
+  test("refuses a release without SHA256SUMS", async () => {
+    await using env = await setup({ version: "0.5.0", sums: "missing" })
+    await expect(env.install()).rejects.toThrow("no SHA256SUMS")
+    expect(env.version()).toBe("0.4.1")
+  })
+
+  test("refuses an archive that SHA256SUMS does not list", async () => {
+    await using env = await setup({ version: "0.5.0", sums: "unlisted" })
+    await expect(env.install()).rejects.toThrow("is not listed")
+    expect(env.version()).toBe("0.4.1")
+  })
+
+  test("keeps the current binary when the new one does not start", async () => {
+    await using env = await setup({ version: "0.5.0", script: "#!/bin/sh\nexit 3\n" })
+    await expect(env.install()).rejects.toThrow("failed its start check")
+    expect(env.version()).toBe("0.4.1")
+    expect(fs.readdirSync(env.binDir)).toEqual(["yukioshi"])
+  })
+})
+
+describe.skipIf(!unix)("background update", () => {
+  const stateDir = Global.Path.state
+  const saved = { ...process.env }
+
+  beforeEach(() => {
+    fs.rmSync(AutoUpdate.statePath(stateDir), { force: true })
+    delete process.env.CI
+    delete process.env.YUKIOSHI_DISABLE_AUTOUPDATE
+  })
+  afterEach(() => {
+    process.env = { ...saved }
+  })
+
+  async function setup(release: Release) {
+    const tmp = await tmpdir()
+    const execPath = path.join(tmp.path, "yukioshi")
+    fs.writeFileSync(execPath, "#!/bin/sh\necho 0.4.1\n", { mode: 0o755 })
+    const asset = AutoUpdate.detectAsset()!
+    const fake = fakeRelease(tmp.path, asset, release)
+    process.env.YUKIOSHI_TEST_RELEASE_BASE_URL = fake.url
+    return {
+      execPath,
+      requests: fake.requests,
+      run: () => backgroundUpdate({ execPath, current: "0.4.1", method: "curl" }),
+      version: () => spawnSync(execPath, ["--version"], { encoding: "utf8" }).stdout.trim(),
+      [Symbol.asyncDispose]: async () => {
+        void fake.server.stop(true)
+        await tmp[Symbol.asyncDispose]()
+      },
+    }
+  }
+
+  test("installs a newer minor version once a day and records it for the next start", async () => {
+    await using env = await setup({ version: "0.5.0" })
+    await env.run()
+    expect(env.version()).toBe("0.5.0")
+    const state = AutoUpdate.readState(stateDir)
+    expect(state.outcome).toMatchObject({ kind: "installed", version: "0.5.0", from: "0.4.1" })
+    expect(Date.now() - state.checkedAt!).toBeLessThan(60_000)
+
+    const before = env.requests.length
+    await env.run()
+    expect(env.requests.length).toBe(before)
+  })
+
+  test("a failed update keeps the current binary and is reported once", async () => {
+    await using env = await setup({ version: "0.5.0", sums: "wrong" })
+    await env.run()
+    expect(env.version()).toBe("0.4.1")
+    const notice = AutoUpdate.takeNotice(stateDir)
+    expect(notice).toMatchObject({ kind: "failed", version: "0.5.0" })
+    expect(AutoUpdate.takeNotice(stateDir)).toBeUndefined()
+  })
+
+  test("a major version is recorded as available, not installed", async () => {
+    await using env = await setup({ version: "1.0.0" })
+    await env.run()
+    expect(env.version()).toBe("0.4.1")
+    expect(AutoUpdate.readState(stateDir).outcome).toMatchObject({ kind: "available", reason: "major" })
+  })
+
+  test("does nothing while another yukioshi process holds the update lock", async () => {
+    await using env = await setup({ version: "0.5.0" })
+    const lock = await Flock.acquire(AutoUpdate.LOCK_KEY, { timeoutMs: 0 })
+    try {
+      await env.run()
+    } finally {
+      await lock.release()
+    }
+    expect(env.requests).toEqual([])
+    expect(env.version()).toBe("0.4.1")
+  })
+
+  test("does nothing in CI", async () => {
+    await using env = await setup({ version: "0.5.0" })
+    process.env.CI = "true"
+    await env.run()
+    delete process.env.CI
+    expect(env.requests).toEqual([])
+    expect(env.version()).toBe("0.4.1")
+  })
+})

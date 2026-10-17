@@ -19,8 +19,18 @@ export const UpgradeCommand = {
         type: "string",
         choices: ["curl", "npm", "pnpm", "bun", "brew", "choco", "scoop"],
       })
+      .option("background", {
+        type: "boolean",
+        hidden: true,
+        describe: "run the daily automatic-update check (started by yukioshi itself)",
+      })
   },
-  handler: async (args: { target?: string; method?: string }) => {
+  handler: async (args: { target?: string; method?: string; background?: boolean }) => {
+    if (args.background) {
+      const { backgroundUpdate } = await import("../upgrade")
+      await backgroundUpdate().catch(() => {})
+      return
+    }
     UI.empty()
     UI.println(UI.logo("  "))
     UI.empty()

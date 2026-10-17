@@ -14,6 +14,7 @@ import semver from "semver"
 import { InstallationChannel, InstallationVersion } from "@yukioshi/core/installation/version"
 import { NpmConfig } from "@yukioshi/core/npm-config"
 import { InstallationEvent } from "@yukioshi/schema/installation-event"
+import { releaseBaseUrl } from "./auto-update"
 
 export type Method = "curl" | "npm" | "yarn" | "pnpm" | "bun" | "brew" | "scoop" | "choco" | "unknown"
 
@@ -71,7 +72,8 @@ const GITHUB_REPOSITORY = "ahmed-alxawad/YukiOshiCode"
 const GITHUB_RELEASES_API = `https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/latest`
 // The public release feed lists published releases newest first and, unlike api.github.com, is not
 // limited to 60 requests per hour per IP, a limit that shared IPs (CI, offices, VPNs) often reach.
-const GITHUB_RELEASES_FEED = `https://github.com/${GITHUB_REPOSITORY}/releases.atom`
+// Test-only: YUKIOSHI_TEST_RELEASE_BASE_URL (see auto-update.ts) moves the feed to a local fake server.
+const githubReleasesFeed = () => `${releaseBaseUrl()}/releases.atom`
 const MAIN_INSTALL_SCRIPT_URL = `https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/install`
 const NPM_PACKAGE = "yukioshi-ai"
 const BREW_FORMULA = "yukioshi"
@@ -249,12 +251,14 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
           return data.version
         }
 
-        const fromFeed = yield* httpOk.execute(HttpClientRequest.get(GITHUB_RELEASES_FEED)).pipe(
+        const fromFeed = yield* httpOk.execute(HttpClientRequest.get(githubReleasesFeed())).pipe(
           Effect.flatMap((response) => response.text),
           Effect.map((feed) => feed.match(/\/releases\/tag\/v([^"'<\s]+)/)?.[1]),
           Effect.orElseSucceed(() => undefined),
         )
         if (fromFeed) return fromFeed
+        if (process.env.YUKIOSHI_TEST_RELEASE_BASE_URL)
+          return yield* Effect.die(new Error("no release in the test feed"))
 
         const response = yield* httpOk.execute(
           HttpClientRequest.get(GITHUB_RELEASES_API).pipe(HttpClientRequest.acceptJson),
