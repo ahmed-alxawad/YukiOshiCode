@@ -34,7 +34,8 @@ function dir(input: ParseSource) {
 export async function substitute(input: SubstituteInput) {
   const missing = input.missing ?? "error"
   let text = input.text.replace(/\{env:([^}]+)\}/g, (_, varName) => {
-    return (input.env?.[varName] ?? process.env[varName]) || ""
+    // Escape like {file:} does, so a value with backslashes (a Windows path) or quotes stays valid JSON.
+    return JSON.stringify((input.env?.[varName] ?? process.env[varName]) || "").slice(1, -1)
   })
 
   const fileMatches = Array.from(text.matchAll(/\{file:[^}]+\}/g))

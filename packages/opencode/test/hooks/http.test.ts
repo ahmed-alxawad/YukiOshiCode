@@ -1,6 +1,7 @@
 import { describe, expect } from "bun:test"
 import { Effect } from "effect"
 import fs from "node:fs/promises"
+import os from "node:os"
 import path from "node:path"
 import { LayerNode } from "@yukioshi/core/effect/layer-node"
 import { CrossSpawnSpawner } from "@yukioshi/core/cross-spawn-spawner"
@@ -40,7 +41,7 @@ const withGlobalConfig = (config: object) =>
   Effect.acquireRelease(
     Effect.promise(async () => {
       const previous = Global.Path.config
-      const dir = await fs.mkdtemp(path.join(process.env.TMPDIR ?? "/tmp", "yk-http-hook-global-"))
+      const dir = await fs.mkdtemp(path.join(process.env.TMPDIR ?? os.tmpdir(), "yk-http-hook-global-"))
       await fs.writeFile(path.join(dir, "config.json"), JSON.stringify(config))
       ;(Global.Path as { config: string }).config = dir
       return { previous, dir }
