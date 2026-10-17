@@ -35,6 +35,8 @@ import { WorktreeCommand } from "./cli/cmd/worktree"
 import { ChildRegistry } from "@yukioshi/core/child-registry"
 
 const args = hideBin(process.argv)
+const loadCommand = (name: import("./cli/lazy-commands").CommandName) =>
+  import("./cli/lazy-commands").then((module) => module.loadCommand(name))
 
 function show(out: string) {
   const text = out.trimStart()
@@ -89,52 +91,52 @@ const cli = yargs(args)
     lazyCommand({
       command: "acp",
       describe: "start ACP (Agent Client Protocol) server",
-      load: () => import("./cli/cmd/acp").then((m) => m.AcpCommand),
+      load: () => loadCommand("acp"),
     }),
   )
   .command(
     lazyCommand({
       command: "mcp",
       describe: "manage MCP (Model Context Protocol) servers",
-      load: () => import("./cli/cmd/mcp").then((m) => m.McpCommand),
+      load: () => loadCommand("mcp"),
     }),
   )
   .command(
     lazyCommand({
       command: "$0 [project]",
       describe: "start yukioshi tui",
-      load: () => import("./cli/cmd/tui").then((m) => m.TuiThreadCommand),
+      load: () => loadCommand("tui"),
     }),
   )
   .command(
     lazyCommand({
       command: "attach <url>",
       describe: "attach to a running yukioshi server",
-      load: () => import("./cli/cmd/attach").then((m) => m.AttachCommand),
+      load: () => loadCommand("attach"),
     }),
   )
   .command(
     lazyCommand({
       command: "run [message..]",
       describe: "run yukioshi with a message",
-      load: () => import("./cli/cmd/run").then((m) => m.RunCommand),
+      load: () => loadCommand("run"),
     }),
   )
   .command(
-    lazyCommand({ command: "generate", load: () => import("./cli/cmd/generate").then((m) => m.GenerateCommand) }),
+    lazyCommand({ command: "generate", load: () => loadCommand("generate") }),
   )
   .command(
     lazyCommand({
       command: "debug",
       describe: "debugging and troubleshooting tools",
-      load: () => import("./cli/cmd/debug").then((m) => m.DebugCommand),
+      load: () => loadCommand("debug"),
     }),
   )
   .command(
     lazyCommand({
       command: "console",
       describe: false,
-      load: () => import("./cli/cmd/account").then((m) => m.ConsoleCommand),
+      load: () => loadCommand("console"),
     }),
   )
   .command(
@@ -142,49 +144,49 @@ const cli = yargs(args)
       command: "providers",
       aliases: ["auth"],
       describe: "manage AI providers and credentials",
-      load: () => import("./cli/cmd/providers").then((m) => m.ProvidersCommand),
+      load: () => loadCommand("providers"),
     }),
   )
   .command(
     lazyCommand({
       command: "agent",
       describe: "manage agents",
-      load: () => import("./cli/cmd/agent").then((m) => m.AgentCommand),
+      load: () => loadCommand("agent"),
     }),
   )
   .command(
     lazyCommand({
       command: "upgrade [target]",
       describe: "upgrade yukioshi to the latest or a specific version",
-      load: () => import("./cli/cmd/upgrade").then((m) => m.UpgradeCommand),
+      load: () => loadCommand("upgrade"),
     }),
   )
   .command(
     lazyCommand({
       command: "uninstall",
       describe: "uninstall yukioshi and remove all related files",
-      load: () => import("./cli/cmd/uninstall").then((m) => m.UninstallCommand),
+      load: () => loadCommand("uninstall"),
     }),
   )
   .command(
     lazyCommand({
       command: "serve",
       describe: "starts a headless yukioshi server",
-      load: () => import("./cli/cmd/serve").then((m) => m.ServeCommand),
+      load: () => loadCommand("serve"),
     }),
   )
   .command(
     lazyCommand({
       command: "models [provider]",
       describe: "list all available models",
-      load: () => import("./cli/cmd/models").then((m) => m.ModelsCommand),
+      load: () => loadCommand("models"),
     }),
   )
   .command(
     lazyCommand({
       command: "stats",
       describe: "show token usage and cost statistics",
-      load: () => import("./cli/cmd/stats").then((m) => m.StatsCommand),
+      load: () => loadCommand("stats"),
     }),
   )
   .command(
@@ -192,35 +194,35 @@ const cli = yargs(args)
       command: "tasks",
       describe:
         "list the background jobs and background subagents of a session, or with --all every running session (read-only)",
-      load: () => import("./cli/cmd/tasks").then((m) => m.TasksCommand),
+      load: () => loadCommand("tasks"),
     }),
   )
   .command(
     lazyCommand({
       command: "export [sessionID]",
       describe: "export session data as JSON",
-      load: () => import("./cli/cmd/export").then((m) => m.ExportCommand),
+      load: () => loadCommand("export"),
     }),
   )
   .command(
     lazyCommand({
       command: "import [file]",
       describe: "import a session: an exported JSON file, a share URL, or a Claude Code or Codex conversation (.jsonl)",
-      load: () => import("./cli/cmd/import").then((m) => m.ImportCommand),
+      load: () => loadCommand("import"),
     }),
   )
   .command(
     lazyCommand({
       command: "pr <number>",
       describe: "fetch and checkout a GitHub PR branch, then run yukioshi",
-      load: () => import("./cli/cmd/pr").then((m) => m.PrCommand),
+      load: () => loadCommand("pr"),
     }),
   )
   .command(
     lazyCommand({
       command: "session",
       describe: "manage sessions",
-      load: () => import("./cli/cmd/session").then((m) => m.SessionCommand),
+      load: () => loadCommand("session"),
     }),
   )
   .command(
@@ -228,49 +230,49 @@ const cli = yargs(args)
       command: "plugin [action] [target] [extra]",
       aliases: ["plug"],
       describe: "install, list, or remove plugins (npm packages, or Claude Code plugins/marketplaces from git)",
-      load: () => import("./cli/cmd/plug").then((m) => m.PluginCommand),
+      load: () => loadCommand("plugin"),
     }),
   )
   .command(
     lazyCommand({
       command: "trust [directory]",
       describe: "allow this project to run its own hooks, plugins, and commands",
-      load: () => import("./cli/cmd/trust").then((m) => m.TrustCommand),
+      load: () => loadCommand("trust"),
     }),
   )
   .command(
     lazyCommand({
       command: "checkpoint <action> [id]",
       describe: "list, inspect, restore, or prune durable git checkpoints",
-      load: () => import("./cli/cmd/checkpoint").then((m) => m.CheckpointCommand),
+      load: () => loadCommand("checkpoint"),
     }),
   )
   .command(
     lazyCommand({
       command: "schedule",
       describe: "manage scheduled tasks and recurring runs",
-      load: () => import("./cli/cmd/schedule").then((m) => m.ScheduleCommand),
+      load: () => loadCommand("schedule"),
     }),
   )
   .command(
     lazyCommand({
       command: "skill <action> [target]",
       describe: "install, list, or remove skills from git repositories",
-      load: () => import("./cli/cmd/skill").then((m) => m.SkillCommand),
+      load: () => loadCommand("skill"),
     }),
   )
   .command(
     lazyCommand({
       command: "worktree <action> [name]",
       describe: "create, list, locate, or remove git worktrees for parallel sessions",
-      load: () => import("./cli/cmd/worktree").then((m) => m.WorktreeCommand),
+      load: () => loadCommand("worktree"),
     }),
   )
   .command(
     lazyCommand({
       command: "db",
       describe: "database tools",
-      load: () => import("./cli/cmd/db").then((m) => m.DbCommand),
+      load: () => loadCommand("db"),
     }),
   )
   .fail((msg, err) => {
