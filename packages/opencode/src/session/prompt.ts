@@ -105,6 +105,11 @@ function formatMcpResourceBytes(value: number) {
   return `${Math.ceil(value / (1024 * 1024))} MB`
 }
 
+function createdAfter(a: SessionV1.User, b: SessionV1.User) {
+  if (a.time.created !== b.time.created) return a.time.created > b.time.created
+  return a.id > b.id
+}
+
 function isOrphanedInterruptedTool(part: SessionV1.ToolPart) {
   // cleanup() marks abandoned tool_use blocks this way after retries/aborts.
   // They are not pending work and must not trigger an assistant-prefill request.
@@ -1249,7 +1254,41 @@ const layer = Layer.effect(
       }
 
       if (input.noReply === true) return message
-      return yield* loop({ sessionID: input.sessionID })
+      // A message sent while a turn runs is part of that turn's next model request (after the running tools
+      // finish). If the turn was already ending when the message was saved, it never saw the message: start the
+      // next turn for it. Cancelling forgets the message, so a cancelled turn does not restart on its own.
+      yield* state.awaitReply(input.sessionID, message.info.id)
+      return yield* Effect.gen(function* () {
+        let result = yield* loop({ sessionID: input.sessionID })
+        for (let attempt = 0; attempt < 2; attempt++) {
+          if (!(yield* unansweredReplies(input.sessionID)).includes(message.info.id)) break
+          result = yield* loop({ sessionID: input.sessionID })
+        }
+        return result
+      }).pipe(Effect.ensuring(state.settleReply(input.sessionID, message.info.id)))
+    })
+
+    // Messages whose sender waits for a reply and that no model request has seen yet: no assistant message answers
+    // them or a later user message.
+    const unansweredReplies = Effect.fnUntraced(function* (sessionID: SessionID) {
+      const waiting = yield* state.awaitingReply(sessionID)
+      if (waiting.size === 0) return []
+      const msgs = yield* MessageV2.filterCompactedEffect(sessionID).pipe(
+        Effect.provideService(Database.Service, database),
+      )
+      const users = new Map<string, SessionV1.User>()
+      for (const msg of msgs) if (msg.info.role === "user") users.set(msg.info.id, msg.info)
+      const answered = (user: SessionV1.User) =>
+        msgs.some((msg) => {
+          if (msg.info.role !== "assistant") return false
+          if (msg.info.parentID === user.id) return true
+          const parent = users.get(msg.info.parentID)
+          return parent !== undefined && createdAfter(parent, user)
+        })
+      return [...waiting].filter((id) => {
+        const user = users.get(id)
+        return user !== undefined && !answered(user)
+      })
     })
 
     const lastAssistant = Effect.fnUntraced(function* (sessionID: SessionID) {
@@ -2177,8 +2216,26 @@ const layer = Layer.effect(
     const loop: (input: LoopInput) => Effect.Effect<SessionV1.WithParts> = Effect.fn("SessionPrompt.loop")(function* (
       input: LoopInput,
     ) {
-      return yield* state.ensureRunning(input.sessionID, lastAssistant(input.sessionID), runWithGoal(input.sessionID))
+      return yield* state.ensureRunning(input.sessionID, lastAssistant(input.sessionID), runTurns(input.sessionID))
     })
+
+    // Runs turns until no waiting message is left unanswered: a message saved while the last turn was ending (stop
+    // hooks, checkpoint, goal check) starts the next turn here, so the session never goes idle in between.
+    const runTurns = (sessionID: SessionID): Effect.Effect<SessionV1.WithParts> =>
+      Effect.gen(function* () {
+        let result = yield* runWithGoal(sessionID)
+        const retried = new Set<MessageID>()
+        while (true) {
+          const waiting = (yield* unansweredReplies(sessionID)).filter((id) => !retried.has(id))
+          if (waiting.length === 0) return result
+          for (const id of waiting) retried.add(id)
+          yield* Effect.logInfo("message arrived as the turn ended; starting the next turn", {
+            "session.id": sessionID,
+            messages: waiting,
+          })
+          result = yield* runWithGoal(sessionID)
+        }
+      })
 
     const shell: (input: ShellInput) => Effect.Effect<SessionV1.WithParts, Session.BusyError> = Effect.fn(
       "SessionPrompt.shell",

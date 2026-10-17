@@ -6,7 +6,7 @@ import { BackgroundJob } from "@/background/job"
 import { BackgroundShell } from "@/background/shell"
 import { Effect, Latch, Layer, Scope, Context } from "effect"
 import { Session } from "./session"
-import { SessionID } from "./schema"
+import { MessageID, SessionID } from "./schema"
 import { SessionStatus } from "./status"
 
 export interface Interface {
@@ -23,6 +23,14 @@ export interface Interface {
     work: Effect.Effect<SessionV1.WithParts>,
     ready?: Latch.Latch,
   ) => Effect.Effect<SessionV1.WithParts, Session.BusyError>
+  /**
+   * Messages whose sender is still waiting for a reply. A message sent while a turn runs is answered in that turn
+   * (at its next model request) or, if the turn was already ending, by the next turn. Cancelling a session forgets
+   * them, so a cancelled turn never restarts on its own.
+   */
+  readonly awaitReply: (sessionID: SessionID, messageID: MessageID) => Effect.Effect<void>
+  readonly settleReply: (sessionID: SessionID, messageID: MessageID) => Effect.Effect<void>
+  readonly awaitingReply: (sessionID: SessionID) => Effect.Effect<ReadonlySet<MessageID>>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@yukioshi/SessionRunState") {}
@@ -37,6 +45,7 @@ const layer = Layer.effect(
       Effect.fn("SessionRunState.state")(function* () {
         const scope = yield* Scope.Scope
         const runners = new Map<SessionID, Runner.Runner<SessionV1.WithParts>>()
+        const replies = new Map<SessionID, Set<MessageID>>()
         yield* Effect.addFinalizer(
           Effect.fnUntraced(function* () {
             yield* Effect.forEach(runners.values(), (runner) => runner.cancel, {
@@ -44,9 +53,10 @@ const layer = Layer.effect(
               discard: true,
             })
             runners.clear()
+            replies.clear()
           }),
         )
-        return { runners, scope }
+        return { runners, replies, scope }
       }),
     )
 
@@ -76,9 +86,10 @@ const layer = Layer.effect(
     })
 
     const cancel = Effect.fn("SessionRunState.cancel")(function* (sessionID: SessionID) {
+      const data = yield* InstanceState.get(state)
+      data.replies.delete(sessionID)
       yield* cancelBackgroundJobs(background, sessionID)
       yield* Effect.promise(() => BackgroundShell.killSession(sessionID))
-      const data = yield* InstanceState.get(state)
       const existing = data.runners.get(sessionID)
       if (!existing) {
         yield* status.set(sessionID, { type: "idle" })
@@ -106,7 +117,30 @@ const layer = Layer.effect(
         .pipe(Effect.catchTag("RunnerBusy", () => Effect.fail(busyError(sessionID))))
     })
 
-    return Service.of({ assertNotBusy, cancel, ensureRunning, startShell })
+    const awaitReply = Effect.fn("SessionRunState.awaitReply")(function* (sessionID: SessionID, messageID: MessageID) {
+      const data = yield* InstanceState.get(state)
+      const pending = data.replies.get(sessionID) ?? new Set<MessageID>()
+      pending.add(messageID)
+      data.replies.set(sessionID, pending)
+    })
+
+    const settleReply = Effect.fn("SessionRunState.settleReply")(function* (
+      sessionID: SessionID,
+      messageID: MessageID,
+    ) {
+      const data = yield* InstanceState.get(state)
+      const pending = data.replies.get(sessionID)
+      if (!pending) return
+      pending.delete(messageID)
+      if (pending.size === 0) data.replies.delete(sessionID)
+    })
+
+    const awaitingReply = Effect.fn("SessionRunState.awaitingReply")(function* (sessionID: SessionID) {
+      const data = yield* InstanceState.get(state)
+      return new Set(data.replies.get(sessionID) ?? []) as ReadonlySet<MessageID>
+    })
+
+    return Service.of({ assertNotBusy, cancel, ensureRunning, startShell, awaitReply, settleReply, awaitingReply })
   }),
 )
 
