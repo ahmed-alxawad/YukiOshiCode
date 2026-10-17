@@ -375,17 +375,31 @@ export function Prompt(props: PromptProps) {
         run: async (ctx: CommandContext<Renderable, KeyEvent>) => {
           ctx.event.preventDefault()
           ctx.event.stopPropagation()
-          const content = await clipboard.read?.()
-          if (content?.mime.startsWith("image/")) {
-            await pasteAttachment({
-              filename: "clipboard",
-              mime: content.mime,
-              content: content.data,
+          try {
+            const content = await clipboard.read?.()
+            if (content?.mime.startsWith("image/")) {
+              await pasteAttachment({
+                filename: "clipboard",
+                mime: content.mime,
+                content: content.data,
+              })
+              return
+            }
+            if (content?.mime === "text/plain" && content.data.length > 0) {
+              await pasteInputText(content.data)
+              return
+            }
+            toast.show({
+              variant: "info",
+              message: "Clipboard is empty",
+              duration: 2000,
             })
-            return
-          }
-          if (content?.mime === "text/plain") {
-            await pasteInputText(content.data)
+          } catch {
+            toast.show({
+              variant: "error",
+              message: "Failed to read clipboard",
+              duration: 2000,
+            })
           }
         },
       },

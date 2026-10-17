@@ -47,29 +47,33 @@ import {
 const PROVIDER_HEADER_TIMEOUT_DEFAULT = 60_000
 const PROVIDER_CHUNK_TIMEOUT_DEFAULT = 60_000
 
-function wrapSSE(res: Response, ms: number, ctl: AbortController) {
-  if (typeof ms !== "number" || ms <= 0) return res
+function wrapSSE(res: Response, ms: number, ctl?: AbortController) {
   if (!res.body) return res
   if (!res.headers.get("content-type")?.includes("text/event-stream")) return res
 
   const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  const encoder = new TextEncoder()
   const body = new ReadableStream<Uint8Array>({
     async pull(ctrl) {
       const part = await new Promise<Awaited<ReturnType<typeof reader.read>>>((resolve, reject) => {
-        const id = setTimeout(() => {
-          const err = new ProviderError.ResponseStreamError(`Provider stream stalled: no data for ${ms}ms`, { timeoutMs: ms })
-          ctl.abort(err)
-          reader.cancel(err).catch(() => {})
-          reject(err)
-        }, ms)
+        const id =
+          ctl && typeof ms === "number" && ms > 0
+            ? setTimeout(() => {
+                const err = new ProviderError.ResponseStreamError(`Provider stream stalled: no data for ${ms}ms`, { timeoutMs: ms })
+                ctl.abort(err)
+                reader.cancel(err).catch(() => {})
+                reject(err)
+              }, ms)
+            : undefined
 
         reader.read().then(
           (part) => {
-            clearTimeout(id)
+            if (id) clearTimeout(id)
             resolve(part)
           },
           (err) => {
-            clearTimeout(id)
+            if (id) clearTimeout(id)
             reject(err)
           },
         )
@@ -80,18 +84,30 @@ function wrapSSE(res: Response, ms: number, ctl: AbortController) {
         return
       }
 
-      ctrl.enqueue(part.value)
+      let chunk = part.value
+      if (chunk.length > 0) {
+        const text = decoder.decode(chunk, { stream: true })
+        if (text.includes('"promptFeedback"') && text.includes('"blockReason"') && !text.includes('"candidates"')) {
+          const transformed = text.replace(
+            /"promptFeedback"\s*:/,
+            '"candidates":[{"finishReason":"SAFETY","index":0}],"promptFeedback":',
+          )
+          chunk = encoder.encode(transformed)
+        }
+      }
+
+      ctrl.enqueue(chunk)
     },
     async cancel(reason) {
-      ctl.abort(reason)
+      ctl?.abort(reason)
       await reader.cancel(reason)
     },
   })
 
   return new Response(body, {
-    headers: new Headers(res.headers),
     status: res.status,
     statusText: res.statusText,
+    headers: res.headers,
   })
 }
 
@@ -1999,7 +2015,6 @@ const layer = Layer.effect(
             timeout: false,
           }).finally(() => headerTimeoutCtl?.clear())
 
-          if (!chunkAbortCtl) return res
           return wrapSSE(res, chunkTimeout, chunkAbortCtl)
         }
 

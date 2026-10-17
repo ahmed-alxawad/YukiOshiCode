@@ -92,6 +92,32 @@ export function retryable(error: Err, provider: string): Retryable | undefined {
   // context overflow errors should not be retried
   if (SessionV1.ContextOverflowError.isInstance(error)) return undefined
   if (SessionV1.APIError.isInstance(error)) {
+    // If the provider returned a Retry-After header that exceeds RETRY_MAX_DELAY (10s),
+    // do not retry — surface the error immediately to avoid freezing the interactive terminal.
+    const headers = error.data.responseHeaders
+    if (headers) {
+      const retryAfterMs = headers["retry-after-ms"]
+      if (retryAfterMs) {
+        const parsedMs = Number.parseFloat(retryAfterMs)
+        if (!Number.isNaN(parsedMs) && parsedMs > RETRY_MAX_DELAY) {
+          return undefined
+        }
+      }
+      const retryAfter = headers["retry-after"]
+      if (retryAfter) {
+        const parsedSeconds = Number.parseFloat(retryAfter)
+        if (!Number.isNaN(parsedSeconds)) {
+          if (parsedSeconds * 1000 > RETRY_MAX_DELAY) {
+            return undefined
+          }
+        } else {
+          const parsedDate = Date.parse(retryAfter) - Date.now()
+          if (!Number.isNaN(parsedDate) && parsedDate > RETRY_MAX_DELAY) {
+            return undefined
+          }
+        }
+      }
+    }
     const status = error.data.statusCode
     // 5xx errors are transient server failures and should always be retried,
     // even when the provider SDK doesn't explicitly mark them as retryable.

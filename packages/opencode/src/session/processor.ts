@@ -74,6 +74,7 @@ interface ProcessorContext extends Input {
   needsCompaction: boolean
   currentText: SessionV1.TextPart | undefined
   reasoningMap: Record<string, SessionV1.ReasoningPart>
+  hasOutput: boolean
 }
 
 type StreamEvent = LLMEvent
@@ -113,6 +114,7 @@ const layer = Layer.effect(
         needsCompaction: false,
         currentText: undefined,
         reasoningMap: {},
+        hasOutput: false,
       }
       let aborted = false
 
@@ -298,6 +300,7 @@ const layer = Layer.effect(
           case "reasoning-delta":
             // Match dev: silently drop orphan deltas (no preceding reasoning-start).
             if (!(value.id in ctx.reasoningMap)) return
+            if (value.text) ctx.hasOutput = true
             ctx.reasoningMap[value.id].text += value.text
             if (value.providerMetadata) ctx.reasoningMap[value.id].metadata = value.providerMetadata
             yield* session.updatePartDelta({
@@ -333,6 +336,7 @@ const layer = Layer.effect(
           }
 
           case "tool-call": {
+            ctx.hasOutput = true
             if (ctx.assistantMessage.summary) {
               throw new Error(`Tool call not allowed while generating summary: ${value.name}`)
             }
@@ -516,6 +520,7 @@ const layer = Layer.effect(
 
           case "text-delta":
             if (!ctx.currentText) return
+            if (value.text) ctx.hasOutput = true
             ctx.currentText.text += value.text
             if (value.providerMetadata) ctx.currentText.metadata = value.providerMetadata
             yield* session.updatePartDelta({
@@ -658,6 +663,7 @@ const layer = Layer.effect(
           yield* Effect.gen(function* () {
             ctx.currentText = undefined
             ctx.reasoningMap = {}
+            ctx.hasOutput = false
             yield* status.set(ctx.sessionID, { type: "busy" })
             const stream = llm.stream(streamInput)
 
@@ -666,6 +672,25 @@ const layer = Layer.effect(
               Stream.takeUntil(() => ctx.needsCompaction),
               Stream.runDrain,
             )
+
+            if (
+              !ctx.hasOutput &&
+              ctx.assistantMessage.finish !== "content-filter" &&
+              !ctx.assistantMessage.error &&
+              !ctx.needsCompaction &&
+              !ctx.blocked
+            ) {
+              yield* halt(
+                new SessionV1.APIError({
+                  message: "The provider returned an empty response with no content",
+                  isRetryable: false,
+                  metadata: {
+                    url: input.model.api.url,
+                    provider: input.model.providerID,
+                  },
+                }),
+              )
+            }
           }).pipe(
             Effect.onInterrupt(() =>
               Effect.gen(function* () {

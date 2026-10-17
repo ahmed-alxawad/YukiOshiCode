@@ -638,6 +638,8 @@ function convertError(
       ).toObject()
     case OutputLengthError.isInstance(e):
       return e
+    case APIError.isInstance(e):
+      return e.toObject()
     case LoadAPIKeyError.isInstance(e):
       return new AuthError(
         {

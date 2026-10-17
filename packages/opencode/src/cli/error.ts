@@ -177,7 +177,14 @@ export function FormatUnexpectedError(input: unknown, debug = false): string {
     .join("\n")
 }
 
-type SessionErrorLike = { name?: string; data?: { statusCode?: number; metadata?: Record<string, string> } }
+type SessionErrorLike = {
+  name?: string
+  data?: {
+    statusCode?: number
+    responseHeaders?: Record<string, string>
+    metadata?: Record<string, string>
+  }
+}
 
 function hostOf(url: string | undefined) {
   if (!url) return undefined
@@ -196,10 +203,65 @@ export function explainSessionError(error: SessionErrorLike, message: string, pr
   const status = error.data?.statusCode
   const host = hostOf(error.data?.metadata?.url)
   const text = Redact.scrubKnown(Redact.mask(message))
-  if (error.name === "ProviderAuthError" || status === 401 || status === 403)
+
+  if (
+    status === 403 &&
+    (text.includes("has not been used in project") || text.includes("is disabled") || text.includes("PERMISSION_DENIED"))
+  )
+    return `${text}\nThe Generative Language API has not been enabled in your project or permission was denied by the provider${host ? ` at ${host}` : ""}. Enable the API in Google Cloud Console or check your project permissions and API key.`
+
+  if (
+    error.name === "ProviderAuthError" ||
+    status === 401 ||
+    status === 403 ||
+    (status === 400 && (text.includes("API_KEY_INVALID") || text.includes("API key not valid")))
+  )
     return `${text}\nThe provider${host ? ` at ${host}` : ""} did not accept your credentials. Run \`yukioshi providers login\` to add or replace the key, or fix the API key in your environment or yukioshi.json.`
-  if (status === 429)
+
+  if (status === 429) {
+    const headers = error.data?.responseHeaders
+    const retryAfterMs = headers?.["retry-after-ms"] ?? error.data?.metadata?.["retry-after-ms"]
+    if (retryAfterMs) {
+      const parsedMs = Number.parseFloat(retryAfterMs)
+      if (!Number.isNaN(parsedMs) && parsedMs > 10_000) {
+        return `${text}\nThe provider${host ? ` at ${host}` : ""} is rate limiting you (Retry-After: ${Math.round(parsedMs / 1000)}s exceeds the 10s retry limit). Wait for the retry window to pass, pick another model with --model provider/model, or set or extend fallback.models to switch automatically.`
+      }
+    }
+    const retryAfter = headers?.["retry-after"] ?? error.data?.metadata?.["retry-after"]
+    if (retryAfter) {
+      const parsedSeconds = Number.parseFloat(retryAfter)
+      if (!Number.isNaN(parsedSeconds)) {
+        if (parsedSeconds > 10) {
+          return `${text}\nThe provider${host ? ` at ${host}` : ""} is rate limiting you (Retry-After: ${parsedSeconds}s exceeds the 10s retry limit). Wait for the retry window to pass, pick another model with --model provider/model, or set or extend fallback.models to switch automatically.`
+        }
+      } else {
+        const diffSeconds = Math.round((Date.parse(retryAfter) - Date.now()) / 1000)
+        if (!Number.isNaN(diffSeconds) && diffSeconds > 10) {
+          return `${text}\nThe provider${host ? ` at ${host}` : ""} is rate limiting you (Retry-After: ${diffSeconds}s exceeds the 10s retry limit). Wait for the retry window to pass, pick another model with --model provider/model, or set or extend fallback.models to switch automatically.`
+        }
+      }
+    }
     return `${text}\nThe provider${host ? ` at ${host}` : ""} is rate limiting you or your quota is used up. Wait a moment and run again, pick another model with --model provider/model, or set or extend fallback.models to switch automatically.`
+  }
+
+  if (
+    status === 404 ||
+    error.name === "ProviderModelNotFoundError" ||
+    text.includes("is not found for API version") ||
+    text.includes("NOT_FOUND")
+  )
+    return `${text}\nThe provider${host ? ` at ${host}` : ""} reported that the model was not found. Check the model name, run \`yukioshi models\` to list available models, or check your configuration in yukioshi.json.`
+
+  if (
+    error.name === "ContentFilterError" ||
+    text.includes("blocked by the provider's content filter") ||
+    text.includes("content policy (SAFETY)")
+  )
+    return `${text}\nThe prompt or response was blocked by the provider's content safety filter (safety block). Modify your prompt to comply with safety guidelines, or pick another model with --model provider/model.`
+
+  if (text.includes("empty response with no content"))
+    return `${text}\nThe provider${host ? ` at ${host}` : ""} returned an empty response with no content. Check provider status, retry your prompt, or pick another model with --model provider/model.`
+
   const code = error.data?.metadata?.code
   const seconds = (ms: string | undefined) => (ms && Number(ms) > 0 ? `${Math.round(Number(ms) / 100) / 10}s` : undefined)
   if (code === "ProviderHeaderTimeoutError")
