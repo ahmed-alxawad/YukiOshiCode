@@ -284,6 +284,116 @@ async function download(fetcher: typeof fetch, url: string, timeoutMs: number) {
   return response
 }
 
+const GIB = 1024 * 1024 * 1024
+
+/** The largest archive accepted: 1 GiB, or 3x the current binary when that is known (but at least 64 MiB). */
+export function downloadLimit(previousSize?: number) {
+  if (!previousSize) return GIB
+  return Math.min(GIB, Math.max(3 * previousSize, 64 * 1024 * 1024))
+}
+
+/** Reads a response body, aborting as soon as it grows past `limit` bytes instead of after it is all in memory. */
+async function readLimited(response: Response, limit: number, name: string) {
+  const tooBig = () =>
+    new UpdateError(`${name} is larger than the ${Math.round(limit / 1024 / 1024)} MiB limit for an update download; refusing it`)
+  const declared = Number(response.headers.get("content-length"))
+  if (Number.isFinite(declared) && declared > limit) {
+    void response.body?.cancel().catch(() => {})
+    throw tooBig()
+  }
+  const chunks: Uint8Array[] = []
+  let total = 0
+  const reader = response.body?.getReader()
+  if (!reader) return new Uint8Array(await response.arrayBuffer())
+  for (;;) {
+    const { done, value } = await reader.read().catch((error: unknown) => {
+      throw new UpdateError(`the download of ${name} failed: ${error instanceof Error ? error.message : String(error)}`)
+    })
+    if (done) break
+    total += value.byteLength
+    if (total > limit) {
+      void reader.cancel().catch(() => {})
+      throw tooBig()
+    }
+    chunks.push(value)
+  }
+  const out = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    out.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return out
+}
+
+export type SwapOps = {
+  link: (existing: string, target: string) => Promise<void>
+  copyFile: (from: string, to: string) => Promise<void>
+  rename: (from: string, to: string) => Promise<void>
+  rm: (target: string) => Promise<void>
+}
+
+const realOps: SwapOps = {
+  link: (a, b) => fsp.link(a, b),
+  copyFile: (a, b) => fsp.copyFile(a, b),
+  rename: (a, b) => fsp.rename(a, b),
+  rm: (a) => fsp.rm(a, { force: true }),
+}
+
+const message = (error: unknown) => (error instanceof Error ? error.message : String(error))
+
+/** Removes backups a running Windows process kept from being deleted earlier; failures are ignored. */
+export async function cleanStaleBackups(execPath: string, ops: Partial<SwapOps> = {}) {
+  const rm = ops.rm ?? realOps.rm
+  const dir = path.dirname(execPath)
+  const prefix = `${path.basename(execPath)}.old.`
+  const names = await fsp.readdir(dir).catch(() => [] as string[])
+  for (const name of names) if (name.startsWith(prefix)) await rm(path.join(dir, name)).catch(() => {})
+}
+
+/**
+ * Puts `staged` in place of `execPath`, keeping the previous binary as `<execPath>.old`.
+ * Linux and macOS: the backup is a hard link (or copy) made first, then the new binary is renamed
+ * over `execPath` in a single atomic rename, so `execPath` always exists and always works.
+ * Windows cannot rename over a running exe, so the old one is moved aside first; if putting the new
+ * one in place fails it is moved back, and if that fails too the error says how to restore it.
+ */
+export async function swapBinary(input: { execPath: string; staged: string; windows: boolean; ops?: Partial<SwapOps> }) {
+  const ops = { ...realOps, ...input.ops }
+  const { execPath, staged } = input
+  let backup = `${execPath}.old`
+  if (!input.windows) {
+    await ops.rm(backup).catch(() => {})
+    await ops.link(execPath, backup).catch(() => ops.copyFile(execPath, backup)).catch((error: unknown) => {
+      throw new UpdateError(`could not keep a backup of the current binary: ${message(error)}`)
+    })
+    await ops.rename(staged, execPath).catch((error: unknown) => {
+      throw new UpdateError(`could not put the new binary in place: ${message(error)}`)
+    })
+    return
+  }
+  // The old backup may be a binary that is still running; Windows then refuses to delete it. Skip it
+  // (it is cleaned up at the next update) and use a name of its own.
+  let stuck = false
+  await ops.rm(backup).catch(() => {
+    stuck = true
+  })
+  if (stuck || fs.existsSync(backup)) backup = `${execPath}.old.${process.pid}`
+  await ops.rename(execPath, backup).catch((error: unknown) => {
+    throw new UpdateError(`could not move the current binary aside: ${message(error)}`)
+  })
+  await ops.rename(staged, execPath).catch(async (error: unknown) => {
+    const restored = await ops.rename(backup, execPath).then(
+      () => true,
+      () => false,
+    )
+    throw new UpdateError(
+      `could not put the new binary in place: ${message(error)}` +
+        (restored ? "" : `; to go back, rename ${backup} to ${execPath}`),
+    )
+  })
+}
+
 /**
  * Downloads release `version`, verifies it against SHA256SUMS, checks that the new binary starts and
  * reports `version`, then replaces `execPath` with it and keeps the previous binary as `<execPath>.old`.
@@ -297,11 +407,14 @@ export async function installRelease(input: {
   baseUrl?: string
   fetch?: typeof fetch
   timeoutMs?: number
+  maxBytes?: number
+  ops?: Partial<SwapOps>
 }) {
   const fetcher = input.fetch ?? fetch
   const timeoutMs = input.timeoutMs ?? 10 * 60_000
   const base = `${input.baseUrl ?? releaseBaseUrl()}/releases/download/v${input.version}`
   const windows = input.asset.startsWith("yukioshi-windows-")
+  await cleanStaleBackups(input.execPath, input.ops)
 
   const sumsResponse = await download(fetcher, `${base}/SHA256SUMS`, timeoutMs).catch((error: unknown) => {
     throw new UpdateError(
@@ -311,7 +424,12 @@ export async function installRelease(input: {
   const expected = checksumFor(await sumsResponse.text(), input.asset)
   if (!expected) throw new UpdateError(`${input.asset} is not listed in the release's SHA256SUMS`)
 
-  const archive = new Uint8Array(await (await download(fetcher, `${base}/${input.asset}`, timeoutMs)).arrayBuffer())
+  const previousSize = await fsp.stat(input.execPath).then(
+    (stat) => stat.size,
+    () => undefined,
+  )
+  const limit = input.maxBytes ?? downloadLimit(previousSize)
+  const archive = await readLimited(await download(fetcher, `${base}/${input.asset}`, timeoutMs), limit, input.asset)
   const actual = createHash("sha256").update(archive).digest("hex")
   if (actual !== expected) throw new UpdateError(`${input.asset} does not match its SHA256SUMS checksum`)
 
@@ -343,19 +461,7 @@ export async function installRelease(input: {
         `the new binary failed its start check (expected ${input.version}, got ${JSON.stringify(reported || check.error?.message || `exit ${check.status}`)})`,
       )
 
-    const backup = `${input.execPath}.old`
-    await fsp.rm(backup, { force: true })
-    await fsp.rename(input.execPath, backup).catch((error: unknown) => {
-      throw new UpdateError(
-        `could not move the current binary aside: ${error instanceof Error ? error.message : String(error)}`,
-      )
-    })
-    await fsp.rename(staged, input.execPath).catch(async (error: unknown) => {
-      await fsp.rename(backup, input.execPath).catch(() => {})
-      throw new UpdateError(
-        `could not put the new binary in place: ${error instanceof Error ? error.message : String(error)}`,
-      )
-    })
+    await swapBinary({ execPath: input.execPath, staged, windows, ops: input.ops })
   } finally {
     await fsp.rm(staged, { force: true }).catch(() => {})
     await fsp.rm(tmp, { recursive: true, force: true }).catch(() => {})

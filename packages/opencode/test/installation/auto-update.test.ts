@@ -287,6 +287,131 @@ describe.skipIf(!unix)("installRelease", () => {
   })
 })
 
+describe.skipIf(!unix)("binary swap", () => {
+  async function setup() {
+    const tmp = await tmpdir()
+    const execPath = path.join(tmp.path, "yukioshi")
+    const staged = path.join(tmp.path, ".yukioshi.new")
+    fs.writeFileSync(execPath, "#!/bin/sh\necho old\n", { mode: 0o755 })
+    fs.writeFileSync(staged, "#!/bin/sh\necho new\n", { mode: 0o755 })
+    const run = () => spawnSync(execPath, [], { encoding: "utf8" }).stdout.trim()
+    return { tmp, execPath, staged, run, [Symbol.asyncDispose]: () => tmp[Symbol.asyncDispose]() }
+  }
+  const boom = () => Promise.reject(new Error("killed"))
+
+  test("on Linux/macOS never moves the current binary away; the swap is one rename over it", async () => {
+    await using env = await setup()
+    const renames: string[] = []
+    await AutoUpdate.swapBinary({
+      execPath: env.execPath,
+      staged: env.staged,
+      windows: false,
+      ops: { rename: async (a, b) => (renames.push(a), fs.renameSync(a, b)) },
+    })
+    expect(renames).toEqual([env.staged])
+    expect(env.run()).toBe("new")
+    expect(fs.readFileSync(env.execPath + ".old", "utf8")).toContain("echo old")
+  })
+
+  test("a failure at any step leaves a working binary", async () => {
+    for (const step of ["rm", "link", "copyFile", "rename"] as const) {
+      await using env = await setup()
+      await AutoUpdate.swapBinary({
+        execPath: env.execPath,
+        staged: env.staged,
+        windows: false,
+        ops: { [step]: boom, ...(step === "link" ? { copyFile: boom } : {}) },
+      }).catch(() => {})
+      expect(["old", "new"]).toContain(env.run())
+    }
+  })
+
+  test("Windows order restores the old binary when the new one cannot be put in place", async () => {
+    await using env = await setup()
+    let calls = 0
+    await expect(
+      AutoUpdate.swapBinary({
+        execPath: env.execPath,
+        staged: env.staged,
+        windows: true,
+        ops: { rename: async (a, b) => (++calls === 2 ? boom() : fs.renameSync(a, b)) },
+      }),
+    ).rejects.toThrow("could not put the new binary in place")
+    expect(env.run()).toBe("old")
+  })
+
+  test("Windows: tells how to go back when even the restore fails", async () => {
+    await using env = await setup()
+    let calls = 0
+    await expect(
+      AutoUpdate.swapBinary({
+        execPath: env.execPath,
+        staged: env.staged,
+        windows: true,
+        ops: { rename: async (a, b) => (++calls === 1 ? fs.renameSync(a, b) : boom()) },
+      }),
+    ).rejects.toThrow(`to go back, rename ${env.execPath}.old to ${env.execPath}`)
+  })
+
+  test("Windows: a still-running .old that cannot be removed is skipped, not an error", async () => {
+    await using env = await setup()
+    fs.writeFileSync(env.execPath + ".old", "running")
+    const busy = Object.assign(new Error("EBUSY: resource busy or locked"), { code: "EBUSY" })
+    await AutoUpdate.swapBinary({
+      execPath: env.execPath,
+      staged: env.staged,
+      windows: true,
+      ops: { rm: () => Promise.reject(busy) },
+    })
+    expect(env.run()).toBe("new")
+    expect(fs.readFileSync(env.execPath + ".old", "utf8")).toBe("running")
+    expect(fs.readFileSync(`${env.execPath}.old.${process.pid}`, "utf8")).toContain("echo old")
+    const eperm = Object.assign(new Error("EPERM"), { code: "EPERM" })
+    await AutoUpdate.cleanStaleBackups(env.execPath, { rm: () => Promise.reject(eperm) })
+    await AutoUpdate.cleanStaleBackups(env.execPath)
+    expect(fs.existsSync(`${env.execPath}.old.${process.pid}`)).toBe(false)
+  })
+
+  test("an update download larger than the limit is aborted while streaming", async () => {
+    await using env = await setup()
+    let sent = 0
+    const server = Bun.serve({
+      port: 0,
+      fetch(req) {
+        const url = new URL(req.url)
+        if (url.pathname.endsWith("SHA256SUMS")) return new Response(`${"a".repeat(64)}  yukioshi-linux-x64.tar.gz\n`)
+        const chunk = new Uint8Array(64 * 1024)
+        return new Response(
+          new ReadableStream({
+            async pull(controller) {
+              await Bun.sleep(1)
+              sent += chunk.length
+              controller.enqueue(chunk)
+            },
+          }),
+        )
+      },
+    })
+    try {
+      await expect(
+        AutoUpdate.installRelease({
+          version: "0.5.0",
+          asset: "yukioshi-linux-x64.tar.gz",
+          execPath: env.execPath,
+          workDir: path.join(env.tmp.path, "work"),
+          baseUrl: server.url.toString().replace(/\/$/, ""),
+          maxBytes: 1024 * 1024,
+        }),
+      ).rejects.toThrow("refusing it")
+      expect(sent).toBeLessThan(8 * 1024 * 1024)
+      expect(AutoUpdate.downloadLimit()).toBe(1024 ** 3)
+      expect(AutoUpdate.downloadLimit(100 * 1024 * 1024)).toBe(300 * 1024 * 1024)
+    } finally {
+      void server.stop(true)
+    }
+  })
+})
+
 describe.skipIf(!unix)("background update", () => {
   const stateDir = Global.Path.state
   const saved = { ...process.env }
