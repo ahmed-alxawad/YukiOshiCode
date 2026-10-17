@@ -20758,6 +20758,28 @@
         "additionalProperties": false,
         "description": "Server configuration for yukioshi serve and web commands"
       },
+      "ConfigTriggersV1": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "token_env": {
+            "type": "string"
+          },
+          "directories": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "mode": {
+            "type": "string",
+            "enum": ["review", "plan"]
+          }
+        },
+        "additionalProperties": false
+      },
       "IndexingConfig": {
         "type": "object"
       },
@@ -20830,6 +20852,63 @@
         },
         "additionalProperties": false
       },
+      "HookHttp": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["http"],
+            "description": "An HTTP hook: POSTs the hook's JSON to `url`."
+          },
+          "url": {
+            "type": "string"
+          },
+          "headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "allowedEnvVars": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "allowPrivateAddress": {
+            "type": "boolean"
+          },
+          "matcher": {
+            "type": "string"
+          },
+          "timeoutMs": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ],
+            "description": "Default 5000."
+          }
+        },
+        "required": ["type", "url"],
+        "additionalProperties": false
+      },
       "HookCommand": {
         "type": "object",
         "properties": {
@@ -20874,37 +20953,105 @@
           "preToolUse": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/HookCommand"
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/HookHttp"
+                },
+                {
+                  "$ref": "#/components/schemas/HookCommand"
+                }
+              ]
             }
           },
           "postToolUse": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/HookCommand"
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/HookHttp"
+                },
+                {
+                  "$ref": "#/components/schemas/HookCommand"
+                }
+              ]
             }
           },
           "userPromptSubmit": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/HookCommand"
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/HookHttp"
+                },
+                {
+                  "$ref": "#/components/schemas/HookCommand"
+                }
+              ]
             }
           },
           "sessionStart": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/HookCommand"
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/HookHttp"
+                },
+                {
+                  "$ref": "#/components/schemas/HookCommand"
+                }
+              ]
             }
           },
           "stop": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/HookCommand"
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/HookHttp"
+                },
+                {
+                  "$ref": "#/components/schemas/HookCommand"
+                }
+              ]
+            }
+          },
+          "subagentStop": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/HookHttp"
+                },
+                {
+                  "$ref": "#/components/schemas/HookCommand"
+                }
+              ]
+            }
+          },
+          "preCompact": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/HookHttp"
+                },
+                {
+                  "$ref": "#/components/schemas/HookCommand"
+                }
+              ]
             }
           },
           "notification": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/HookCommand"
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/HookHttp"
+                },
+                {
+                  "$ref": "#/components/schemas/HookCommand"
+                }
+              ]
             }
           }
         },
@@ -21354,6 +21501,15 @@
               "type": "string"
             }
           },
+          "env": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "inherit_env": {
+            "type": "boolean"
+          },
           "enabled": {
             "type": "boolean"
           },
@@ -21521,6 +21677,31 @@
                 "items": {
                   "type": "string"
                 }
+              },
+              "learn": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "max": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0
+                      },
+                      "stale_days": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                ],
+                "description": "Skills the agent writes itself, with a curator that keeps them few and useful (off by default)"
               }
             },
             "additionalProperties": false
@@ -21544,11 +21725,378 @@
             },
             "additionalProperties": false
           },
+          "fallback": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "models": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "cooldown": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "rotate_keys": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
+          "tool_limits": {
+            "type": "object",
+            "properties": {
+              "repeat_nudge": {
+                "type": "boolean"
+              },
+              "timeout": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  }
+                ],
+                "description": "Time limit for tool calls in milliseconds: one number for all tools, or per tool ({ \"*\": 120000, \"webfetch\": 30000 }). 0 turns a limit off. A catch-all limit skips bash (which has its own), task, task_parallel, question, and plan_exit. No limit by default."
+              }
+            },
+            "additionalProperties": false
+          },
+          "tool_search": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["auto"]
+                  }
+                ],
+                "description": "Control MCP tool search: \"auto\" turns search on when MCP tool definitions exceed threshold characters, true always enables, false disables. Defaults to \"auto\"."
+              },
+              "threshold": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              }
+            },
+            "additionalProperties": false
+          },
+          "delegate": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "agents": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "command": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Command and arguments to spawn the external ACP agent process."
+                    },
+                    "env": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    },
+                    "timeout": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0
+                    }
+                  },
+                  "required": ["command"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "browser": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "headless": {
+                "type": "boolean"
+              },
+              "engine": {
+                "type": "string",
+                "enum": ["chrome", "chromium", "firefox", "webkit", "msedge"]
+              }
+            },
+            "additionalProperties": false
+          },
+          "background_shell": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "max_jobs": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "max_minutes": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "buffer_kb": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "run_wait_seconds": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["NaN"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["-Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity", "-Infinity", "NaN"]
+                  }
+                ],
+                "description": "How long yukioshi run waits for running background jobs before it kills them. Defaults to 60. Use 0 to kill them at once."
+              }
+            },
+            "additionalProperties": false
+          },
+          "webhooks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "url": {
+                  "type": "string"
+                },
+                "events": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": ["turn.finished", "turn.failed", "permission.asked", "question.asked"]
+                  }
+                },
+                "secret": {
+                  "type": "string"
+                },
+                "headers": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": ["url"],
+              "additionalProperties": false
+            }
+          },
+          "budget": {
+            "type": "object",
+            "properties": {
+              "session": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["NaN"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["-Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity", "-Infinity", "NaN"]
+                  }
+                ],
+                "description": "Maximum dollar cost for one session"
+              },
+              "daily": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["NaN"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["-Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity", "-Infinity", "NaN"]
+                  }
+                ],
+                "description": "Maximum dollar cost across sessions today"
+              },
+              "monthly": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["NaN"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["-Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity", "-Infinity", "NaN"]
+                  }
+                ],
+                "description": "Maximum dollar cost across sessions this month"
+              },
+              "tokens": {
+                "type": "object",
+                "properties": {
+                  "session": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "daily": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "monthly": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          },
+          "audit": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
+          "triggers": {
+            "$ref": "#/components/schemas/ConfigTriggersV1"
+          },
+          "checkpoints": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
+          "redact": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "patterns": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "allow": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "loop": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "max_runs": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "min_interval": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              }
+            },
+            "additionalProperties": false
+          },
+          "goal": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "max_rounds": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              }
+            },
+            "additionalProperties": false
+          },
           "memory": {
             "type": "object",
             "properties": {
               "enabled": {
                 "type": "boolean"
+              },
+              "max_chars": {
+                "type": "integer",
+                "exclusiveMinimum": 0
               }
             },
             "additionalProperties": false
@@ -21675,6 +22223,18 @@
           "subagent_depth": {
             "type": "integer",
             "minimum": 0
+          },
+          "subagents": {
+            "type": "object",
+            "properties": {
+              "background": {
+                "type": "boolean"
+              },
+              "parallel": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
           },
           "username": {
             "type": "string"
@@ -21845,6 +22405,22 @@
               }
             ],
             "description": "Enable or configure LSP servers. Omit or set to false to disable, true to enable built-ins, or an object to enable built-ins with overrides."
+          },
+          "lsp_tool": {
+            "type": "boolean"
+          },
+          "web_search": {
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "provider": {
+                "type": "string",
+                "enum": ["exa", "parallel"]
+              }
+            },
+            "additionalProperties": false
           },
           "instructions": {
             "type": "array",
@@ -25176,7 +25752,7 @@
       },
       "PermissionV2Mode": {
         "type": "string",
-        "enum": ["manual", "auto", "auto-all", "plan"]
+        "enum": ["manual", "auto", "auto-all", "plan", "review"]
       },
       "QuestionV2Option": {
         "type": "object",

@@ -284,6 +284,7 @@ const layer = Layer.effect(
       const handleEvent = Effect.fnUntraced(function* (value: StreamEvent) {
         switch (value.type) {
           case "reasoning-start":
+            ctx.hasOutput = true
             if (value.id in ctx.reasoningMap) return
             ctx.reasoningMap[value.id] = {
               id: PartID.ascending(),
@@ -506,6 +507,7 @@ const layer = Layer.effect(
           }
 
           case "text-start":
+            ctx.hasOutput = true
             ctx.currentText = {
               id: PartID.ascending(),
               messageID: ctx.assistantMessage.id,
@@ -672,25 +674,6 @@ const layer = Layer.effect(
               Stream.takeUntil(() => ctx.needsCompaction),
               Stream.runDrain,
             )
-
-            if (
-              !ctx.hasOutput &&
-              ctx.assistantMessage.finish !== "content-filter" &&
-              !ctx.assistantMessage.error &&
-              !ctx.needsCompaction &&
-              !ctx.blocked
-            ) {
-              yield* halt(
-                new SessionV1.APIError({
-                  message: "The provider returned an empty response with no content",
-                  isRetryable: false,
-                  metadata: {
-                    url: input.model.api.url,
-                    provider: input.model.providerID,
-                  },
-                }),
-              )
-            }
           }).pipe(
             Effect.onInterrupt(() =>
               Effect.gen(function* () {

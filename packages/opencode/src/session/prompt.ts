@@ -1665,6 +1665,31 @@ const layer = Layer.effect(
                 yield* events.publish(Session.Event.Error, { sessionID, error: handle.message.error })
                 return "break" as const
               }
+              const currentMsgs = yield* MessageV2.filterCompactedEffect(sessionID).pipe(
+                Effect.provideService(Database.Service, database),
+              )
+              const currentMsg = currentMsgs.find((m) => m.info.id === handle.message.id)
+              const hasContent =
+                currentMsg &&
+                currentMsg.parts.some(
+                  (p) =>
+                    p.type === "tool" ||
+                    (p.type === "reasoning" && p.text.trim().length > 0) ||
+                    (p.type === "text" && p.text.trim().length > 0),
+                )
+              if (!hasContent) {
+                handle.message.error = new SessionV1.APIError({
+                  message: "The provider returned an empty response with no content",
+                  isRetryable: false,
+                  metadata: {
+                    url: model.api.url,
+                    provider: model.providerID,
+                  },
+                }).toObject()
+                yield* sessions.updateMessage(handle.message)
+                yield* events.publish(Session.Event.Error, { sessionID, error: handle.message.error })
+                return "break" as const
+              }
               if (format.type === "json_schema") {
                 handle.message.error = new SessionV1.StructuredOutputError({
                   message: "Model did not produce structured output",

@@ -1663,6 +1663,13 @@ export type ServerConfig = {
   cors?: Array<string>
 }
 
+export type ConfigTriggersV1 = {
+  enabled?: boolean
+  token_env?: string
+  directories?: Array<string>
+  mode?: "review" | "plan"
+}
+
 export type IndexingConfig = {
   [key: string]: unknown
 }
@@ -1682,6 +1689,24 @@ export type CodeGraphConfig = {
   maxGraphBytes?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
 }
 
+export type HookHttp = {
+  /**
+   * An HTTP hook: POSTs the hook's JSON to `url`.
+   */
+  type: "http"
+  url: string
+  headers?: {
+    [key: string]: string
+  }
+  allowedEnvVars?: Array<string>
+  allowPrivateAddress?: boolean
+  matcher?: string
+  /**
+   * Default 5000.
+   */
+  timeoutMs?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+}
+
 export type HookCommand = {
   matcher?: string
   /**
@@ -1695,12 +1720,14 @@ export type HookCommand = {
 }
 
 export type HooksConfig = {
-  preToolUse?: Array<HookCommand>
-  postToolUse?: Array<HookCommand>
-  userPromptSubmit?: Array<HookCommand>
-  sessionStart?: Array<HookCommand>
-  stop?: Array<HookCommand>
-  notification?: Array<HookCommand>
+  preToolUse?: Array<HookHttp | HookCommand>
+  postToolUse?: Array<HookHttp | HookCommand>
+  userPromptSubmit?: Array<HookHttp | HookCommand>
+  sessionStart?: Array<HookHttp | HookCommand>
+  stop?: Array<HookHttp | HookCommand>
+  subagentStop?: Array<HookHttp | HookCommand>
+  preCompact?: Array<HookHttp | HookCommand>
+  notification?: Array<HookHttp | HookCommand>
 }
 
 export type PermissionActionConfig = "ask" | "allow" | "deny"
@@ -1887,6 +1914,10 @@ export type McpLocalConfig = {
   environment?: {
     [key: string]: string
   }
+  env?: {
+    [key: string]: string
+  }
+  inherit_env?: boolean
   enabled?: boolean
   timeout?: number
 }
@@ -2008,6 +2039,21 @@ export type Config = {
       }
     }
   }
+  browser?: {
+    enabled?: boolean
+    headless?: boolean
+    engine?: "chrome" | "chromium" | "firefox" | "webkit" | "msedge"
+  }
+  background_shell?: {
+    enabled?: boolean
+    max_jobs?: number
+    max_minutes?: number
+    buffer_kb?: number
+    /**
+     * How long yukioshi run waits for running background jobs before it kills them. Defaults to 60. Use 0 to kill them at once.
+     */
+    run_wait_seconds?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
   webhooks?: Array<{
     url: string
     events?: Array<"turn.finished" | "turn.failed" | "permission.asked" | "question.asked">
@@ -2035,6 +2081,10 @@ export type Config = {
       monthly?: number
     }
   }
+  audit?: {
+    enabled?: boolean
+  }
+  triggers?: ConfigTriggersV1
   checkpoints?: {
     enabled?: boolean
   }
