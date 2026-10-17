@@ -324,6 +324,7 @@ try {
       process.stderr.write(parts.join(" ") + helpSuffix)
     }
     await cli.parseAsync(args)
+    await new Promise<void>((resolve) => process.stderr.write("", () => resolve()))
   } else {
     await cli.parse()
   }
