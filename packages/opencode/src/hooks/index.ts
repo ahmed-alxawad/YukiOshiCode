@@ -6,6 +6,8 @@ import type { ConfigHooksV1 } from "@yukioshi/core/v1/config/hooks"
 import { Context, Effect, Exit, Layer, Stream } from "effect"
 import { ChildProcess } from "effect/unstable/process"
 import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner"
+import { Config } from "@/config/config"
+import * as HttpHook from "./http"
 
 export type EventName =
   | "PreToolUse"
@@ -77,13 +79,14 @@ const reportedInvalid = new Set<string>()
  * Whether the hook applies to this tool. An invalid matcher fails closed for PreToolUse (the hook is the
  * guard, so it runs for every tool call) and skips the hook for other events; both log a warning once.
  */
-function matches(event: EventName, hook: ConfigHooksV1.HookCommand, toolName: string | undefined): Effect.Effect<boolean> {
+function matches(event: EventName, hook: ConfigHooksV1.Hook, toolName: string | undefined): Effect.Effect<boolean> {
   const matcher = hook.matcher
   if (!matcher || matcher === "*" || toolName === undefined) return Effect.succeed(true)
   const regex = compile(matcher)
   if (regex) return Effect.succeed(regex.test(toolName))
   const failClosed = event === "PreToolUse"
-  const key = `${event}\0${matcher}\0${hook.command}`
+  const command = HttpHook.isHook(hook) ? `HTTP hook to ${HttpHook.describe(hook.url)}` : hook.command
+  const key = `${event}\0${matcher}\0${command}`
   const warn = reportedInvalid.has(key)
     ? Effect.void
     : Effect.sync(() => void reportedInvalid.add(key)).pipe(
@@ -92,7 +95,7 @@ function matches(event: EventName, hook: ConfigHooksV1.HookCommand, toolName: st
             failClosed
               ? "hook matcher is not a valid regular expression; the hook will run for every tool call"
               : "hook matcher is not a valid regular expression; the hook is skipped",
-            { event, matcher, command: hook.command },
+            { event, matcher, command },
           ),
         ),
       )
@@ -137,6 +140,15 @@ function parseDecision(stdout: string): Decision | undefined {
   } catch {
     return undefined
   }
+}
+
+/** What a successful hook's output means: a block, context to add, or nothing. */
+function decide(event: EventName, stdout: string): { blocked?: string; context?: string } {
+  const decision = parseDecision(stdout)
+  if (decision?.decision === "block") return { blocked: decision.reason || `Blocked by a ${event} hook.` }
+  if (decision?.additionalContext) return { context: decision.additionalContext }
+  if (stdout && !decision && (event === "UserPromptSubmit" || event === "SessionStart")) return { context: stdout }
+  return {}
 }
 
 function hiddenEnv(): Record<string, string> {
@@ -214,13 +226,26 @@ const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const spawner = yield* ChildProcessSpawner
+    const config = yield* Config.Service
+
+    // A private or local destination is allowed only when the user's own global config lists this HTTP
+    // hook (same event and URL) with allowPrivateAddress. A repository's config cannot opt itself in.
+    const allowPrivate = (event: EventName, hook: HttpHook.Hook) =>
+      config.getGlobal().pipe(
+        Effect.map((global) =>
+          ((global.hooks?.[CONFIG_KEYS[event]] ?? []) as ReadonlyArray<ConfigHooksV1.Hook>).some(
+            (entry) => HttpHook.isHook(entry) && entry.url === hook.url && entry.allowPrivateAddress === true,
+          ),
+        ),
+        Effect.orElseSucceed(() => false),
+      )
 
     const has: Interface["has"] = (hooks, event) => ((hooks?.[CONFIG_KEYS[event]] as unknown[] | undefined)?.length ?? 0) > 0
 
     const run: Interface["run"] = (input) =>
       Effect.gen(function* () {
         const commands = yield* Effect.filter(
-          (input.hooks?.[CONFIG_KEYS[input.event]] as ReadonlyArray<ConfigHooksV1.HookCommand> | undefined) ?? [],
+          (input.hooks?.[CONFIG_KEYS[input.event]] as ReadonlyArray<ConfigHooksV1.Hook> | undefined) ?? [],
           (hook) => matches(input.event, hook, input.toolName),
         )
         if (commands.length === 0) return EMPTY
@@ -233,6 +258,32 @@ const layer = Layer.effect(
         let blocked: string | undefined
 
         for (const hook of commands) {
+          if (HttpHook.isHook(hook)) {
+            const target = `${input.event} HTTP hook to ${HttpHook.describe(hook.url)}`
+            const allowPrivateAddress = hook.allowPrivateAddress === true && (yield* allowPrivate(input.event, hook))
+            const sent = yield* Effect.promise((interrupted) => {
+              const signal = input.signal ? AbortSignal.any([input.signal, interrupted]) : interrupted
+              return HttpHook.post({ hook, body: stdin, allowPrivate: allowPrivateAddress, signal })
+            })
+            if (sent.kind === "abort") break
+            if (sent.kind === "timeout") {
+              warnings.push(`${target} timed out`)
+              continue
+            }
+            if (sent.kind === "error") {
+              warnings.push(`${target} failed: ${sent.message}`)
+              continue
+            }
+            // A 2xx response body is read exactly like a command hook's standard output on exit code 0.
+            const verdict = decide(input.event, sent.body.trim().slice(0, MAX_OUTPUT))
+            if (verdict.blocked !== undefined) {
+              blocked = verdict.blocked
+              break
+            }
+            if (verdict.context) context.push(verdict.context)
+            continue
+          }
+
           const outcome = yield* spawnHook({
             command: hook.command,
             shell,
@@ -263,14 +314,12 @@ const layer = Layer.effect(
             warnings.push(`${input.event} hook exited with code ${outcome.code}: ${stderr.split("\n")[0] ?? hook.command}`)
             continue
           }
-          const decision = parseDecision(stdout)
-          if (decision?.decision === "block") {
-            blocked = decision.reason || `Blocked by a ${input.event} hook.`
+          const verdict = decide(input.event, stdout)
+          if (verdict.blocked !== undefined) {
+            blocked = verdict.blocked
             break
           }
-          if (decision?.additionalContext) context.push(decision.additionalContext)
-          else if (stdout && !decision && (input.event === "UserPromptSubmit" || input.event === "SessionStart"))
-            context.push(stdout)
+          if (verdict.context) context.push(verdict.context)
         }
 
         // What a hook printed goes to the model and the screen: mask it like any other tool output.
@@ -287,6 +336,6 @@ const layer = Layer.effect(
   }),
 )
 
-export const node = LayerNode.make({ service: Service, layer, deps: [CrossSpawnSpawner.node] })
+export const node = LayerNode.make({ service: Service, layer, deps: [CrossSpawnSpawner.node, Config.node] })
 
 export * as Hooks from "."
