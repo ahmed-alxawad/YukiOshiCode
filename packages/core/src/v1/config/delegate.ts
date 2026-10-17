@@ -15,6 +15,10 @@ export const Agent = Schema.Struct({
   timeout: Schema.optional(PositiveInt).annotate({
     description: "Timeout in milliseconds for the delegated session. Defaults to 30 minutes (1,800,000 ms).",
   }),
+  handshakeTimeout: Schema.optional(Schema.Unknown).annotate({
+    description:
+      "Milliseconds the agent may take to answer each ACP handshake step (initialize and new session). Defaults to 60 seconds (60,000 ms). Raise it for slow first starts such as a first npx download. Values that are not a positive finite number are ignored.",
+  }),
 })
 export type Agent = Schema.Schema.Type<typeof Agent>
 

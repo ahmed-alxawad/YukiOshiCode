@@ -430,7 +430,7 @@ Operations that invoke external binaries or network requests enforce built-in ti
 | **CLI upgrades** | 5 minutes (`300000` ms) | `YUKIOSHI_UPGRADE_TIMEOUT_MS` | Governs release downloads during `yukioshi upgrade` |
 | **Scheduled jobs** | 2 hours (`7200` s) | `YUKIOSHI_SCHEDULE_MAX_RUN_SECONDS` | Stops unattended scheduled runs that exceed runtime |
 | **ACP agent delegation** | 30 minutes (`1800000` ms) | `delegate.agents.<name>.timeout` | Session execution limit for delegated ACP agents |
-| **ACP protocol handshake** | 60 seconds (`60000` ms) | — | Step limit for ACP `initialize` and session setup |
+| **ACP protocol handshake** | 60 seconds (`60000` ms) | `delegate.agents.<name>.handshakeTimeout` | Step limit for ACP `initialize` and session setup |
 | **OAuth requests** | 30 seconds (`30000` ms) | — | Per-request timeout for auth endpoints |
 | **Device-code sign-in** | 15 minutes (`900000` ms) | — | Total expiration window for device authorization |
 

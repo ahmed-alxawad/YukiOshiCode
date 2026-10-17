@@ -486,7 +486,7 @@ Delegated agents use their own existing authentication and logins (such as `~/.c
 ### Timeouts
 
 - **Session timeout**: Set `timeout` (in milliseconds) on an agent under `delegate.agents.<name>` to bound the delegated task duration. It defaults to 30 minutes (`1800000` ms).
-- **Handshake limit**: ACP connection steps (`initialize` and session creation) enforce an independent 60-second limit (`60000` ms) so an agent that hangs during startup does not block the turn for the full session timeout.
+- **Handshake limit**: ACP connection steps (`initialize` and session creation) enforce an independent 60-second limit (`60000` ms) so an agent that hangs during startup does not block the turn for the full session timeout. For slow first starts (such as a first `npx` download) raise it per agent with `delegate.agents.<name>.handshakeTimeout` in milliseconds; values that are not a positive number are ignored.
 
 ### What the delegated agent can see
 

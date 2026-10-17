@@ -419,7 +419,10 @@ export async function runDelegate(options: DelegateRunOptions): Promise<Delegate
 
   // The ACP handshake (initialize, new session) has its own short limit: an agent that starts but never answers
   // must not hold the turn for the whole delegation timeout (30 minutes by default).
-  const handshakeMs = Math.min(timeoutMs, options.handshakeTimeoutMs ?? HANDSHAKE_TIMEOUT)
+  const configured = (agentConfig as { handshakeTimeout?: unknown }).handshakeTimeout
+  const configuredMs =
+    typeof configured === "number" && Number.isFinite(configured) && configured > 0 ? configured : undefined
+  const handshakeMs = Math.min(timeoutMs, options.handshakeTimeoutMs ?? configuredMs ?? HANDSHAKE_TIMEOUT)
   const handshake = <T>(step: Promise<T>) => {
     let timer: NodeJS.Timeout | undefined
     const limit = new Promise<never>((_, reject) => {
@@ -427,7 +430,7 @@ export async function runDelegate(options: DelegateRunOptions): Promise<Delegate
         () =>
           reject(
             new Error(
-              `Agent "${agentName}" started but did not answer the ACP handshake within ${Math.round(handshakeMs / 1000)}s. Check that "${cmd}" speaks the Agent Client Protocol (ACP) and is logged in. If it has to download or sign in on first use, run it once by hand first.`,
+              `Agent "${agentName}" started but did not answer the ACP handshake within ${handshakeMs >= 1000 ? Math.round(handshakeMs / 1000) + "s" : handshakeMs + "ms"}. To allow more time set \`delegate.agents.${agentName}.handshakeTimeout\` (milliseconds). Check that "${cmd}" speaks the Agent Client Protocol (ACP) and is logged in. If it has to download or sign in on first use, run it once by hand first or raise that setting.`,
             ),
           ),
         handshakeMs,
