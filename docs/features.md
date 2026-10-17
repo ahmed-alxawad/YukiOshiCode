@@ -95,6 +95,36 @@ after `loop.max_runs` runs (default 50). Intervals shorter than
 session, and it lasts as long as the terminal UI or `yukioshi serve` keeps
 running; `yukioshi run` exits after the first run.
 
+## Sending a message while the agent works
+
+You do not have to wait for a turn to end. A message you send while the agent
+works joins the current turn: when the running tool calls finish and their
+results are recorded, the next request to the model includes your message,
+after those results, the same way Claude Code and Codex steer a running turn.
+The terminal UI marks the message `QUEUED` until then. If the model is writing
+a reply without tools, your message goes into the request right after that
+reply. If the turn was already ending (stop hooks, the checkpoint, the
+`/goal` check), your message starts the next turn instead; it is never
+dropped. Several messages are delivered in the order you sent them.
+Interrupting the turn (Esc in the terminal UI) does not answer messages that
+were still waiting; send another message to continue.
+
+This works the same for every client of the HTTP API: a message posted to
+`POST /session/<id>/message` or `POST /session/<id>/prompt_async` while the
+session is busy, for example from `yukioshi run --attach <url> --session <id>
+"…"` or an ACP client, joins the running turn.
+
+The minimal interface (`yukioshi --mini`, `yukioshi attach <url> --mini`) keeps
+such messages in its own queue by default, where you can still edit or remove them
+(`<leader>q`) before the turn ends. Set `"steer": true` to send them into the
+running turn right away instead; each one appears in the transcript when the
+model starts answering it. Shell commands (`!`) and slash commands still wait
+for the turn to end.
+
+```jsonc
+{ "steer": true }
+```
+
 ## Review, commit, and pull requests
 
 | Command                  | Does |

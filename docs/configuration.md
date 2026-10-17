@@ -154,6 +154,7 @@ Normal `{env:…}` substitution applies to both aliases. If a local MCP server s
 | `subagent_depth`       | how deep subagents may nest (default 1: no subagents of subagents) | [Features](features.md#subagents)           |
 | `snapshot`             | file snapshots for undo (default true)                             |                                             |
 | `autoupdate`           | daily background updates: not set or `true` installs newer minor and patch releases, `"notify"` only notifies, `false` never checks (global config only) | [Installation](installation.md#automatic-updates) |
+| `steer`                | the minimal interface (`--mini`) sends a message typed during a turn into that turn instead of its queue (off by default; the terminal UI and the HTTP API always do) | [Features](features.md#sending-a-message-while-the-agent-works) |
 
 In a repository you have not trusted, `hooks`, `plugin`, `delegate`, `webhooks`,
 `browser`, local MCP servers, `lsp` and `formatter` entries with their own command, and

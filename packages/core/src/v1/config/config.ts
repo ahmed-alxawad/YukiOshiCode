@@ -135,7 +135,7 @@ export const Info = Schema.Struct({
   }),
   steer: Schema.optional(Schema.Boolean).annotate({
     description:
-      "Send a message typed while the agent works right away, so it reaches the model at the next safe point of the current turn (after the running tool calls finish) instead of waiting in the queue until the turn ends. Applies to the split-footer mode (yukioshi --mini), which otherwise queues such messages; the full-screen terminal UI and the HTTP API always deliver them this way. Defaults to false.",
+      "Send a message typed while the agent works right away, so it reaches the model at the next safe point of the current turn (after the running tool calls finish) instead of waiting in the queue until the turn ends. Applies to the minimal interface (yukioshi --mini), which otherwise queues such messages; the full-screen terminal UI and the HTTP API always deliver them this way. Defaults to false.",
   }),
   plugin: Schema.optional(Schema.mutable(Schema.Array(ConfigPluginV1.Spec))),
   share: Schema.optional(Schema.Literals(["manual", "auto", "disabled"])).annotate({
