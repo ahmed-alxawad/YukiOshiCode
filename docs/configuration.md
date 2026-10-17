@@ -155,6 +155,7 @@ Normal `{env:…}` substitution applies to both aliases. If a local MCP server s
 | `snapshot`             | file snapshots for undo (default true)                             |                                             |
 | `autoupdate`           | daily background updates: not set or `true` installs newer minor and patch releases, `"notify"` only notifies, `false` never checks (global config only) | [Installation](installation.md#automatic-updates) |
 | `steer`                | the minimal interface (`--mini`) sends a message typed during a turn into that turn instead of its queue (off by default; the terminal UI and the HTTP API always do) | [Features](features.md#sending-a-message-while-the-agent-works) |
+| `message_mode` (`tui.json`) | what Enter does in the terminal UI while the agent works: `"queue"` (default) holds the message until the turn ends, `"steer"` sends it at once; the command palette toggle overrides it. `steer` above is the same choice for `--mini` | [Features](features.md#sending-a-message-while-the-agent-works) |
 
 In a repository you have not trusted, `hooks`, `plugin`, `delegate`, `webhooks`,
 `browser`, local MCP servers, `lsp` and `formatter` entries with their own command, and

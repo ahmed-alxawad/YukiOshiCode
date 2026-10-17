@@ -97,7 +97,19 @@ running; `yukioshi run` exits after the first run.
 
 ## Sending a message while the agent works
 
-You do not have to wait for a turn to end. A message you send while the agent
+The terminal UI has two message modes. In **queue** mode (the default, which
+changes the earlier behaviour of the terminal UI) a message you type while the
+agent works is held by the client, shown with the `QUEUED` label, and sent
+automatically, one at a time and in order, once the turn has finished.
+Interrupting the turn (Esc) keeps held messages and sends them afterwards;
+quitting discards them. Shell (`!`) and slash commands follow the same mode.
+In **send immediately** (steer) mode the message is posted at once and joins the
+running turn as described below. Switch with the command palette entry
+"Message mode" (remembered), or set `"message_mode": "steer"` in `tui.json`
+(`"queue"` is the default). This is the terminal-UI counterpart of the
+`"steer"` setting of the minimal interface.
+
+In send immediately mode you do not have to wait for a turn to end. A message you send while the agent
 works joins the current turn: when the running tool calls finish and their
 results are recorded, the next request to the model includes your message,
 after those results, the same way Claude Code and Codex steer a running turn.

@@ -70,6 +70,10 @@ export const Info = Schema.Struct({
   scroll_speed: Schema.optional(ScrollSpeed).annotate({ description: "TUI scroll speed" }),
   scroll_acceleration: Schema.optional(ScrollAcceleration),
   diff_style: Schema.optional(DiffStyle),
+  message_mode: Schema.optional(Schema.Literals(["steer", "queue"])).annotate({
+    description:
+      "What Enter does while the agent works: 'queue' (default) holds the message until the turn ends, then sends held messages in order; 'steer' sends it at once so it joins the running turn. Related to the 'steer' setting of the minimal interface in yukioshi.json",
+  }),
   cursor: Schema.optional(Cursor),
   mouse: Schema.optional(Schema.Boolean).annotate({ description: "Enable or disable mouse capture (default: true)" }),
 })

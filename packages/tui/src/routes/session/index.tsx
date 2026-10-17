@@ -1,3 +1,4 @@
+import { messageQueue } from "../../component/prompt/message-queue"
 import {
   batch,
   createContext,
@@ -1369,6 +1370,9 @@ export function Session() {
                     </Switch>
                   )}
                 </For>
+                <For each={messageQueue.held(route.sessionID)}>
+                  {(held) => <HeldMessage text={held.text} />}
+                </For>
               </scrollbox>
               <box flexShrink={0}>
                 <Show when={permissions().length > 0}>
@@ -1435,6 +1439,28 @@ export function Session() {
         </box>
       </context.Provider>
     </LocationProvider>
+  )
+}
+
+function HeldMessage(props: { text: string }) {
+  const local = useLocal()
+  const { theme } = useTheme()
+  const color = createMemo(() => local.agent.color(local.agent.current()?.name ?? ""))
+  const queuedFg = createMemo(() => selectedForeground(theme, color()))
+  return (
+    <box
+      border={["left"]}
+      borderColor={color()}
+      customBorderChars={SplitBorder.customBorderChars}
+      marginTop={1}
+    >
+      <box paddingTop={1} paddingBottom={1} paddingLeft={2} backgroundColor={theme.backgroundPanel} flexShrink={0}>
+        <text fg={theme.text}>{props.text}</text>
+        <text fg={theme.textMuted}>
+          <span style={{ bg: color(), fg: queuedFg(), bold: true }}> QUEUED </span>
+        </text>
+      </box>
+    </box>
   )
 }
 

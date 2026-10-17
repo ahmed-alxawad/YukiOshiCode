@@ -61,6 +61,7 @@ import { DialogAlert } from "./ui/dialog-alert"
 import { DialogConfirm } from "./ui/dialog-confirm"
 import { ToastProvider, useToast } from "./ui/toast"
 import { isDefaultTitle } from "./util/session"
+import { resolveMessageMode, toggleMessageMode } from "./component/prompt/message-queue"
 import { KVProvider, useKV } from "./context/kv"
 import * as Model from "./util/model"
 import { ArgsProvider, useArgs, type Args } from "./context/args"
@@ -136,6 +137,7 @@ const appBindingCommands = [
   "app.toggle.animations",
   "app.toggle.file_context",
   "app.toggle.diffwrap",
+  "app.toggle.message_mode",
   "app.toggle.paste_summary",
   "app.toggle.session_directory_filter",
 ] as const
@@ -448,6 +450,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     renderer.clearSelection()
   }
   const [terminalTitleEnabled, setTerminalTitleEnabled] = createSignal(kv.get("terminal_title_enabled", true))
+  const messageMode = () => resolveMessageMode(kv.get("message_mode", undefined), tuiConfig.message_mode)
   const [pasteSummaryEnabled, setPasteSummaryEnabled] = createSignal(
     kv.get("paste_summary_enabled", !sync.data.config.experimental?.disable_paste_summary),
   )
@@ -929,6 +932,23 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         run: () => {
           const current = kv.get("diff_wrap_mode", "word")
           kv.set("diff_wrap_mode", current === "word" ? "none" : "word")
+          dialog.clear()
+        },
+      },
+      {
+        name: "app.toggle.message_mode",
+        title:
+          messageMode() === "queue"
+            ? "Message mode: queue (switch to send immediately)"
+            : "Message mode: send immediately (switch to queue)",
+        category: "System",
+        run: () => {
+          const next = toggleMessageMode(messageMode())
+          kv.set("message_mode", next)
+          toast.show({
+            message: next === "queue" ? "Messages wait until the turn ends" : "Messages are sent immediately",
+            variant: "info",
+          })
           dialog.clear()
         },
       },
