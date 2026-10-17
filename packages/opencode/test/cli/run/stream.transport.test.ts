@@ -2360,4 +2360,185 @@ describe("run stream transport", () => {
       await transport.close()
     }
   })
+
+  test("steers a prompt into the running turn and shows it when the reply to it starts", async () => {
+    const src = eventFeed()
+    const ui = footer()
+    const sent: { messageID?: string; text?: string }[] = []
+    let running = true
+    const user = (id: string): SdkEvent => ({
+      id: `evt-${id}`,
+      type: "message.updated",
+      properties: {
+        sessionID: "session-1",
+        info: {
+          id,
+          sessionID: "session-1",
+          role: "user",
+          time: { created: 1 },
+          agent: "build",
+          model: { providerID: "openai", modelID: "gpt-5" },
+        },
+      },
+    })
+    const reply = (id: string, parentID: string): SdkEvent => ({
+      id: `evt-${id}`,
+      type: "message.updated",
+      properties: {
+        sessionID: "session-1",
+        info: {
+          ...(assistantMessage({ sessionID: "session-1", id, parts: [] }).info as Extract<
+            SessionMessage["info"],
+            { role: "assistant" }
+          >),
+          parentID,
+        },
+      },
+    })
+    const transport = await createSessionTransport({
+      sdk: sdk({
+        stream: src.stream,
+        status: () => ok(statusMap(running)),
+        promptAsync: async (input) => {
+          const parts = input?.parts ?? []
+          const text = parts.find((part) => part.type === "text")
+          sent.push({ messageID: input?.messageID, text: text?.type === "text" ? text.text : undefined })
+          return ok(undefined)
+        },
+      }),
+      sessionID: "session-1",
+      thinking: true,
+      limits: () => ({}),
+      footer: ui.api,
+    })
+
+    const steer = (text: string, messageID: string, shown: string[]) =>
+      transport.steerPrompt({
+        agent: "build",
+        model: undefined,
+        variant: undefined,
+        prompt: { text, parts: [], messageID },
+        show: () => {
+          shown.push(text)
+        },
+      })
+
+    try {
+      const shown: string[] = []
+      expect(steer("too early", "msg-early", shown)).toBe(false)
+
+      const run = transport.runPromptTurn({
+        agent: "build",
+        model: undefined,
+        variant: undefined,
+        prompt: { text: "first", parts: [], messageID: "msg-user-1" },
+        files: [],
+        includeFiles: false,
+      })
+      await waitFor(() => (sent.length === 1 ? true : undefined))
+      await Bun.sleep(20)
+      src.push(busy())
+      await Bun.sleep(20)
+      // The turn's own prompt is not saved yet: joining now could put the steered prompt first.
+      expect(steer("steer one", "msg-user-2", shown)).toBe(false)
+      src.push(user("msg-user-1"))
+      src.push(reply("msg-1", "msg-user-1"))
+      await waitFor(() => (steer("steer one", "msg-user-2", shown) ? true : undefined))
+      expect(steer("steer two", "msg-user-3", shown)).toBe(true)
+      await waitFor(() => (sent.length === 3 ? true : undefined))
+      expect(sent).toEqual([
+        { messageID: "msg-user-1", text: "first" },
+        { messageID: "msg-user-2", text: "steer one" },
+        { messageID: "msg-user-3", text: "steer two" },
+      ])
+      expect(shown).toEqual([])
+
+      src.push(user("msg-user-2"))
+      src.push(user("msg-user-3"))
+      src.push(reply("msg-2", "msg-user-3"))
+      await waitFor(() => (shown.length === 2 ? true : undefined))
+      expect(shown).toEqual(["steer one", "steer two"])
+
+      running = false
+      src.push(idle())
+      await run
+    } finally {
+      src.close()
+      await transport.close()
+    }
+  })
+
+  test("shows a steered prompt when the turn ends before any reply to it", async () => {
+    const src = eventFeed()
+    const ui = footer()
+    let running = true
+    let calls = 0
+    const transport = await createSessionTransport({
+      sdk: sdk({
+        stream: src.stream,
+        status: () => ok(statusMap(running)),
+        promptAsync: async () => {
+          calls += 1
+          if (calls === 1) {
+            queueMicrotask(() => {
+              src.push(busy())
+              src.push({
+                id: "evt-user-1",
+                type: "message.updated",
+                properties: {
+                  sessionID: "session-1",
+                  info: {
+                    id: "msg-user-1",
+                    sessionID: "session-1",
+                    role: "user",
+                    time: { created: 1 },
+                    agent: "build",
+                    model: { providerID: "openai", modelID: "gpt-5" },
+                  },
+                },
+              })
+            })
+          }
+          return ok(undefined)
+        },
+      }),
+      sessionID: "session-1",
+      thinking: true,
+      limits: () => ({}),
+      footer: ui.api,
+    })
+
+    try {
+      const shown: string[] = []
+      const run = transport.runPromptTurn({
+        agent: "build",
+        model: undefined,
+        variant: undefined,
+        prompt: { text: "first", parts: [], messageID: "msg-user-1" },
+        files: [],
+        includeFiles: false,
+      })
+      await waitFor(() =>
+        transport.steerPrompt({
+          agent: "build",
+          model: undefined,
+          variant: undefined,
+          prompt: { text: "late", parts: [], messageID: "msg-user-2" },
+          show: () => {
+            shown.push("late")
+          },
+        })
+          ? true
+          : undefined,
+      )
+      expect(shown).toEqual([])
+      running = false
+      src.push(idle())
+      await run
+      expect(shown).toEqual(["late"])
+    } finally {
+      src.close()
+      await transport.close()
+    }
+  })
 })

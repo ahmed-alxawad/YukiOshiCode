@@ -478,4 +478,115 @@ describe("run runtime queue", () => {
     ui.submit("one")
     await expect(task).rejects.toThrow("boom")
   })
+
+  test("steer hands an ordinary prompt typed during a turn to that turn instead of queueing it", async () => {
+    const ui = footer()
+    const turns: string[] = []
+    const steered: string[] = []
+    let wake: (() => void) | undefined
+    const gate = new Promise<void>((resolve) => {
+      wake = resolve
+    })
+
+    const task = runPromptQueue({
+      footer: ui.api,
+      steer: (prompt) => {
+        steered.push(prompt.text)
+        return true
+      },
+      run: async (input) => {
+        turns.push(input.text)
+        await gate
+        ui.api.close()
+      },
+    })
+
+    ui.submit("one")
+    await Promise.resolve()
+    ui.submit("two")
+    ui.submit("three")
+    await Promise.resolve()
+
+    expect(turns).toEqual(["one"])
+    expect(steered).toEqual(["two", "three"])
+    const queued = ui.events.findLast((item) => item.type === "queued.prompts")
+    expect(queued?.type === "queued.prompts" ? queued.prompts : []).toEqual([])
+
+    wake?.()
+    await task
+    expect(turns).toEqual(["one"])
+  })
+
+  test("queues the prompt as before when steering declines it", async () => {
+    const ui = footer()
+    const turns: string[] = []
+    let wake: (() => void) | undefined
+    const gate = new Promise<void>((resolve) => {
+      wake = resolve
+    })
+
+    const task = runPromptQueue({
+      footer: ui.api,
+      steer: () => false,
+      run: async (input) => {
+        turns.push(input.text)
+        if (turns.length === 1) {
+          await gate
+          return
+        }
+
+        ui.api.close()
+      },
+    })
+
+    ui.submit("one")
+    await Promise.resolve()
+    ui.submit("two")
+    await Promise.resolve()
+    const queued = ui.events.findLast((item) => item.type === "queued.prompts")
+    expect(queued?.type === "queued.prompts" ? queued.prompts.map((item) => item.prompt.text) : []).toEqual(["two"])
+
+    wake?.()
+    await task
+    expect(turns).toEqual(["one", "two"])
+  })
+
+  test("never steers shell prompts, and keeps prompts behind queued work in order", async () => {
+    const ui = footer()
+    const turns: string[] = []
+    const steered: string[] = []
+    let wake: (() => void) | undefined
+    const gate = new Promise<void>((resolve) => {
+      wake = resolve
+    })
+
+    const task = runPromptQueue({
+      footer: ui.api,
+      steer: (prompt) => {
+        steered.push(prompt.text)
+        return true
+      },
+      run: async (input) => {
+        turns.push(input.text)
+        if (turns.length === 1) {
+          await gate
+          return
+        }
+
+        if (turns.length === 3) ui.api.close()
+      },
+    })
+
+    ui.submit("one")
+    await Promise.resolve()
+    ui.submit("ls", "shell")
+    ui.submit("after")
+    await Promise.resolve()
+
+    expect(steered).toEqual([])
+
+    wake?.()
+    await task
+    expect(turns).toEqual(["one", "ls", "after"])
+  })
 })

@@ -4,6 +4,9 @@
 // here. The queue drains one turn at a time; ordinary prompts waiting behind
 // an active ordinary turn are exposed for edit/removal until they begin.
 //
+// With `steer` on (config), an ordinary prompt submitted during an ordinary
+// turn goes to that turn right away instead (see QueueInput.steer).
+//
 // The queue also handles /exit, /quit, and /new commands, empty-prompt rejection,
 // and tracks per-turn wall-clock duration for the footer status line.
 //
@@ -30,6 +33,9 @@ export type QueueInput = {
   onSend?: (prompt: RunPrompt) => void
   onNewSession?: () => void | Promise<void>
   run: (prompt: RunPrompt, signal: AbortSignal) => Promise<void>
+  // Hands an ordinary prompt submitted during an ordinary turn to that turn, so the
+  // model sees it at the turn's next safe point. Returns false to queue it instead.
+  steer?: (prompt: RunPrompt) => boolean
 }
 
 type State = {
@@ -284,6 +290,10 @@ export async function runPromptQueue(input: QueueInput): Promise<void> {
       !prompt.command &&
       !isNewCommand(prompt.text)
     ) {
+      if (state.queue.length === 0 && input.steer?.(prompt)) {
+        return
+      }
+
       const queued: FooterQueuedPrompt = {
         messageID: MessageID.ascending(),
         partID: PartID.ascending(),

@@ -12,6 +12,10 @@
 // the turn is aborted (user interrupt), it flushes any in-progress parts as
 // interrupted entries.
 //
+// With `steer` on, steerPrompt() sends a prompt into the running turn instead
+// of starting a new one; its user row is shown once the server starts the
+// assistant reply that answers it (or when the turn ends).
+//
 // The tick counter prevents stale idle events from resolving the wrong turn.
 // We also re-check live session status before resolving an idle event so a
 // delayed idle from an older turn cannot complete a newer busy turn.
@@ -84,6 +88,8 @@ type Wait = {
   tick: number
   armed: boolean
   live: boolean
+  // The ordinary prompt that started this turn; steering waits until the server saved it.
+  messageID?: string
   onVisibleOutput?: (anchor: LocalReplayAnchor) => void
   done: Deferred.Deferred<void, unknown>
 }
@@ -99,8 +105,15 @@ export type SessionTurnInput = {
   signal?: AbortSignal
 }
 
+export type SessionSteerInput = Omit<SessionTurnInput, "files" | "includeFiles" | "onVisibleOutput" | "signal"> & {
+  // Shows the prompt's user row; called once the model is about to see it.
+  show: () => void
+}
+
 export type SessionTransport = {
   runPromptTurn(input: SessionTurnInput): Promise<void>
+  // Sends an ordinary prompt into the running turn. False when there is no turn to join yet.
+  steerPrompt(input: SessionSteerInput): boolean
   selectSubagent(sessionID: string | undefined): void
   replayOnResize(input: SessionResizeReplayInput): Promise<boolean>
   close(): Promise<void>
@@ -121,10 +134,12 @@ type State = {
   blockerTick: number
   selectedSubagent?: string
   blockers: Map<string, number>
+  steered: { messageID: string; show: () => void }[]
 }
 
 type TransportService = {
   readonly runPromptTurn: (input: SessionTurnInput) => Effect.Effect<void, unknown>
+  readonly steerPrompt: (input: SessionSteerInput) => Effect.Effect<boolean>
   readonly selectSubagent: (sessionID: string | undefined) => Effect.Effect<void>
   readonly replayOnResize: (input: SessionResizeReplayInput) => Effect.Effect<boolean>
   readonly close: () => Effect.Effect<void>
@@ -450,6 +465,7 @@ function createLayer(input: StreamInput) {
           footerView: { type: "prompt" },
           blockerTick: 0,
           blockers: new Map(),
+          steered: [],
         }
         let booting = true
         let replaying = false
@@ -871,7 +887,19 @@ function createLayer(input: StreamInput) {
           }
         })
 
+        // Shows steered prompts up to `messageID` (all of them without one), oldest first.
+        const reveal = (messageID?: string) => {
+          const index = messageID ? state.steered.findIndex((item) => item.messageID === messageID) : -2
+          if (index === -1) {
+            return
+          }
+
+          const shown = index === -2 ? state.steered.splice(0) : state.steered.splice(0, index + 1)
+          for (const item of shown) item.show()
+        }
+
         const flush = (type: "turn.abort" | "turn.cancel") => {
+          reveal()
           const commits: StreamCommit[] = []
           flushInterrupted(state.data, commits)
           syncFooter(commits)
@@ -890,6 +918,14 @@ function createLayer(input: StreamInput) {
 
               replayedParts.delete(event.properties.partID)
             }
+          }
+
+          if (
+            event.type === "message.updated" &&
+            event.properties.sessionID === input.sessionID &&
+            event.properties.info.role === "assistant"
+          ) {
+            reveal(event.properties.info.parentID)
           }
 
           trackBlocker(event)
@@ -1203,6 +1239,7 @@ function createLayer(input: StreamInput) {
             tick: state.tick,
             armed: false,
             live: false,
+            messageID: next.prompt.mode === "shell" || next.prompt.command ? undefined : next.prompt.messageID,
             onVisibleOutput: next.onVisibleOutput,
             done: yield* Deferred.make<void, unknown>(),
           }
@@ -1367,6 +1404,7 @@ function createLayer(input: StreamInput) {
                     if (state.wait === item) {
                       state.wait = undefined
                     }
+                    reveal()
 
                     if (status === "abort") {
                       flush("turn.abort")
@@ -1379,6 +1417,7 @@ function createLayer(input: StreamInput) {
               if (state.wait === item) {
                 state.wait = undefined
               }
+              reveal()
 
               const canceled = turn.signal.aborted || next.signal?.aborted === true || input.footer.isClosed || closed
               if (canceled) {
@@ -1409,6 +1448,54 @@ function createLayer(input: StreamInput) {
           return
         })
 
+        const steerPrompt = Effect.fn("RunStreamTransport.steerPrompt")(function* (next: SessionSteerInput) {
+          const wait = state.wait
+          const messageID = next.prompt.messageID
+          if (closed || input.footer.isClosed || state.fault || !wait?.armed || !wait.messageID || !messageID) {
+            return false
+          }
+
+          if (next.prompt.mode === "shell" || next.prompt.command) {
+            return false
+          }
+
+          // Join only once the server saved the turn's own prompt, so the two keep their order.
+          if (state.data.role.get(wait.messageID) !== "user") {
+            return false
+          }
+
+          state.steered.push({ messageID, show: next.show })
+          const req = {
+            sessionID: input.sessionID,
+            messageID,
+            agent: next.agent,
+            model: next.model,
+            variant: next.variant,
+            parts: [{ type: "text" as const, text: next.prompt.text }, ...next.prompt.parts],
+          }
+          input.trace?.write("send.steer", req)
+          yield* Effect.tryPromise({
+            try: () => input.sdk.session.promptAsync(req),
+            catch: (error) => error,
+          }).pipe(
+            Effect.flatMap((res) => (res.error ? Effect.fail<unknown>(res.error) : Effect.void)),
+            Effect.catch((error: unknown) =>
+              Effect.sync(() => {
+                reveal(messageID)
+                input.footer.append({
+                  kind: "error",
+                  text: formatUnknownError(error),
+                  phase: "start",
+                  source: "system",
+                  messageID,
+                })
+              }),
+            ),
+            Effect.forkIn(scope, { startImmediately: true }),
+          )
+          return true
+        })
+
         const selectSubagent = Effect.fn("RunStreamTransport.selectSubagent")((sessionID: string | undefined) =>
           Effect.sync(() => {
             if (closed) {
@@ -1431,6 +1518,7 @@ function createLayer(input: StreamInput) {
 
         return Service.of({
           runPromptTurn,
+          steerPrompt,
           selectSubagent,
           replayOnResize,
           close,
@@ -1455,6 +1543,7 @@ export async function createSessionTransport(input: StreamInput): Promise<Sessio
 
   return {
     runPromptTurn: (next) => runtime.runPromise((svc) => svc.runPromptTurn(next)),
+    steerPrompt: (next) => runtime.runSync((svc) => svc.steerPrompt(next)),
     selectSubagent: (sessionID) => runtime.runSync((svc) => svc.selectSubagent(sessionID)),
     replayOnResize: (next) => runtime.runPromise((svc) => svc.replayOnResize(next)),
     close: () => runtime.runPromise((svc) => svc.close()),

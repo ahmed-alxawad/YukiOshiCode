@@ -215,6 +215,7 @@ describe("run interactive runtime", () => {
             }, 0)
             return {
               runPromptTurn: async () => {},
+              steerPrompt: () => false,
               selectSubagent: () => {},
               replayOnResize: async () => false,
               close: async () => {},
@@ -235,4 +236,100 @@ describe("run interactive runtime", () => {
 
     expect(transportProviders).toEqual([[provider]])
   })
+
+  for (const steer of [true, false]) {
+    test(`config steer ${steer}: a prompt typed during a turn ${steer ? "goes into that turn" : "waits in the queue"}`, async () => {
+      const sdk = new OpencodeClient()
+      spyOn(sdk.config, "providers").mockImplementation(() => ok({ providers: [provider], default: {} }))
+      spyOn(sdk.config, "get").mockImplementation(() => ok({ steer } as never))
+      spyOn(sdk.session, "messages").mockImplementation(() => ok([]))
+      spyOn(sdk.session, "get").mockRejectedValue(new Error("not needed"))
+      spyOn(sdk.app, "agents").mockImplementation(() => ok([]))
+      spyOn(sdk.experimental.resource, "list").mockImplementation(() => ok({}))
+      spyOn(sdk.command, "list").mockImplementation(() => ok([]))
+
+      const ui = footer()
+      const submits = new Set<(prompt: { text: string; parts: [] }) => void>()
+      const appended: { kind: string; text: string }[] = []
+      ui.onPrompt = (fn) => {
+        submits.add(fn)
+        return () => {
+          submits.delete(fn)
+        }
+      }
+      ui.append = (commit) => {
+        appended.push({ kind: commit.kind, text: commit.text })
+      }
+      const turns: string[] = []
+      const steered: { text: string; agent: string | undefined }[] = []
+      const gate = defer<void>()
+      const started = defer<void>()
+
+      const task = runInteractiveMode(
+        {
+          sdk,
+          directory: "/tmp",
+          sessionID: "ses-1",
+          sessionTitle: "Session",
+          resume: true,
+          replay: false,
+          replayLimit: 100,
+          agent: "build",
+          model: { providerID: "openai", modelID: "gpt-5" },
+          variant: undefined,
+          files: [],
+          thinking: true,
+          backgroundSubagents: false,
+          initialInput: "one",
+        },
+        {
+          createRuntimeLifecycle: async () => ({
+            footer: ui,
+            onResize: () => () => {},
+            refreshTheme: () => {},
+            resetForReplay: () => Promise.resolve(),
+            close: () => Promise.resolve(),
+          }),
+          streamTransport: Promise.resolve({
+            createSessionTransport: async () => ({
+              runPromptTurn: async (next: { prompt: { text: string } }) => {
+                turns.push(next.prompt.text)
+                if (turns.length === 1) {
+                  started.resolve()
+                  await gate.promise
+                  return
+                }
+                ui.close()
+              },
+              steerPrompt: (next: { agent: string | undefined; prompt: { text: string }; show: () => void }) => {
+                steered.push({ text: next.prompt.text, agent: next.agent })
+                next.show()
+                return true
+              },
+              selectSubagent: () => {},
+              replayOnResize: async () => false,
+              close: async () => {},
+            }),
+            formatUnknownError: (error: unknown) => (error instanceof Error ? error.message : String(error)),
+          }),
+        },
+      )
+
+      await started.promise
+      await Bun.sleep(20)
+      for (const fn of submits) fn({ text: "two", parts: [] })
+      if (steer) {
+        expect(steered).toEqual([{ text: "two", agent: "build" }])
+        expect(appended.filter((item) => item.kind === "user").map((item) => item.text)).toEqual(["one", "two"])
+        gate.resolve()
+        await Bun.sleep(20)
+        ui.close()
+      } else {
+        expect(steered).toEqual([])
+        gate.resolve()
+      }
+      await task
+      expect(turns).toEqual(steer ? ["one"] : ["one", "two"])
+    })
+  }
 })

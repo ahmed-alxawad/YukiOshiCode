@@ -134,6 +134,8 @@ type RuntimeState = {
   selectSubagent?: (sessionID: string | undefined) => void
   session?: Promise<void>
   stream?: Promise<StreamState>
+  // The ready stream transport, for synchronous steering decisions.
+  transport?: StreamState["handle"]
 }
 
 function hasSession(input: RunRuntimeInput, state: RuntimeState) {
@@ -160,6 +162,17 @@ async function resolveBackgroundSubagents(ctx: BootContext): Promise<boolean> {
   try {
     const result = await ctx.sdk.experimental.capabilities.get({ directory: ctx.directory })
     return result.data?.backgroundSubagents === true
+  } catch {
+    return false
+  }
+}
+
+// Whether the config's `steer` is on: prompts typed during a turn go into that turn instead of the local queue.
+async function resolveSteer(ctx: BootContext): Promise<boolean> {
+  try {
+    const result = await ctx.sdk.config.get({ directory: ctx.directory })
+    const config = result.data
+    return !!config && "steer" in config && config.steer === true
   } catch {
     return false
   }
@@ -204,6 +217,10 @@ async function runInteractiveRuntime(input: RunRuntimeInput, deps: RunRuntimeDep
         })
   const savedTask = resolveSavedVariant(ctx.model)
   const backgroundTask = input.backgroundSubagents ? Promise.resolve(true) : resolveBackgroundSubagents(ctx)
+  let steer = false
+  void resolveSteer(ctx).then((value) => {
+    steer = value
+  })
   const [tuiConfig, session, savedVariant, backgroundSubagents] = await Promise.all([
     tuiConfigTask,
     sessionTask,
@@ -506,12 +523,14 @@ async function runInteractiveRuntime(input: RunRuntimeInput, deps: RunRuntimeDep
       }
 
       state.selectSubagent = (sessionID) => handle.selectSubagent(sessionID)
+      state.transport = handle
       return { mod, handle }
     })()
     state.stream = next
     void next.catch(() => {
       if (state.stream === next) {
         state.stream = undefined
+        state.transport = undefined
       }
     })
     return next
@@ -558,10 +577,44 @@ async function runInteractiveRuntime(input: RunRuntimeInput, deps: RunRuntimeDep
 
     const mod = await import("./runtime.queue")
     const createSession = input.createSession
+    // Prompts steered into the running turn; their local rows go once the turn ends and history has them.
+    const steered = new Set<string>()
     await mod.runPromptQueue({
       footer,
       initialInput: input.initialInput,
       trace: log,
+      steer: (prompt) => {
+        const transport = state.transport
+        if (!steer || !transport || state.demo) {
+          return false
+        }
+
+        const sent = { ...prompt, messageID: MessageID.ascending() }
+        const commit = {
+          kind: "user",
+          text: sent.text,
+          phase: "start",
+          source: "system",
+          messageID: sent.messageID,
+        } as const
+        const ok = transport.steerPrompt({
+          agent: state.agent,
+          model: state.model,
+          variant: state.activeVariant,
+          prompt: sent,
+          show: () => {
+            log?.write("ui.commit", commit)
+            footer.append(commit)
+            rememberLocal(commit)
+          },
+        })
+        if (ok) {
+          state.shown = true
+          state.history.push(sent)
+          steered.add(sent.messageID)
+        }
+        return ok
+      },
       onSend: (prompt) => {
         state.shown = true
         state.history.push(prompt)
@@ -587,6 +640,7 @@ async function runInteractiveRuntime(input: RunRuntimeInput, deps: RunRuntimeDep
               await footer.idle().catch(() => {})
               await state.stream?.then((item) => item.handle.close()).catch(() => {})
               state.stream = undefined
+              state.transport = undefined
               state.session = undefined
               state.selectSubagent = undefined
               state.shown = false
@@ -679,6 +733,12 @@ async function runInteractiveRuntime(input: RunRuntimeInput, deps: RunRuntimeDep
             state.localRows = state.localRows.filter(
               (row) => row.commit.kind !== "user" || row.commit.messageID !== prompt.messageID,
             )
+          }
+          if (steered.size > 0) {
+            state.localRows = state.localRows.filter(
+              (row) => row.commit.kind !== "user" || !row.commit.messageID || !steered.has(row.commit.messageID),
+            )
+            steered.clear()
           }
           includeFiles = false
         } catch (error) {

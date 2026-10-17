@@ -163,4 +163,17 @@ describe("steering over the HTTP API", () => {
       }).pipe(Effect.provide(TestLLMServer.layer)),
     30_000,
   )
+
+  it.live("GET /config reports the steer setting, so split-footer clients can read it", () =>
+    Effect.gen(function* () {
+      const read = (directory: string) =>
+        Effect.gen(function* () {
+          const sdk = yield* sdkFor(directory)
+          const config = (yield* Effect.promise(() => sdk.config.get())).data
+          return config && "steer" in config ? config.steer : undefined
+        })
+      expect(yield* read(yield* tmpdirScoped({ trusted: true, config: { steer: true } }))).toBe(true)
+      expect(yield* read(yield* tmpdirScoped({ trusted: true }))).toBeUndefined()
+    }),
+  )
 })
