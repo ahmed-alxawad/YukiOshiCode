@@ -33,7 +33,6 @@ import { ScheduleCommand } from "./cli/cmd/schedule"
 import { SkillCommand } from "./cli/cmd/skill"
 import { WorktreeCommand } from "./cli/cmd/worktree"
 import { ChildRegistry } from "@yukioshi/core/child-registry"
-import { lazyCommand } from "./cli/lazy-command"
 
 const args = hideBin(process.argv)
 const loadCommand = (name: import("./cli/lazy-commands").CommandName) =>
