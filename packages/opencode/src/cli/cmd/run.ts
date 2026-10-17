@@ -421,6 +421,10 @@ export const RunCommand = effectCmd({
           ? undefined
           : await readOutputSchema(args["output-schema"]).catch((error: Error) => die(error.message))
 
+      // Automatic updates: one stderr line about an earlier background update, and today's check in a
+      // detached background process. Never with --format json, so JSON output stays machine-readable.
+      if (args.format !== "json") await import("../upgrade").then((m) => m.runAutoUpdate()).catch(() => {})
+
       const replay = args.replay === false ? false : args.replay || args["replay-limit"] !== undefined
 
       // PWD is only trusted while it names the real working directory; a parent process can leave it stale.
