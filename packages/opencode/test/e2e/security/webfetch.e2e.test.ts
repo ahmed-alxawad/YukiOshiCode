@@ -5,7 +5,7 @@ import { Effect } from "effect"
 import { cliIt } from "../../lib/cli-process"
 import { reply } from "../../lib/llm-server"
 import { requestText, requestToolResults } from "../helpers"
-import { attacker, makeProject, plainEnv, stopOnExit } from "./util"
+import { attacker, makeProject, plainEnv, stopOnExit, userConfig } from "./util"
 
 const lastResult = (inputs: Record<string, unknown>[]) => requestToolResults(inputs.at(-1)!).at(-1) ?? ""
 
@@ -14,6 +14,7 @@ describe("security: webfetch", () => {
     "an endless streaming response is cut off at the size limit; a small one is returned",
     ({ home, llm, opencode }) =>
       Effect.gen(function* () {
+        userConfig(home, { webfetch: { allow_private: true } })
         const proj = makeProject(home)
         let sent = 0
         let cancelled = false
@@ -63,6 +64,7 @@ describe("security: webfetch", () => {
     "a redirect to another origin asks again; a redirect to file:// is refused even when everything is allowed",
     ({ home, llm, opencode }) =>
       Effect.gen(function* () {
+        userConfig(home, { webfetch: { allow_private: true } })
         const proj = makeProject(home)
         const target = attacker(() => new Response("REDIRECT-TARGET-SECREG", { headers: { "content-type": "text/plain" } }))
         yield* stopOnExit(target.server)

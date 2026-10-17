@@ -205,18 +205,46 @@ function request(target: Target, input: RequestInfo | URL, init?: RequestInit): 
         for (const entry of Array.isArray(value) ? value : [value]) responseHeaders.append(name, String(entry))
       }
       const status = response.statusCode ?? 500
+      const body =
+        [204, 205, 304].includes(status)
+          ? null
+          : new ReadableStream<Uint8Array>({
+              start(controller) {
+                response.on("data", (chunk: Buffer | Uint8Array) => {
+                  controller.enqueue(new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength))
+                })
+                response.on("end", () => {
+                  try {
+                    controller.close()
+                  } catch {}
+                })
+                response.on("error", (err) => {
+                  try {
+                    controller.error(err)
+                  } catch {}
+                })
+              },
+              cancel() {
+                response.destroy()
+                req.destroy()
+              },
+            })
       resolve(
-        new Response(
-          [204, 205, 304].includes(status) ? null : (Readable.toWeb(response) as unknown as ReadableStream<Uint8Array>),
-          {
-            headers: responseHeaders,
-            status,
-            statusText: response.statusMessage ?? "",
-          },
-        ),
+        new Response(body, {
+          headers: responseHeaders,
+          status,
+          statusText: response.statusMessage ?? "",
+        }),
       )
     })
     req.once("error", reject)
+    if (init?.signal) {
+      if (init.signal.aborted) {
+        req.destroy()
+        return reject(init.signal.reason)
+      }
+      init.signal.addEventListener("abort", () => req.destroy(), { once: true })
+    }
     req.end()
   })
 }

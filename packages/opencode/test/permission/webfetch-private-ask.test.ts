@@ -166,3 +166,27 @@ it.instance(
     }),
   { git: true },
 )
+
+it.instance(
+  "auto-all mode answers a private-address webfetch when allow_private is true",
+  () =>
+    Effect.gen(function* () {
+      const sessionID = SessionID.make("ses_webfetch_private_allowed")
+      const permission = yield* Permission.Service
+      yield* permission.setMode(sessionID, "auto-all")
+
+      const allowedMetadata = {
+        private_address: {
+          force_prompt: false,
+          refuse_unattended: false,
+          allow_private: true,
+          warning: "Allowed private address.",
+          addresses: [{ address: "127.0.0.1", family: 4, reason: "IPv4 loopback address" }],
+        },
+      }
+      const err = yield* askPrivate(sessionID, [...ALLOW_ALL], allowedMetadata)
+      expect(err).toBeUndefined()
+    }),
+  { git: true },
+)
+

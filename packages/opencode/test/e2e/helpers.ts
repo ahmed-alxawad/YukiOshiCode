@@ -1,3 +1,5 @@
+import fs from "node:fs"
+import path from "node:path"
 import { testProviderConfig } from "../lib/test-provider"
 
 export function config(url: string, extra: Record<string, unknown> = {}) {
@@ -15,8 +17,10 @@ export function runtimeEnv(home: string) {
 
 export function globalConfig(home: string, extra: Record<string, unknown>) {
   const directory = `${home}-config/yukioshi`
-  Bun.spawnSync(["mkdir", "-p", directory])
-  Bun.write(`${directory}/yukioshi.json`, JSON.stringify(extra))
+  fs.mkdirSync(directory, { recursive: true })
+  const file = path.join(directory, "yukioshi.json")
+  const current = fs.existsSync(file) ? (JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>) : {}
+  fs.writeFileSync(file, JSON.stringify({ ...current, ...extra }))
 }
 
 export function expectRun(output: { exitCode: number; stdout: string; stderr: string }, text: string) {

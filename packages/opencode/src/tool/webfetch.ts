@@ -63,7 +63,7 @@ export const WebFetchTool = Tool.define(
           const privateMetadata = (target: PrivateAddress.Target) =>
             target.risks.length > 0 ? { private_address: PrivateAddress.permissionMetadata(target, allowPrivate) } : {}
           const refuseUnattended = (target: PrivateAddress.Target) => {
-            if (target.risks.length > 0 && ctx.extra?.unattended === true) {
+            if (!allowPrivate && target.risks.length > 0 && ctx.extra?.unattended === true) {
               throw new Error("Webfetch refuses private or local network addresses in unattended mode")
             }
           }

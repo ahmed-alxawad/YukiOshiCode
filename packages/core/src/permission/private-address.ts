@@ -11,10 +11,10 @@ import type { PermissionV1 } from "@yukioshi/schema/permission-v1"
  * helpers to refuse the request with an explanation instead of auto-approving it.
  */
 
-/** True when the ask carries the private-address marker. */
+/** True when the ask carries the private-address marker and private addresses are not allowed. */
 export function isPrivateAddressAsk(metadata: PermissionV1.Request["metadata"] | undefined): boolean {
-  const marker = metadata?.["private_address"]
-  return typeof marker === "object" && marker !== null
+  const marker = metadata?.["private_address"] as { allow_private?: boolean } | undefined
+  return typeof marker === "object" && marker !== null && marker.allow_private !== true
 }
 
 function privateAddresses(metadata: PermissionV1.Request["metadata"] | undefined): string {

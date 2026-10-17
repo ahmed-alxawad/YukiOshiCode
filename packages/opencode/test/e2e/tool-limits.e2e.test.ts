@@ -3,7 +3,7 @@ import { Effect } from "effect"
 import path from "node:path"
 import { reply } from "../lib/llm-server"
 import { cliIt } from "../lib/cli-process"
-import { config, requestToolResults, runtimeEnv } from "./helpers"
+import { config, globalConfig, requestToolResults, runtimeEnv } from "./helpers"
 
 const marker = "[Repeated call]"
 
@@ -87,6 +87,7 @@ describe("tool limits", () => {
     "tool_limits timeout stops webfetch to a slow server and the turn finishes",
     ({ home, llm, opencode }) =>
       Effect.gen(function* () {
+        globalConfig(home, { webfetch: { allow_private: true } })
         let requests = 0
         const slow = Bun.serve({
           port: 0,
