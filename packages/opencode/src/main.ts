@@ -1,12 +1,38 @@
 import yargs from "yargs"
 import { hideBin } from "yargs/helpers"
+import { RunCommand } from "./cli/cmd/run"
+import { GenerateCommand } from "./cli/cmd/generate"
+import { ConsoleCommand } from "./cli/cmd/account"
+import { ProvidersCommand } from "./cli/cmd/providers"
+import { AgentCommand } from "./cli/cmd/agent"
+import { UpgradeCommand } from "./cli/cmd/upgrade"
+import { UninstallCommand } from "./cli/cmd/uninstall"
+import { ModelsCommand } from "./cli/cmd/models"
 import { UI } from "./cli/ui"
 import { InstallationVersion } from "@yukioshi/core/installation/version"
 import { FormatError, FormatUnexpectedError, debugRequested } from "./cli/error"
+import { ServeCommand } from "./cli/cmd/serve"
+import { DebugCommand } from "./cli/cmd/debug"
+import { StatsCommand } from "./cli/cmd/stats"
+import { TasksCommand } from "./cli/cmd/tasks"
+import { McpCommand } from "./cli/cmd/mcp"
+import { ExportCommand } from "./cli/cmd/export"
+import { ImportCommand } from "./cli/cmd/import"
+import { AttachCommand } from "./cli/cmd/attach"
+import { TuiThreadCommand } from "./cli/cmd/tui"
+import { AcpCommand } from "./cli/cmd/acp"
 import { EOL } from "os"
+import { PrCommand } from "./cli/cmd/pr"
+import { SessionCommand } from "./cli/cmd/session"
+import { DbCommand } from "./cli/cmd/db"
+import { PluginCommand } from "./cli/cmd/plug"
 import { Heap } from "./cli/heap"
+import { TrustCommand } from "./cli/cmd/trust"
+import { CheckpointCommand } from "./cli/cmd/checkpoint"
+import { ScheduleCommand } from "./cli/cmd/schedule"
+import { SkillCommand } from "./cli/cmd/skill"
+import { WorktreeCommand } from "./cli/cmd/worktree"
 import { ChildRegistry } from "@yukioshi/core/child-registry"
-import { lazyCommand } from "./cli/lazy-command"
 
 const args = hideBin(process.argv)
 
@@ -59,194 +85,33 @@ const cli = yargs(args)
   })
   .usage("")
   .completion("completion", "generate shell completion script")
-  .command(
-    lazyCommand({
-      command: "acp",
-      describe: "start ACP (Agent Client Protocol) server",
-      load: () => import("./cli/cmd/acp").then((m) => m.AcpCommand),
-    }),
-  )
-  .command(
-    lazyCommand({
-      command: "mcp",
-      describe: "manage MCP (Model Context Protocol) servers",
-      load: () => import("./cli/cmd/mcp").then((m) => m.McpCommand),
-    }),
-  )
-  .command(
-    lazyCommand({
-      command: "$0 [project]",
-      describe: "start yukioshi tui",
-      load: () => import("./cli/cmd/tui").then((m) => m.TuiThreadCommand),
-    }),
-  )
-  .command(
-    lazyCommand({
-      command: "attach <url>",
-      describe: "attach to a running yukioshi server",
-      load: () => import("./cli/cmd/attach").then((m) => m.AttachCommand),
-    }),
-  )
-  .command(
-    lazyCommand({
-      command: "run [message..]",
-      describe: "run yukioshi with a message",
-      load: () => import("./cli/cmd/run").then((m) => m.RunCommand),
-    }),
-  )
-  .command(
-    lazyCommand({ command: "generate", load: () => import("./cli/cmd/generate").then((m) => m.GenerateCommand) }),
-  )
-  .command(
-    lazyCommand({
-      command: "debug",
-      describe: "debugging and troubleshooting tools",
-      load: () => import("./cli/cmd/debug").then((m) => m.DebugCommand),
-    }),
-  )
-  .command(
-    lazyCommand({
-      command: "console",
-      describe: false,
-      load: () => import("./cli/cmd/account").then((m) => m.ConsoleCommand),
-    }),
-  )
-  .command(
-    lazyCommand({
-      command: "providers",
-      aliases: ["auth"],
-      describe: "manage AI providers and credentials",
-      load: () => import("./cli/cmd/providers").then((m) => m.ProvidersCommand),
-    }),
-  )
-  .command(
-    lazyCommand({
-      command: "agent",
-      describe: "manage agents",
-      load: () => import("./cli/cmd/agent").then((m) => m.AgentCommand),
-    }),
-  )
-  .command(
-    lazyCommand({
-      command: "upgrade [target]",
-      describe: "upgrade yukioshi to the latest or a specific version",
-      load: () => import("./cli/cmd/upgrade").then((m) => m.UpgradeCommand),
-    }),
-  )
-  .command(
-    lazyCommand({
-      command: "uninstall",
-      describe: "uninstall yukioshi and remove all related files",
-      load: () => import("./cli/cmd/uninstall").then((m) => m.UninstallCommand),
-    }),
-  )
-  .command(
-    lazyCommand({
-      command: "serve",
-      describe: "starts a headless yukioshi server",
-      load: () => import("./cli/cmd/serve").then((m) => m.ServeCommand),
-    }),
-  )
-  .command(
-    lazyCommand({
-      command: "models [provider]",
-      describe: "list all available models",
-      load: () => import("./cli/cmd/models").then((m) => m.ModelsCommand),
-    }),
-  )
-  .command(
-    lazyCommand({
-      command: "stats",
-      describe: "show token usage and cost statistics",
-      load: () => import("./cli/cmd/stats").then((m) => m.StatsCommand),
-    }),
-  )
-  .command(
-    lazyCommand({
-      command: "tasks",
-      describe:
-        "list the background jobs and background subagents of a session, or with --all every running session (read-only)",
-      load: () => import("./cli/cmd/tasks").then((m) => m.TasksCommand),
-    }),
-  )
-  .command(
-    lazyCommand({
-      command: "export [sessionID]",
-      describe: "export session data as JSON",
-      load: () => import("./cli/cmd/export").then((m) => m.ExportCommand),
-    }),
-  )
-  .command(
-    lazyCommand({
-      command: "import [file]",
-      describe: "import a session: an exported JSON file, a share URL, or a Claude Code or Codex conversation (.jsonl)",
-      load: () => import("./cli/cmd/import").then((m) => m.ImportCommand),
-    }),
-  )
-  .command(
-    lazyCommand({
-      command: "pr <number>",
-      describe: "fetch and checkout a GitHub PR branch, then run yukioshi",
-      load: () => import("./cli/cmd/pr").then((m) => m.PrCommand),
-    }),
-  )
-  .command(
-    lazyCommand({
-      command: "session",
-      describe: "manage sessions",
-      load: () => import("./cli/cmd/session").then((m) => m.SessionCommand),
-    }),
-  )
-  .command(
-    lazyCommand({
-      command: "plugin [action] [target] [extra]",
-      aliases: ["plug"],
-      describe: "install, list, or remove plugins (npm packages, or Claude Code plugins/marketplaces from git)",
-      load: () => import("./cli/cmd/plug").then((m) => m.PluginCommand),
-    }),
-  )
-  .command(
-    lazyCommand({
-      command: "trust [directory]",
-      describe: "allow this project to run its own hooks, plugins, and commands",
-      load: () => import("./cli/cmd/trust").then((m) => m.TrustCommand),
-    }),
-  )
-  .command(
-    lazyCommand({
-      command: "checkpoint <action> [id]",
-      describe: "list, inspect, restore, or prune durable git checkpoints",
-      load: () => import("./cli/cmd/checkpoint").then((m) => m.CheckpointCommand),
-    }),
-  )
-  .command(
-    lazyCommand({
-      command: "schedule",
-      describe: "manage scheduled tasks and recurring runs",
-      load: () => import("./cli/cmd/schedule").then((m) => m.ScheduleCommand),
-    }),
-  )
-  .command(
-    lazyCommand({
-      command: "skill <action> [target]",
-      describe: "install, list, or remove skills from git repositories",
-      load: () => import("./cli/cmd/skill").then((m) => m.SkillCommand),
-    }),
-  )
-  .command(
-    lazyCommand({
-      command: "worktree <action> [name]",
-      describe: "create, list, locate, or remove git worktrees for parallel sessions",
-      load: () => import("./cli/cmd/worktree").then((m) => m.WorktreeCommand),
-    }),
-  )
-  .command(
-    lazyCommand({
-      command: "db",
-      describe: "open an interactive sqlite3 shell or run a query",
-      load: () => import("./cli/cmd/db").then((m) => m.DbCommand),
-    }),
-  )
+  .command(AcpCommand)
+  .command(McpCommand)
+  .command(TuiThreadCommand)
+  .command(AttachCommand)
+  .command(RunCommand)
+  .command(GenerateCommand)
+  .command(DebugCommand)
+  .command(ConsoleCommand)
+  .command(ProvidersCommand)
+  .command(AgentCommand)
+  .command(UpgradeCommand)
+  .command(UninstallCommand)
+  .command(ServeCommand)
+  .command(ModelsCommand)
+  .command(StatsCommand)
+  .command(TasksCommand)
+  .command(ExportCommand)
+  .command(ImportCommand)
+  .command(PrCommand)
+  .command(SessionCommand)
+  .command(PluginCommand)
+  .command(TrustCommand)
+  .command(CheckpointCommand)
+  .command(ScheduleCommand)
+  .command(SkillCommand)
+  .command(WorktreeCommand)
+  .command(DbCommand)
   .fail((msg, err) => {
     if (
       msg?.startsWith("Unknown argument") ||
