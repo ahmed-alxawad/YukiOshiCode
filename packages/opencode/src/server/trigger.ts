@@ -6,6 +6,7 @@ import crypto from "node:crypto"
 import fs from "node:fs/promises"
 import path from "node:path"
 import type { ConfigV1 } from "@yukioshi/core/v1/config/config"
+import { PrivateAddressPermission } from "@yukioshi/core/permission/private-address"
 
 export type ResolvedTriggers =
   | {
@@ -97,7 +98,15 @@ async function startBackgroundRun(opts: {
             if (perm.sessionID !== sessionID) continue
             // In unattended trigger mode, any ask reaching the user (not auto-allowed
             // by rules or the review model) is auto-rejected
-            await sdk.permission.reply({ requestID: perm.id, reply: "reject" }).catch(() => {})
+            await sdk.permission
+              .reply({
+                requestID: perm.id,
+                reply: "reject",
+                ...(PrivateAddressPermission.isPrivateAddressAsk(perm.metadata)
+                  ? { message: PrivateAddressPermission.refusalText(perm) }
+                  : {}),
+              })
+              .catch(() => {})
           }
           if (
             event.type === "session.status" &&

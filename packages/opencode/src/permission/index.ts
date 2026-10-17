@@ -8,6 +8,7 @@ import { PermissionV1 } from "@yukioshi/core/v1/permission"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { SafetyGuards } from "@yukioshi/core/permission/guards"
 import { RiskClassifier } from "@yukioshi/core/permission/risk"
+import { PrivateAddressPermission } from "@yukioshi/core/permission/private-address"
 import { Database } from "@yukioshi/core/database/database"
 import { SessionTable } from "@yukioshi/core/session/sql"
 import { eq } from "drizzle-orm"
@@ -157,6 +158,15 @@ const layer = Layer.effect(
         : (modes.get(request.sessionID) ?? apiModes.get(request.sessionID) ?? DEFAULT_MODE)
       const risk = RiskClassifier.classify(request.permission)
 
+      // A webfetch whose target resolved to a private or local network address carries
+      // metadata.private_address (see tool/webfetch.ts). Such a request must reach a person even when
+      // the rules (or a saved "always") allow webfetch, unless the user turned the protection off in
+      // their global config with webfetch.allow_private. The setting is read from the global config
+      // only; project config cannot set it (config.ts strips it), and the metadata value is display
+      // information the service does not trust.
+      const privateAsk = PrivateAddressPermission.isPrivateAddressAsk(request.metadata)
+      const forcePrompt = privateAsk && (yield* config.getGlobal()).webfetch?.allow_private !== true
+
       // Plan mode: only low-risk (read-only) actions proceed, regardless of
       // what the configured ruleset would otherwise allow.
       if (mode === "plan" && risk !== "low") {
@@ -176,11 +186,12 @@ const layer = Layer.effect(
             ruleset: ruleset.filter((rule) => Wildcard.match(request.permission, rule.permission)),
           })
         }
-        if (rule.action === "allow") continue
+        if (rule.action === "allow" && !forcePrompt) continue
         // Auto/auto-all modes only ever resolve an "ask" toward "allow" -
-        // they never override an explicit deny rule from above.
-        if (mode === "auto-all") continue
-        if (mode === "auto" && risk === "low") continue
+        // they never override an explicit deny rule from above. A forced private-address
+        // prompt is the one ask they may not answer: only a person (or webfetch.allow_private) can.
+        if (!forcePrompt && mode === "auto-all") continue
+        if (!forcePrompt && mode === "auto" && risk === "low") continue
         needsAsk = true
       }
 
@@ -197,8 +208,9 @@ const layer = Layer.effect(
 
       // Review mode: a reviewer model decides every action that is not low-risk, even one the rules allow
       // (deny rules and hard blocks were checked above). If it cannot decide, a person is asked, which an
-      // unattended run answers with a refusal.
-      if (mode === "review" && risk !== "low") {
+      // unattended run answers with a refusal. A forced private-address prompt is not the reviewer's to
+      // allow: it goes to a person, so an unattended run refuses it.
+      if (mode === "review" && risk !== "low" && !forcePrompt) {
         const verdict: PermissionReview.Verdict = reviewer
           ? yield* reviewer(info).pipe(
               Effect.catchCause((cause) =>

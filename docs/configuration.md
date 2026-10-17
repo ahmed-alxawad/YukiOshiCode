@@ -256,7 +256,7 @@ When search mode is active, the model receives a `tool_search` tool listing avai
 
 ## Webfetch
 
-The `webfetch` tool fetches HTTP and HTTPS URLs for the agent. It inspects the address a URL resolves to and pins the connection to it (see [Webfetch and private network protection](permissions-and-safety.md#webfetch-and-private-network-protection)). With the default rules a private address is fetched without a prompt; set `"permission": { "webfetch": "ask" }` to be asked. The `allow_private` setting below is recorded in the prompt but does not change what is allowed today:
+The `webfetch` tool fetches HTTP and HTTPS URLs for the agent. It inspects the address a URL resolves to and pins the connection to it (see [Webfetch and private network protection](permissions-and-safety.md#webfetch-and-private-network-protection)). A private or local address always asks before it is fetched — even when your rules allow `webfetch` — and unattended runs (`yukioshi run` without `--mini`, scheduled runs, `serve` triggers) refuse it before connecting. `allow_private` turns that protection off:
 
 ```jsonc
 {
@@ -266,7 +266,7 @@ The `webfetch` tool fetches HTTP and HTTPS URLs for the agent. It inspects the a
 }
 ```
 
-This option is accepted in global configuration only (`~/.config/yukioshi/yukioshi.json`); project-level configurations cannot enable private fetches. See [Webfetch and private network protection](permissions-and-safety.md#webfetch-and-private-network-protection).
+With `allow_private: true`, private addresses are fetched under your normal `webfetch` permission rules, with no extra prompt. This option is accepted in global configuration only (`~/.config/yukioshi/yukioshi.json`); project-level configurations cannot enable private fetches (the key is stripped from them). See [Webfetch and private network protection](permissions-and-safety.md#webfetch-and-private-network-protection).
 
 ## Environment variables
 

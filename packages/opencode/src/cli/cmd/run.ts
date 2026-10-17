@@ -1,5 +1,6 @@
 import type { PermissionV1 } from "@yukioshi/core/v1/permission"
 import { RiskClassifier } from "@yukioshi/core/permission/risk"
+import { PrivateAddressPermission } from "@yukioshi/core/permission/private-address"
 import { FSUtil } from "@yukioshi/core/fs-util"
 // CLI entry point for `yukioshi run` and `yukioshi --mini`.
 //
@@ -1004,7 +1005,20 @@ export const RunCommand = effectCmd({
                 mode === "auto-all" ||
                 (mode === "auto" && RiskClassifier.classify(permission.permission) === "low")
 
-              if (autoApprove) {
+              // A private-address webfetch ask is mandatory: even --auto cannot answer it,
+              // and no one is watching this run, so refuse it with an explanation.
+              if (PrivateAddressPermission.isPrivateAddressAsk(permission.metadata)) {
+                UI.println(
+                  UI.Style.TEXT_WARNING_BOLD + "!",
+                  UI.Style.TEXT_NORMAL +
+                    `webfetch of ${permission.patterns.join(", ")} resolves to a private or local network address; refusing (no one can approve it in this run)`,
+                )
+                await client.permission.reply({
+                  requestID: permission.id,
+                  reply: "reject",
+                  message: PrivateAddressPermission.refusalText(permission),
+                })
+              } else if (autoApprove) {
                 await client.permission.reply({
                   requestID: permission.id,
                   reply: "once",

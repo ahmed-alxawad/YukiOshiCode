@@ -33,6 +33,7 @@ import path from "path"
 import { useKV } from "./kv"
 import { usePermission } from "./permission"
 import { RiskClassifier } from "@yukioshi/core/permission/risk"
+import { PrivateAddressPermission } from "@yukioshi/core/permission/private-address"
 
 const emptyConsoleState: ConsoleState = {
   consoleManagedProviders: [],
@@ -197,7 +198,10 @@ export const {
         case "permission.asked": {
           const request = event.properties
           const risk = RiskClassifier.classify(request.permission)
-          if (permission.mode === "auto-all" || (permission.mode === "auto" && risk === "low")) {
+          // A private-address webfetch ask is mandatory: auto/auto-all may not answer it locally,
+          // it has to reach the dialog so a person decides (or webfetch.allow_private in global config).
+          const mandatory = PrivateAddressPermission.isPrivateAddressAsk(request.metadata)
+          if (!mandatory && (permission.mode === "auto-all" || (permission.mode === "auto" && risk === "low"))) {
             void sdk.client.permission.reply({
               requestID: request.id,
               reply: "once",
@@ -206,7 +210,7 @@ export const {
             })
             break
           }
-          if (permission.mode === "plan" && risk !== "low") {
+          if (!mandatory && permission.mode === "plan" && risk !== "low") {
             void sdk.client.permission.reply({
               requestID: request.id,
               reply: "reject",

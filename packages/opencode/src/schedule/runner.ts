@@ -5,6 +5,7 @@
 import { createOpencodeClient, type OpencodeClient } from "@yukioshi/sdk/v2"
 import { existsSync } from "fs"
 import { ChildRegistry } from "@yukioshi/core/child-registry"
+import { PrivateAddressPermission } from "@yukioshi/core/permission/private-address"
 import { MAX_TIMER_MS } from "@/util/timer"
 import {
   acquireJobLock,
@@ -150,7 +151,16 @@ export async function runJob(id: string): Promise<RunJobResult> {
         if (event.type === "permission.asked") {
           const perm = event.properties
           if (perm.sessionID !== sessionID) continue
-          if (job.auto) {
+          // A scheduled run is unattended: a private-address webfetch ask cannot be auto-approved,
+          // so refuse it with an explanation whatever job.auto says.
+          if (PrivateAddressPermission.isPrivateAddressAsk(perm.metadata)) {
+            appendLog(`[permission] refused ${perm.permission} (${perm.patterns?.join(", ")}): private network address`)
+            await sdk.permission.reply({
+              requestID: perm.id,
+              reply: "reject",
+              message: PrivateAddressPermission.refusalText(perm),
+            })
+          } else if (job.auto) {
             appendLog(`[permission] auto-approved ${perm.permission} (${perm.patterns?.join(", ")})`)
             await sdk.permission.reply({ requestID: perm.id, reply: "once" })
           } else {

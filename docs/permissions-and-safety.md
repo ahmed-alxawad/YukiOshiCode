@@ -231,13 +231,12 @@ applies these checks:
 
 ## Webfetch and private network protection
 
-What `webfetch` does today:
+What `webfetch` does:
 
 - **Address inspection**: before connecting, YukiOshi resolves the hostname and checks every address: loopback, unspecified, private IPv4 (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), link-local, IPv6 loopback and unique-local, IPv4-mapped IPv6, and unusual numeric encodings.
 - **DNS pinning**: the transport connects only to the addresses that were inspected, and each redirect is inspected again.
-- **Prompt**: when your rules ask before `webfetch`, a private target adds a warning with the resolved addresses, and the answer cannot be saved as "always".
-
-Limits you should know: the default rules allow `webfetch`, and an allow rule skips the prompt, so by default a private address is fetched without asking. Use `"permission": { "webfetch": "ask" }` to be asked every time. Unattended runs do not refuse private addresses automatically. A change that makes the private-address prompt override allow rules is planned.
+- **Mandatory prompt**: a private target asks even when your rules (or a saved "always") allow `webfetch`; the prompt names the resolved addresses and its answer cannot be saved as "always". The auto, auto-all and review permission modes do not answer it either. Only `"webfetch": { "allow_private": true }` in your global config skips the prompt; a project-level config cannot set it (it is stripped on load).
+- **Unattended refusal**: `yukioshi run` without `--mini`, scheduled runs and `serve` triggers have no one to answer the prompt, so a private-address fetch is refused before any connection is made. The refusal message tells the model the resolved addresses and how private fetches can be allowed globally.
 
 ## Hard blocks
 

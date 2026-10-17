@@ -3,6 +3,7 @@ import { $ } from "bun"
 import pkg from "../package.json"
 import { Script } from "@yukioshi/script"
 import { fileURLToPath } from "url"
+import { aurBinaryPkgbuild } from "./pkgbuild"
 
 const dir = fileURLToPath(new URL("..", import.meta.url))
 process.chdir(dir)
@@ -97,34 +98,13 @@ if (!Script.preview) {
   const [pkgver, _subver = ""] = Script.version.split(/(-.*)/, 2)
 
   // arch
-  const binaryPkgbuild = [
-    "# Maintainer: dax",
-    "# Maintainer: adam",
-    "",
-    "pkgname='yukioshi-bin'",
-    `pkgver=${pkgver}`,
-    `_subver=${_subver}`,
-    "options=('!debug' '!strip')",
-    "pkgrel=1",
-    "pkgdesc='The AI coding agent built for the terminal.'",
-    `url='${githubUrl}'`,
-    "arch=('aarch64' 'x86_64')",
-    "license=('MIT')",
-    "provides=('yukioshi')",
-    "conflicts=('yukioshi')",
-    "depends=('ripgrep')",
-    "",
-    `source_aarch64=("\${pkgname}_\${pkgver}_aarch64.tar.gz::${githubUrl}/releases/download/v\${pkgver}\${_subver}/yukioshi-linux-arm64.tar.gz")`,
-    `sha256sums_aarch64=('${arm64Sha}')`,
-
-    `source_x86_64=("\${pkgname}_\${pkgver}_x86_64.tar.gz::${githubUrl}/releases/download/v\${pkgver}\${_subver}/yukioshi-linux-x64.tar.gz")`,
-    `sha256sums_x86_64=('${x64Sha}')`,
-    "",
-    "package() {",
-    '  install -Dm755 ./yukioshi "${pkgdir}/usr/bin/yukioshi"',
-    "}",
-    "",
-  ].join("\n")
+  const binaryPkgbuild = aurBinaryPkgbuild({
+    pkgver,
+    subver: _subver,
+    githubUrl,
+    arm64Sha,
+    x64Sha,
+  })
 
   for (const [pkg, pkgbuild] of [["yukioshi-bin", binaryPkgbuild]]) {
     for (let i = 0; i < 30; i++) {

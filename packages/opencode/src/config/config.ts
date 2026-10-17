@@ -526,6 +526,11 @@ const layer = Layer.effect(
           if (next.audit) {
             delete next.audit
           }
+          // webfetch.allow_private turns off the private-address prompt, so a repository must not be
+          // able to switch it on for whoever works in it: global config only (same rule as audit).
+          if (next.webfetch) {
+            delete next.webfetch
+          }
           for (const item of next.skills?.paths ?? []) projectSkillPaths.add(item)
           if (projectTrusted) {
             for (const item of next.skills?.urls ?? []) projectSkillUrls.add(item)

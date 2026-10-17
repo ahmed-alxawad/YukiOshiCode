@@ -403,12 +403,11 @@ The built-in `webfetch` tool lets the agent fetch web pages and convert them to 
 
 ### Private network protection
 
-What `webfetch` does today to limit Server-Side Request Forgery (SSRF):
+What `webfetch` does to limit Server-Side Request Forgery (SSRF):
 - **Address inspection**: before connecting, YukiOshi resolves the hostname and checks every resolved address. Loopback, private (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7`), link-local (`169.254.0.0/16`, `fe80::/10`) and unusual numeric encodings (hex, octal, dword) count as private targets.
 - **DNS pinning**: the connection goes to the address that was inspected, so a hostname that changes its answer after the check cannot reach a different address. Redirects are followed one at a time and each target is inspected again.
-- **Prompt**: when your permission rules already ask before `webfetch`, a private target adds a warning with the resolved addresses, and the answer cannot be saved as "always".
-
-Not done yet: the default rules allow `webfetch`, and an allow rule skips the prompt, so with the default rules a private address is fetched without asking. If you want to be asked, set `"permission": { "webfetch": "ask" }`. Unattended runs do not refuse private addresses on their own. `allow_private` does not change what is allowed today.
+- **Mandatory prompt**: when the address is private, YukiOshi asks before fetching **even if your rules allow `webfetch`**, and the answer cannot be saved as "always". Neither the default allow rules, a saved approval, nor the auto/auto-all or review modes answer this prompt for you; only `webfetch.allow_private: true` in your **global** config turns it off (a repository's config cannot).
+- **Unattended runs refuse**: `yukioshi run` (no `--mini`), scheduled runs and `serve` triggers have no one to ask, so a private-address fetch is refused before any connection is made, with a message that tells the model why and how to allow it globally.
 
 ## Code navigation
 

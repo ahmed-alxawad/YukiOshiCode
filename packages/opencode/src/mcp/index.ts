@@ -37,6 +37,7 @@ import { McpEvent } from "@yukioshi/schema/mcp-event"
 import { McpBrowser } from "./browser"
 import { McpGuard } from "./guard"
 import { McpEnvironment } from "./environment"
+import { ChildRegistry } from "@yukioshi/core/child-registry"
 
 const DEFAULT_TIMEOUT = 30_000
 const CLIENT_OPTIONS = {
@@ -396,6 +397,8 @@ const layer = Layer.effect(
           return { status } satisfies CreateResult
         }
 
+        trackClient(mcpClient)
+
         return yield* Effect.gen(function* () {
           const listed = mcpClient.getServerCapabilities()?.tools ? yield* McpCatalog.defs(mcpClient, mcp.timeout) : []
           if (!listed) {
@@ -409,7 +412,11 @@ const layer = Layer.effect(
           } satisfies CreateResult
         }).pipe(
           Effect.catchCause((cause) =>
-            Effect.tryPromise(() => mcpClient.close()).pipe(Effect.ignore, Effect.andThen(Effect.failCause(cause))),
+            Effect.gen(function* () {
+              untrackClient(mcpClient)
+              yield* Effect.tryPromise(() => mcpClient.close()).pipe(Effect.ignore)
+              return yield* Effect.failCause(cause)
+            }),
           ),
         )
       },
@@ -448,8 +455,46 @@ const layer = Layer.effect(
       Effect.catch(() => Effect.succeed([] as number[])),
     )
 
+    // The SDK's StdioClientTransport spawns the server process itself, so the only handle is the
+    // transport's pid - and it disappears once the process closes. Remember each client's pid so the
+    // child registry can reach the server (and, through descendants(), its grandchildren) even then.
+    // group=false: the SDK spawns in YukiOshi's own process group, so signalling -pid would hit us.
+    const trackedPids = new WeakMap<MCPClient, number>()
+
+    function trackClient(client: MCPClient) {
+      if (!(client.transport instanceof StdioClientTransport)) return
+      const pid = client.transport.pid
+      if (typeof pid !== "number") return
+      ChildRegistry.trackPid(pid, false)
+      trackedPids.set(client, pid)
+    }
+
+    function untrackClient(client: MCPClient) {
+      const pid = trackedPids.get(client)
+      if (pid === undefined) return
+      trackedPids.delete(client)
+      ChildRegistry.untrack(pid)
+    }
+
+    /** Stops one server: SIGTERM to its descendants, release the registry entry, close the client. */
+    const stopClient = (client: MCPClient) =>
+      Effect.gen(function* () {
+        const pid = trackedPids.get(client)
+        if (pid !== undefined) {
+          const pids = yield* descendants(pid)
+          for (const dpid of pids) {
+            try {
+              process.kill(dpid, "SIGTERM")
+            } catch {}
+          }
+        }
+        untrackClient(client)
+        yield* Effect.tryPromise(() => client.close()).pipe(Effect.ignore)
+      })
+
     function watch(s: State, name: string, client: MCPClient, bridge: EffectBridge.Shape, timeout?: number) {
       client.onclose = () => {
+        untrackClient(client)
         if (s.clients[name] !== client) return
         delete s.clients[name]
         delete s.defs[name]
@@ -558,29 +603,25 @@ const layer = Layer.effect(
           { concurrency: "unbounded" },
         )
 
+        // Ctrl-C/SIGTERM/SIGHUP run process.exit without Effect finalizers, so the stop above never
+        // runs on a signal. This registry hook does the same work first, from the signal path; the
+        // registry then SIGTERMs the tracked server pids themselves.
+        const unhookStop = ChildRegistry.onStop(() =>
+          bridge.promise(
+            Effect.forEach(Object.values(s.clients), (client) => stopClient(client), {
+              concurrency: "unbounded",
+            }).pipe(Effect.ignore, Effect.asVoid),
+          ),
+        )
+
         yield* Effect.addFinalizer(() =>
           Effect.gen(function* () {
+            unhookStop()
             const clients = Object.values(s.clients)
             s.clients = {}
             s.defs = {}
             s.instructions = {}
-            yield* Effect.forEach(
-              clients,
-              (client) =>
-                Effect.gen(function* () {
-                  const pid = client.transport instanceof StdioClientTransport ? client.transport.pid : null
-                  if (typeof pid === "number") {
-                    const pids = yield* descendants(pid)
-                    for (const dpid of pids) {
-                      try {
-                        process.kill(dpid, "SIGTERM")
-                      } catch {}
-                    }
-                  }
-                  yield* Effect.tryPromise(() => client.close()).pipe(Effect.ignore)
-                }),
-              { concurrency: "unbounded" },
-            )
+            yield* Effect.forEach(clients, (client) => stopClient(client), { concurrency: "unbounded" })
             pendingOAuthTransports.clear()
           }),
         )
@@ -595,6 +636,7 @@ const layer = Layer.effect(
       delete s.defs[name]
       delete s.instructions[name]
       if (!client) return Effect.void
+      untrackClient(client)
       return Effect.tryPromise(() => client.close()).pipe(Effect.ignore)
     }
 
@@ -608,13 +650,17 @@ const layer = Layer.effect(
     ) {
       const bridge = yield* EffectBridge.make()
       const previous = s.clients[name]
+      trackClient(client)
       s.status[name] = { status: "connected" }
       s.clients[name] = client
       s.defs[name] = listed
       if (instructions) s.instructions[name] = instructions
       else delete s.instructions[name]
       watch(s, name, client, bridge, timeout)
-      if (previous) yield* Effect.tryPromise(() => previous.close()).pipe(Effect.ignore)
+      if (previous) {
+        untrackClient(previous)
+        yield* Effect.tryPromise(() => previous.close()).pipe(Effect.ignore)
+      }
       return s.status[name]
     })
 

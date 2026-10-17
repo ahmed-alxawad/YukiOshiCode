@@ -35,6 +35,7 @@ import { ConfigSubagentsV1 } from "./subagents"
 import { ConfigAuditV1 } from "./audit"
 import { ConfigTriggersV1 } from "./triggers"
 import { ConfigWebSearchV1 } from "./web-search"
+import { ConfigWebFetchV1 } from "./webfetch"
 import { ConfigBrowserV1 } from "./browser"
 import { ConfigBackgroundShellV1 } from "./background-shell"
 
@@ -212,6 +213,9 @@ export const Info = Schema.Struct({
   }),
   web_search: Schema.optional(ConfigWebSearchV1.Info).annotate({
     description: "The websearch tool and the search service it uses (off by default)",
+  }),
+  webfetch: Schema.optional(ConfigWebFetchV1.Info).annotate({
+    description: "The webfetch tool (allow_private is read from global config only)",
   }),
   instructions: Schema.optional(Schema.mutable(Schema.Array(Schema.String))).annotate({
     description: "Additional instruction files or patterns to include",
