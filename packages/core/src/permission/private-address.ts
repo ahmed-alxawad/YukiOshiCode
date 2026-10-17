@@ -94,6 +94,9 @@ function privateIPv6Reason(address: string): string | undefined {
     if (detail) return `${embedded.name} IPv6 address embedding a private IPv4 address (${detail})`
   }
 
+  // Teredo (2001::/32) tunnels to an obfuscated IPv4 address, so it cannot be checked and is refused.
+  if (words[0] === 0x2001 && words[1] === 0) return "Teredo IPv6 address"
+
   if (words.every((word) => word === 0)) return "unspecified IPv6 address"
   if (words.slice(0, 7).every((word) => word === 0) && words[7] === 1) return "IPv6 loopback address"
   if ((words[0]! & 0xffc0) === 0xfe80) return "IPv6 link-local address"
