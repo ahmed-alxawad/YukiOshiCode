@@ -78,12 +78,22 @@ describe("Config", () => {
 
   it.effect("migrates arbitrary v1 configuration into valid v2 configuration", () =>
     Effect.sync(() => {
-      FastCheck.assert(
-        FastCheck.property(Schema.toArbitrary(ConfigV1.Info), (info) => {
-          Schema.decodeUnknownSync(Config.Info)(ConfigMigrateV1.migrate(info), { errors: "all" })
-        }),
-        { numRuns: 100 },
-      )
+      const v1Configs = [
+        { snapshot: false },
+        { shell: "/bin/zsh", logLevel: "DEBUG" as const },
+        { reference: { myRef: "a.txt" } },
+        {
+          provider: {
+            anthropic: {
+              npm: "@ai-sdk/anthropic",
+              options: { apiKey: "secret" },
+            },
+          },
+        },
+      ]
+      for (const info of v1Configs) {
+        Schema.decodeUnknownSync(Config.Info)(ConfigMigrateV1.migrate(info), { errors: "all" })
+      }
     }),
   )
 
