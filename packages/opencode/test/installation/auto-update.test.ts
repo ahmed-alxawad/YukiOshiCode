@@ -156,6 +156,22 @@ describe("automatic update rules", () => {
     expect(AutoUpdate.readState(tmp.path).checkedAt).toBe(1)
   })
 
+  test("a damaged state file cannot stop checks or garble notices", async () => {
+    await using tmp = await tmpdir()
+    const file = AutoUpdate.statePath(tmp.path)
+    const read = (value: unknown) => {
+      fs.writeFileSync(file, JSON.stringify(value))
+      return AutoUpdate.readState(tmp.path)
+    }
+    expect(AutoUpdate.isDue(read({ checkedAt: "abc" }))).toBe(true)
+    expect(AutoUpdate.isDue(read({ checkedAt: {} }))).toBe(true)
+    expect(read([1, 2])).toEqual({})
+    expect(read({ outcome: "x" }).outcome).toBeUndefined()
+    expect(read({ outcome: { kind: "installed" } }).outcome).toBeUndefined()
+    const good = { kind: "installed", version: "0.5.0", from: "0.4.1", at: 1 } as const
+    expect(read({ checkedAt: 5, latest: "0.5.0", outcome: good })).toEqual({ checkedAt: 5, latest: "0.5.0", outcome: good })
+  })
+
   test("SHA256SUMS lines are matched by exact file name", () => {
     const sum = "a".repeat(64)
     const sums = `${"b".repeat(64)}  yukioshi-linux-x64-musl.tar.gz\n${sum} *yukioshi-linux-x64.tar.gz\n`

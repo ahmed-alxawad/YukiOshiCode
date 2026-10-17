@@ -156,10 +156,30 @@ export function statePath(stateDir: string) {
   return path.join(stateDir, STATE_FILE)
 }
 
+const str = (value: unknown): value is string => typeof value === "string" && value.length > 0
+
+/** Keeps only well-formed fields, so a damaged or hand-edited state file cannot stop checks or garble notices. */
+function sanitizeState(parsed: unknown): State {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {}
+  const raw = parsed as Record<string, unknown>
+  const state: State = {}
+  if (typeof raw.checkedAt === "number" && Number.isFinite(raw.checkedAt)) state.checkedAt = raw.checkedAt
+  if (str(raw.latest)) state.latest = raw.latest
+  const o = raw.outcome as Record<string, unknown> | null | undefined
+  if (o && typeof o === "object" && str(o.version) && str(o.from) && typeof o.at === "number") {
+    const base = { version: o.version, from: o.from, at: o.at, ...(o.announced === true ? { announced: true } : {}) }
+    if (o.kind === "installed") state.outcome = { kind: "installed", ...base }
+    else if (o.kind === "failed" && str(o.reason)) state.outcome = { kind: "failed", reason: o.reason, ...base }
+    else if (o.kind === "available" && str(o.reason) && str(o.command) && str(o.method))
+      state.outcome = { kind: "available", reason: o.reason as AvailableReason, command: o.command, method: o.method as Method, ...base }
+  }
+  return state
+}
+
 export function readState(stateDir: string): State {
   try {
     const parsed = JSON.parse(fs.readFileSync(statePath(stateDir), "utf8"))
-    return parsed && typeof parsed === "object" ? (parsed as State) : {}
+    return sanitizeState(parsed)
   } catch {
     return {}
   }
