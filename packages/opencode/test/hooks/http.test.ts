@@ -6,6 +6,7 @@ import { LayerNode } from "@yukioshi/core/effect/layer-node"
 import { CrossSpawnSpawner } from "@yukioshi/core/cross-spawn-spawner"
 import { Global } from "@yukioshi/core/global"
 import type { ConfigHooksV1 } from "@yukioshi/core/v1/config/hooks"
+import { isPrivateAddress } from "@yukioshi/core/permission/private-address"
 import { Hooks } from "@/hooks"
 import * as HttpHook from "@/hooks/http"
 import { testEffect } from "../lib/effect"
@@ -192,11 +193,11 @@ describe("HTTP hooks", () => {
   it("classifies private, loopback, link-local and mapped addresses", () =>
     Effect.sync(() => {
       for (const address of ["127.0.0.1", "10.1.2.3", "172.16.0.1", "192.168.1.1", "169.254.169.254", "100.64.0.1"])
-        expect(HttpHook.isPrivateAddress(address)).toBe(true)
+        expect(isPrivateAddress(address)).toBe(true)
       for (const address of ["::1", "::", "fd00::1", "fe80::1", "::ffff:127.0.0.1", "::ffff:7f00:1", "ff02::1"])
-        expect(HttpHook.isPrivateAddress(address)).toBe(true)
+        expect(isPrivateAddress(address)).toBe(true)
       for (const address of ["8.8.8.8", "1.1.1.1", "2606:4700:4700::1111"])
-        expect(HttpHook.isPrivateAddress(address)).toBe(false)
+        expect(isPrivateAddress(address)).toBe(false)
     }))
 
   it("masks secrets from the URL and headers in warnings and block reasons", () =>

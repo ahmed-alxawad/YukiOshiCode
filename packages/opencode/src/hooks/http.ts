@@ -1,7 +1,8 @@
 import { lookup } from "node:dns/promises"
 import * as http from "node:http"
 import * as https from "node:https"
-import { BlockList, isIP } from "node:net"
+import { isIP } from "node:net"
+import { isPrivateAddress } from "@yukioshi/core/permission/private-address"
 import { Redact } from "@yukioshi/core/redact"
 import type { ConfigHooksV1 } from "@yukioshi/core/v1/config/hooks"
 
@@ -17,39 +18,6 @@ export type Hook = ConfigHooksV1.HookHttp
 
 export function isHook(hook: ConfigHooksV1.Hook): hook is Hook {
   return "type" in hook && hook.type === "http"
-}
-
-// Private, loopback, link-local, carrier-grade NAT, multicast and reserved ranges. IPv4-mapped IPv6
-// addresses (::ffff:127.0.0.1) are checked against the IPv4 rules by BlockList itself.
-// TODO: share one classifier with webfetch once its private-address helper moves to packages/core.
-const PRIVATE = new BlockList()
-for (const [network, prefix] of [
-  ["0.0.0.0", 8],
-  ["10.0.0.0", 8],
-  ["100.64.0.0", 10],
-  ["127.0.0.0", 8],
-  ["169.254.0.0", 16],
-  ["172.16.0.0", 12],
-  ["192.0.0.0", 24],
-  ["192.168.0.0", 16],
-  ["198.18.0.0", 15],
-  ["224.0.0.0", 4],
-  ["240.0.0.0", 4],
-] as const)
-  PRIVATE.addSubnet(network, prefix, "ipv4")
-for (const [network, prefix] of [
-  ["::", 96], // unspecified, loopback and IPv4-compatible
-  ["fc00::", 7],
-  ["fe80::", 10],
-  ["fec0::", 10],
-  ["ff00::", 8],
-] as const)
-  PRIVATE.addSubnet(network, prefix, "ipv6")
-
-export function isPrivateAddress(address: string) {
-  const family = isIP(address)
-  if (family === 0) return true
-  return PRIVATE.check(address, family === 4 ? "ipv4" : "ipv6")
 }
 
 /**
