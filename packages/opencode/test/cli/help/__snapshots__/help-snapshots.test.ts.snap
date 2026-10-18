@@ -508,14 +508,15 @@ Options:
 `;
 
 exports[`yukioshi CLI help-text snapshots every documented command emits stable help text: yukioshi skill --help 1`] = `
-"yukioshi skill <action> [target]
+"yukioshi skill <action> [targets..]
 
-install, list, or remove skills from git repositories
+install, list, or remove skills from git repositories, folders, or archives
 
 Positionals:
-  action  add a skill repository, list installed ones, or remove one
+  action   add a skill repository, list installed ones, or remove one
                                                        [required] [choices: "add", "list", "remove"]
-  target  git URL (add) or installed name (remove)                                          [string]
+  targets  sources to add (git URLs, folders, .zip/.tar.gz archives) or the installed name to remove
+                                                                               [array] [default: []]
 
 Options:
   -h, --help        show help                                                              [boolean]
@@ -523,6 +524,13 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
+      --select      install only these skills (comma-separated names)                       [string]
+      --all         install every skill found (default)                                    [boolean]
+      --list        show the skills found in the sources without installing                [boolean]
+      --force       replace a source that is already installed                             [boolean]
+      --global      install for every project (default)                                    [boolean]
+      --project     install into this project (needs a trusted project)                    [boolean]
+      --from-file   read sources from a file, one per line (# for comments)                 [string]
       --name        folder name to install under (add); defaults to the repository name     [string]
 
 Examples:

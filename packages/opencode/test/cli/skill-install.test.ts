@@ -161,4 +161,147 @@ describe("skill add/list/remove", () => {
       }),
     90_000,
   )
+
+  const out = (r: { stdout: string; stderr: string }) => r.stdout + r.stderr
+  const installedDir = (home: string, name: string) => path.join(home, ".config/yukioshi/skills", name)
+
+  function folder(root: string, name: string, files: Record<string, string>) {
+    for (const [file, content] of Object.entries(files)) {
+      fs.mkdirSync(path.dirname(path.join(root, name, file)), { recursive: true })
+      fs.writeFileSync(path.join(root, name, file), content)
+    }
+    return path.join(root, name)
+  }
+
+  cliIt.live(
+    "adds many sources at once (git, folder, zip, tar.gz) and prints a summary",
+    ({ home, opencode }) =>
+      Effect.gen(function* () {
+        const repo = bareRepo(home, "gitsrc", { "a/SKILL.md": skillMd("git-skill") })
+        const dir = folder(home, "dirsrc", { "b/SKILL.md": skillMd("dir-skill") })
+        folder(home, "zipsrc", { "c/SKILL.md": skillMd("zip-skill") })
+        folder(home, "tarsrc", { "d/SKILL.md": skillMd("tar-skill") })
+        Bun.spawnSync(["zip", "-qr", path.join(home, "zipsrc.zip"), "c"], { cwd: path.join(home, "zipsrc") })
+        Bun.spawnSync(["tar", "-czf", path.join(home, "tarsrc.tar.gz"), "d"], { cwd: path.join(home, "tarsrc") })
+        const result = yield* opencode.spawn(
+          ["skill", "add", repo, dir, path.join(home, "zipsrc.zip"), path.join(home, "tarsrc.tar.gz")],
+          { cwd: home },
+        )
+        opencode.expectExit(result, 0, "skill add many")
+        for (const name of ["git-skill", "dir-skill", "zip-skill", "tar-skill"]) expect(out(result)).toContain(name)
+        expect(out(result)).toContain("4 installed, 0 skipped, 0 failed")
+        expect(fs.existsSync(path.join(installedDir(home, "zipsrc"), "c/SKILL.md"))).toBe(true)
+        expect(fs.existsSync(path.join(installedDir(home, "tarsrc"), "d/SKILL.md"))).toBe(true)
+      }),
+    120_000,
+  )
+
+  cliIt.live(
+    "--select installs only the named skills and --list installs nothing",
+    ({ home, opencode }) =>
+      Effect.gen(function* () {
+        const dir = folder(home, "multi", {
+          "one/SKILL.md": skillMd("one"),
+          "two/SKILL.md": skillMd("two"),
+          "three/SKILL.md": skillMd("three"),
+        })
+        const listed = yield* opencode.spawn(["skill", "add", dir, "--list"], { cwd: home })
+        opencode.expectExit(listed, 0, "skill add --list")
+        expect(out(listed)).toContain("one")
+        expect(out(listed)).toContain("three")
+        expect(fs.existsSync(installedDir(home, "multi"))).toBe(false)
+
+        const result = yield* opencode.spawn(["skill", "add", dir, "--select", "one,three"], { cwd: home })
+        opencode.expectExit(result, 0, "skill add --select")
+        expect(fs.existsSync(path.join(installedDir(home, "multi"), "one/SKILL.md"))).toBe(true)
+        expect(fs.existsSync(path.join(installedDir(home, "multi"), "three/SKILL.md"))).toBe(true)
+        expect(fs.existsSync(path.join(installedDir(home, "multi"), "two"))).toBe(false)
+
+        const missing = yield* opencode.spawn(["skill", "add", dir, "--select", "nope", "--name", "other"], { cwd: home })
+        expect(missing.exitCode).toBe(1)
+        expect(fs.existsSync(installedDir(home, "other"))).toBe(false)
+      }),
+    120_000,
+  )
+
+  cliIt.live(
+    "--from-file reads sources and ignores comments; a failed source gives exit 1 but others install",
+    ({ home, opencode }) =>
+      Effect.gen(function* () {
+        const good = folder(home, "good", { "SKILL.md": skillMd("good-skill") })
+        const bad = folder(home, "bad", { "README.md": "nothing" })
+        const list = path.join(home, "skills.txt")
+        fs.writeFileSync(list, `# my skills\n\n${good}  # trailing comment\n${bad}\n`)
+        const result = yield* opencode.spawn(["skill", "add", "--from-file", list], { cwd: home })
+        expect(result.exitCode).toBe(1)
+        expect(out(result)).toContain("1 installed, 0 skipped, 1 failed")
+        expect(out(result)).toContain("no SKILL.md")
+        expect(fs.existsSync(path.join(installedDir(home, "good"), "SKILL.md"))).toBe(true)
+      }),
+    90_000,
+  )
+
+  cliIt.live(
+    "reports a collision as skipped and only overwrites with --force",
+    ({ home, opencode }) =>
+      Effect.gen(function* () {
+        const dir = folder(home, "dup", { "SKILL.md": skillMd("first") })
+        opencode.expectExit(yield* opencode.spawn(["skill", "add", dir], { cwd: home }), 0, "first add")
+        fs.writeFileSync(path.join(dir, "SKILL.md"), skillMd("second"))
+        const again = yield* opencode.spawn(["skill", "add", dir], { cwd: home })
+        opencode.expectExit(again, 0, "second add")
+        expect(out(again)).toContain("0 installed, 1 skipped, 0 failed")
+        expect(fs.readFileSync(path.join(installedDir(home, "dup"), "SKILL.md"), "utf8")).toContain("first")
+        const forced = yield* opencode.spawn(["skill", "add", dir, "--force"], { cwd: home })
+        opencode.expectExit(forced, 0, "forced add")
+        expect(fs.readFileSync(path.join(installedDir(home, "dup"), "SKILL.md"), "utf8")).toContain("second")
+      }),
+    90_000,
+  )
+
+  cliIt.live(
+    "rejects archives with path traversal or symlinks and installs nothing from them",
+    ({ home, opencode }) =>
+      Effect.gen(function* () {
+        // A tar whose entry escapes via "..": built with python so the name is stored verbatim.
+        const evil = path.join(home, "evil.tar.gz")
+        const py = `import tarfile,io,sys
+t=tarfile.open(sys.argv[1],'w:gz')
+d=b'x'
+i=tarfile.TarInfo('../escape/SKILL.md'); i.size=1; t.addfile(i,io.BytesIO(d))
+t.close()`
+        Bun.spawnSync(["python3", "-c", py, evil])
+        const linked = folder(home, "linksrc", { "s/SKILL.md": skillMd("linked") })
+        fs.symlinkSync("/etc/passwd", path.join(linked, "s/leak"))
+        Bun.spawnSync(["tar", "-czf", path.join(home, "linked.tgz"), "s"], { cwd: linked })
+        const result = yield* opencode.spawn(["skill", "add", evil, path.join(home, "linked.tgz")], { cwd: home })
+        expect(result.exitCode).toBe(1)
+        expect(out(result)).toContain("escapes")
+        expect(out(result)).toContain("link")
+        expect(out(result)).toContain("0 installed, 0 skipped, 2 failed")
+        expect(fs.existsSync(installedDir(home, "evil"))).toBe(false)
+        expect(fs.existsSync(installedDir(home, "linked"))).toBe(false)
+        expect(fs.existsSync(path.join(home, ".config/yukioshi/escape"))).toBe(false)
+      }),
+    90_000,
+  )
+
+  cliIt.live(
+    "--project needs a trusted project, then installs into .yukioshi/skills",
+    ({ home, opencode }) =>
+      Effect.gen(function* () {
+        const dir = folder(home, "psrc", { "SKILL.md": skillMd("proj-skill") })
+        const project = path.join(home, "proj")
+        fs.mkdirSync(project, { recursive: true })
+        const refused = yield* opencode.spawn(["skill", "add", dir, "--project"], { cwd: project })
+        expect(refused.exitCode).toBe(1)
+        expect(out(refused)).toContain("trust")
+        expect(fs.existsSync(path.join(project, ".yukioshi/skills/psrc"))).toBe(false)
+        opencode.expectExit(yield* opencode.spawn(["trust", project], { cwd: project }), 0, "trust")
+        const ok = yield* opencode.spawn(["skill", "add", dir, "--project"], { cwd: project })
+        opencode.expectExit(ok, 0, "project add")
+        expect(fs.existsSync(path.join(project, ".yukioshi/skills/psrc/SKILL.md"))).toBe(true)
+      }),
+    120_000,
+  )
 })
