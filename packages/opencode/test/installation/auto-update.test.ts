@@ -240,7 +240,7 @@ function fakeRelease(dir: string, asset: string, release: Release) {
   return { server, requests, url: server.url.toString().replace(/\/$/, "") }
 }
 
-const unix = process.platform === "linux"
+const unix = process.platform !== "win32"
 
 describe.skipIf(!unix)("installRelease", () => {
   const asset = "yukioshi-linux-x64.tar.gz"
