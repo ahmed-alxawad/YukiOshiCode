@@ -535,11 +535,17 @@ await check("schedule add/list/run/remove (store + crontab on non-Windows, store
 
   // Crontab should contain the block on non-Windows
   if (process.platform !== "win32") {
-    const crontab = fs.readFileSync(crontabFile, "utf8")
-    expect(
-      crontab.includes("# BEGIN yukioshi schedule") && crontab.includes(`schedule run ${jobId}`),
-      `crontab missing block: ${crontab.slice(0, 400)}`,
-    )
+    // macOS installs a LaunchAgent (crontab is only the fallback); Linux uses the crontab block.
+    const plist = path.join(home, "Library", "LaunchAgents", `com.yukioshi.schedule.${jobId}.plist`)
+    if (process.platform === "darwin" && fs.existsSync(plist)) {
+      expect(fs.readFileSync(plist, "utf8").includes("schedule"), `LaunchAgent plist unexpected: ${plist}`)
+    } else {
+      const crontab = fs.readFileSync(crontabFile, "utf8")
+      expect(
+        crontab.includes("# BEGIN yukioshi schedule") && crontab.includes(`schedule run ${jobId}`),
+        `crontab missing block: ${crontab.slice(0, 400)}`,
+      )
+    }
   }
 
   // List shows the job
@@ -582,6 +588,10 @@ await check("schedule add/list/run/remove (store + crontab on non-Windows, store
   expect(removed.exitCode === 0, `schedule remove failed: ${removedOut}`)
   expect(removedOut.includes(jobId), `job ID missing from remove output: ${removedOut}`)
 
+  if (process.platform === "darwin") {
+    const plist = path.join(home, "Library", "LaunchAgents", `com.yukioshi.schedule.${jobId}.plist`)
+    expect(!fs.existsSync(plist), `LaunchAgent plist not removed: ${plist}`)
+  }
   // Crontab block cleaned up on non-Windows
   if (process.platform !== "win32" && fs.existsSync(crontabFile)) {
     const after = fs.readFileSync(crontabFile, "utf8")

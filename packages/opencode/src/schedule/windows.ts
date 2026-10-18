@@ -48,6 +48,33 @@ export function taskRunCommand(id: string, binary: string, env: Record<string, s
   return `cmd.exe /d /s /c "${sets.join(" && ")} && ${run}"`
 }
 
+/** The command registered with Task Scheduler when a launcher script does the real work: just the quoted script path. */
+export function launcherCommand(launcher: string): string {
+  if (/[\r\n"%]/.test(launcher)) {
+    throw new Error(`Cannot use "${launcher}" as a Windows Task Scheduler launcher: the path contains a quote, percent sign or line break.`)
+  }
+  const run = `"${launcher}"`
+  assertTaskRunLength(run, launcher)
+  return run
+}
+
+/** Fails with a clear message instead of letting Task Scheduler truncate or reject an over-long command. */
+export function assertTaskRunLength(run: string, label: string): void {
+  if (run.length > MAX_TASK_RUN) {
+    throw new Error(
+      `The command for scheduled job ${label} is ${run.length} characters long, but Windows Task Scheduler accepts at most ${MAX_TASK_RUN}. Install YukiOshi in a shorter folder or unset XDG_*/YUKIOSHI_CONFIG* variables with long values.`,
+    )
+  }
+}
+
+/** Contents of the per-job launcher: carried settings are set, then the job runs. Length is not limited here. */
+export function launcherScript(id: string, binary: string, env: Record<string, string> = {}): string {
+  taskRunCommand(id, binary, env) // validates names and values
+  const lines = Object.entries(env).map(([name, value]) => `set "${name}=${value}"`)
+  lines.push(`"${binary}" schedule run ${id}`)
+  return `@echo off\r\n${lines.join("\r\n")}\r\nexit /b %ERRORLEVEL%\r\n`
+}
+
 /**
  * Maps a standard 5-field cron expression to the arguments for `schtasks.exe /Create`.
  * Refuses unsupported expressions with a clear user-facing error message.
@@ -57,6 +84,7 @@ export function cronToSchtasksArgs(
   cron: string,
   binary: string,
   env: Record<string, string> = {},
+  launcher?: string,
 ): string[] {
   if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) {
     throw new Error(`Invalid job ID for schtasks: "${id}"`)
@@ -74,12 +102,8 @@ export function cronToSchtasksArgs(
 
   const [minStr, hourStr, domStr, monStr, dowStr] = fields
   const taskName = `YukiOshi\\${id}`
-  const taskRun = taskRunCommand(id, binary, env)
-  if (taskRun.length > MAX_TASK_RUN) {
-    throw new Error(
-      `The command for scheduled job ${id} is ${taskRun.length} characters long, but Windows Task Scheduler accepts at most ${MAX_TASK_RUN}. Install YukiOshi in a shorter folder or unset XDG_*/YUKIOSHI_CONFIG* variables with long values.`,
-    )
-  }
+  const taskRun = launcher ? launcherCommand(launcher) : taskRunCommand(id, binary, env)
+  assertTaskRunLength(taskRun, id)
 
   // Common rejection: Month cannot be restricted in schtasks without complex xml
   if (monStr !== "*") {
@@ -216,8 +240,14 @@ const DAY_ELEMENT: Record<string, string> = {
  * the task is created from XML: it still starts on battery power and runs once a missed start is possible.
  * The schedule comes from the same mapping as the flags, so both accept exactly the same cron expressions.
  */
-export function cronToTaskXml(id: string, cron: string, binary: string, env: Record<string, string> = {}): string {
-  const args = cronToSchtasksArgs(id, cron, binary, env)
+export function cronToTaskXml(
+  id: string,
+  cron: string,
+  binary: string,
+  env: Record<string, string> = {},
+  launcher?: string,
+): string {
+  const args = cronToSchtasksArgs(id, cron, binary, env, launcher)
   const flag = (name: string) => {
     const i = args.indexOf(name)
     return i === -1 ? undefined : args[i + 1]
@@ -245,6 +275,7 @@ export function cronToTaskXml(id: string, cron: string, binary: string, env: Rec
   }
   const [command, ...rest] = (() => {
     const run = args[args.indexOf("/TR") + 1]
+    if (launcher) return [launcher, ""]
     if (run.startsWith("cmd.exe ")) return ["cmd.exe", run.slice("cmd.exe ".length)]
     return [binary, `schedule run ${id}`]
   })()
