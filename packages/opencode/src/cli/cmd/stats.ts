@@ -6,6 +6,7 @@ import { Database } from "@yukioshi/core/database/database"
 import { SessionTable } from "@yukioshi/core/session/sql"
 import { Project } from "@/project/project"
 import { InstanceRef } from "@/effect/instance-ref"
+import { cacheHitRate } from "@yukioshi/core/usage"
 
 interface SessionStats {
   totalSessions: number
@@ -325,6 +326,8 @@ export function displayStats(stats: SessionStats, toolLimit?: number, modelLimit
   console.log(renderRow("Output", formatNumber(stats.totalTokens.output)))
   console.log(renderRow("Cache Read", formatNumber(stats.totalTokens.cache.read)))
   console.log(renderRow("Cache Write", formatNumber(stats.totalTokens.cache.write)))
+  const hit = cacheHitRate(stats.totalTokens.cache.read, stats.totalTokens.input)
+  if (hit !== undefined) console.log(renderRow("Cache Hit Rate", `${hit}%`))
   console.log("└────────────────────────────────────────────────────────┘")
   console.log()
 

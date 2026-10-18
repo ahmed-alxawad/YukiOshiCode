@@ -1,3 +1,10 @@
+/** Share of prompt tokens served from the provider cache, as a whole percent. Undefined when nothing was read. */
+export function cacheHitRate(cacheRead: number, input: number): number | undefined {
+  const total = cacheRead + input
+  if (!(cacheRead > 0) || !(total > 0)) return undefined
+  return Math.round((cacheRead / total) * 100)
+}
+
 export type UsageTotals = { cost: number; tokens: number }
 
 export type UsageRow = {

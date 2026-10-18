@@ -1,6 +1,6 @@
 import { TextAttributes } from "@opentui/core"
 import type { AssistantMessage, GlobalSession } from "@yukioshi/sdk/v2"
-import { usageTotals as sharedUsageTotals } from "@yukioshi/core/usage"
+import { cacheHitRate, usageTotals as sharedUsageTotals } from "@yukioshi/core/usage"
 import { For, Show, createMemo, createResource } from "solid-js"
 import { useTheme } from "../context/theme"
 import { useDialog } from "../ui/dialog"
@@ -142,6 +142,8 @@ export function DialogUsage() {
     }
   })
 
+  const hitRate = (s: { cached: number; input: number }) => cacheHitRate(s.cached, s.input)
+
   const row = (label: string, value: string) => (
     <box flexDirection="row" gap={2}>
       <text fg={theme.textMuted} width={16} flexShrink={0}>
@@ -177,7 +179,10 @@ export function DialogUsage() {
             )}
             {row("Input", `${Locale.number(session().input)} tokens`)}
             {row("Output", `${Locale.number(session().output)} tokens`)}
-            <Show when={session().cached > 0}>{row("Cached", `${Locale.number(session().cached)} tokens`)}</Show>
+            <Show when={session().cached > 0}>{row(
+                "Cached",
+                `${Locale.number(session().cached)} tokens${hitRate(session()) === undefined ? "" : ` (${hitRate(session())}% hit rate)`}`,
+              )}</Show>
             {row("Cost", money.format(session().cost))}
             <Show when={session().subagents > 0}>
               <text fg={theme.textMuted}>

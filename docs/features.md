@@ -193,6 +193,7 @@ and cost, plus token and cost totals across all projects for today, the last 7
 days, and the last 30 days. Costs are estimates from each model's list price;
 subscription sign-ins such as ChatGPT and SuperGrok count against the plan's
 own limits instead. `yukioshi stats` gives a longer breakdown in the shell.
+When the provider reports prompt-cache reads (DeepSeek `prompt_cache_hit_tokens`, OpenAI `cached_tokens`, Anthropic cache reads), both show the cache hit rate. The system prompt and tool list are kept in a stable order between turns so the cache keeps hitting.
 
 ## Post-turn verification
 

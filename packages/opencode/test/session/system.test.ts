@@ -129,6 +129,15 @@ describe("session.system", () => {
     }),
   )
 
+  it.effect("system prompt sections are byte-identical across consecutive turns", () =>
+    Effect.gen(function* () {
+      const prompt = yield* SystemPrompt.Service
+      const turn = () => Effect.all([prompt.skills(build), prompt.mcp(build), prompt.preloadedSkills(build)]).pipe(Effect.map((x) => JSON.stringify(x)))
+      const first = yield* turn()
+      expect(yield* turn()).toBe(first)
+    }),
+  )
+
   it.effect("preloads the named skills, skipping unknown names and capping at 32", () =>
     Effect.gen(function* () {
       const prompt = yield* SystemPrompt.Service

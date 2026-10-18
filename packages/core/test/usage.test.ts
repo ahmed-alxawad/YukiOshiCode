@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { usageTotals, type UsageRow } from "../src/usage"
+import { cacheHitRate, usageTotals, type UsageRow } from "../src/usage"
 
 const row = (id: string, extra: Partial<UsageRow> = {}): UsageRow => ({
   id,
@@ -72,5 +72,13 @@ describe("usageTotals", () => {
   test("a very deep chain does not overflow the stack", () => {
     const rows = Array.from({ length: 50_000 }, (_, i) => row(`n${i}`, i === 0 ? {} : { parentID: `n${i - 1}` }))
     expect(usageTotals(rows, undefined, "n0").cost).toBe(50_000)
+  })
+})
+
+describe("cacheHitRate", () => {
+  test("is the cached share of prompt tokens, undefined without cache reads", () => {
+    expect(cacheHitRate(80, 20)).toBe(80)
+    expect(cacheHitRate(0, 20)).toBeUndefined()
+    expect(cacheHitRate(0, 0)).toBeUndefined()
   })
 })

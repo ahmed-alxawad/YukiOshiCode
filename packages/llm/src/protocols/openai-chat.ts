@@ -118,6 +118,9 @@ const OpenAIChatUsage = Schema.Struct({
   prompt_tokens: Schema.optional(Schema.Number),
   completion_tokens: Schema.optional(Schema.Number),
   total_tokens: Schema.optional(Schema.Number),
+  // DeepSeek reports prompt cache hits/misses at the top level instead of prompt_tokens_details.
+  prompt_cache_hit_tokens: Schema.optional(Schema.Number),
+  prompt_cache_miss_tokens: Schema.optional(Schema.Number),
   prompt_tokens_details: optionalNull(
     Schema.Struct({
       cached_tokens: Schema.optional(Schema.Number),
@@ -390,7 +393,7 @@ const mapFinishReason = (reason: string | null | undefined): FinishReason => {
 // satisfied on both sides.
 const mapUsage = (usage: OpenAIChatEvent["usage"]): Usage | undefined => {
   if (!usage) return undefined
-  const cached = usage.prompt_tokens_details?.cached_tokens
+  const cached = usage.prompt_tokens_details?.cached_tokens ?? usage.prompt_cache_hit_tokens
   const reasoning = usage.completion_tokens_details?.reasoning_tokens
   const nonCached = ProviderShared.subtractTokens(usage.prompt_tokens, cached)
   return new Usage({
