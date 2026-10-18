@@ -8,6 +8,7 @@ import {
   claudeAgentDirs,
   knownModelLookup,
   runtimeFieldProblems,
+  sessionAgentReports,
   modelProblem,
   scanAgentFiles,
   toolProblems,
@@ -348,4 +349,34 @@ describe("claudeAgentDirs", () => {
     expect(dirs).toContain(path.join(dir, ".claude"))
     expect(dirs).not.toContain(path.join(base, "a", ".claude"))
   })
+})
+
+describe("sessionAgentReports", () => {
+  test("lists --agents definitions with the --agents source", () => {
+    const reports = sessionAgentReports(JSON.stringify({ reviewer: { description: "r", prompt: "p" } }))
+    expect(reports).toEqual([{ file: "--agents", name: "reviewer", problems: [] }])
+  })
+
+  test("reports invalid --agents JSON as a problem", () => {
+    const [report] = sessionAgentReports("{nope")
+    expect(report.file).toBe("--agents")
+    expect(report.problems[0]).toContain("invalid JSON")
+  })
+})
+
+describe("yukioshi agent validate --agents", () => {
+  cliIt.live(
+    "lists session agents from the flag and from the env var with source --agents",
+    ({ opencode }) =>
+      Effect.gen(function* () {
+        const json = JSON.stringify({ flagged: { description: "d", prompt: "p" } })
+        const viaFlag = yield* opencode.spawn(["agent", "validate", "--agents", json])
+        opencode.expectExit(viaFlag, 0, "agent validate --agents")
+        expect(viaFlag.stdout).toContain("--agents (flagged)")
+        const viaEnv = yield* opencode.spawn(["agent", "validate"], { env: { YUKIOSHI_SESSION_AGENTS: json } })
+        opencode.expectExit(viaEnv, 0, "agent validate env")
+        expect(viaEnv.stdout).toContain("--agents (flagged)")
+      }),
+    90_000,
+  )
 })

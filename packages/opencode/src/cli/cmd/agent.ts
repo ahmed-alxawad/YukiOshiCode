@@ -13,6 +13,7 @@ import { effectCmd, fail } from "../effect-cmd"
 import { requireTerminal } from "../needs-terminal"
 import { ConfigAgentV1 } from "@yukioshi/core/v1/config/agent"
 import { Glob } from "@yukioshi/core/util/glob"
+import { parseSessionAgents } from "@/config/session-agents"
 import { claudeProjectRoot, isClaudeDir, withClaudeDirs } from "@/config/claude-agents"
 import { ConfigMarkdown } from "@/config/markdown"
 import { ConfigParse } from "@/config/parse"
@@ -226,6 +227,16 @@ export async function scanAgentFiles(
     }
   }
   return reports
+}
+
+/** Reports for agents defined by `--agents` / YUKIOSHI_SESSION_AGENTS; the source is shown as `--agents`. */
+export function sessionAgentReports(value: string, cwd = process.cwd()): AgentFileReport[] {
+  try {
+    const names = Object.keys(JSON.parse(parseSessionAgents(value, cwd)) as Record<string, unknown>)
+    return names.map((name) => ({ file: "--agents", name, problems: [] }))
+  } catch (error) {
+    return [{ file: "--agents", problems: [error instanceof Error ? error.message : String(error)] }]
+  }
 }
 
 /** Existing Claude agent directories to scan; empty unless the global config sets agent_sources: ["claude"]. */
@@ -502,6 +513,9 @@ const AgentValidateCommand = effectCmd({
       describe: "output format",
       choices: ["table", "json"] as const,
       default: "table" as const,
+    }).option("agents", {
+      type: "string",
+      describe: "also validate session agents, as for `run --agents` (JSON object or file path; or YUKIOSHI_SESSION_AGENTS)",
     }),
   handler: Effect.fn("Cli.agent.validate")(function* (args) {
     const { Config } = yield* Effect.promise(() => import("@/config/config"))
@@ -541,6 +555,14 @@ const AgentValidateCommand = effectCmd({
         },
       }),
     )
+
+    const sessionValue = args.agents ?? process.env.YUKIOSHI_SESSION_AGENTS
+    if (sessionValue !== undefined && sessionValue !== "") {
+      for (const entry of sessionAgentReports(sessionValue)) {
+        report.files.push(entry)
+        report.problems += entry.problems.length
+      }
+    }
 
     if (args.format === "json") {
       process.stdout.write(
