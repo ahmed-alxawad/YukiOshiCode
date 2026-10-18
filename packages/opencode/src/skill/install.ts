@@ -132,16 +132,20 @@ export function checkArchiveListing(lines: { type: string; size: number; name: s
 async function extractArchive(file: string, dest: string) {
   const zip = /\.zip$/i.test(file)
   const useUnzip = zip && process.platform !== "win32"
-  const listing = useUnzip ? await run(["unzip", "-Z", "--", file], dest) : await run(["tar", zip ? "-tvf" : "-tzvf", file], dest)
-  if (listing.code !== 0) throw new Error(`Could not read archive: ${listing.err.trim() || `exit ${listing.code}`}`)
-  const lines: { type: string; size: number; name: string }[] = []
-  for (const raw of listing.out.split(/\r?\n/)) {
-    const m = useUnzip
-      ? /^([-dlrwx?])[-rwxsStTl]{9}\s+\S+\s+\S+\s+(\d+)\s+\S+\s+\S+\s+\S+\s+\S+\s+(.*)$/.exec(raw)
-      : /^([-dlhrwxsc?])[-rwxsStTl]{9}\s+\S+\s+(\d+)\s+\S+\s+\S+\s+(.*)$/.exec(raw)
-    if (m) lines.push({ type: m[1], size: Number(m[2]), name: m[3] })
-    else if (raw.trim() && /^[lh]/.test(raw)) throw new Error(`Archive contains a link, which is not allowed: ${raw}`)
-  }
+  // Names come from the plain listing and types/sizes from the verbose one, so parsing does not depend on
+  // GNU tar vs bsdtar vs unzip column layouts.
+  const names = useUnzip ? await run(["unzip", "-Z1", "--", file], dest) : await run(["tar", zip ? "-tf" : "-tzf", file], dest)
+  if (names.code !== 0) throw new Error(`Could not read archive: ${names.err.trim() || `exit ${names.code}`}`)
+  const verbose = useUnzip ? await run(["unzip", "-Z", "--", file], dest) : await run(["tar", zip ? "-tvf" : "-tzvf", file], dest)
+  if (verbose.code !== 0) throw new Error(`Could not read archive: ${verbose.err.trim() || `exit ${verbose.code}`}`)
+  const nameList = names.out.split(/\r?\n/).filter((l) => l.length > 0)
+  const detail = verbose.out.split(/\r?\n/).filter((l) => /^[-dlhrwxsc?][-rwxsStTl]{9}/.test(l))
+  const lines: { type: string; size: number; name: string }[] = nameList.map((name, i) => {
+    const d = detail[i]
+    const size = d ? Number(/\s(\d+)\s+(?:[A-Z][a-z]{2}\s+\d|\d{4}-\d\d-\d\d|\d{2}-[A-Z][a-z]{2}-)/.exec(d)?.[1] ?? 0) : 0
+    return { type: d?.[0] ?? "-", size, name }
+  })
+  for (const d of detail) if (/^[lh]/.test(d)) throw new Error(`Archive contains a link, which is not allowed: ${d}`)
   checkArchiveListing(lines)
   const out = path.join(dest, "repo")
   await fs.mkdir(out)
