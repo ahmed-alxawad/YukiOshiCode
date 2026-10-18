@@ -687,6 +687,19 @@ curl -X POST http://127.0.0.1:4096/trigger \
   -d '{"prompt": "Fix the failing test in packages/api", "directory": "/home/user/projects/my-repo"}'
 ```
 
+## Installing many skills at once
+
+`yukioshi skill add` takes any number of sources in one command: git URLs, local
+folders, and `.zip` / `.tar.gz` archives holding skill folders. Use
+`--select a,b` to install only some skills, `--list` to preview what the sources
+contain, `--from-file skills.txt` to read one source per line (`#` starts a
+comment), and `--project` to install into a trusted project instead of globally.
+The command ends with a summary of installed, skipped (already installed, unless
+`--force`) and failed sources, and exits with 1 if any failed while still
+installing the rest. Nothing from a source is run; archives with path traversal,
+links, more than 2000 files or more than 50 MB are rejected. Details:
+[Skills](skills.md#installing-skills-from-git).
+
 ## Claude Code plugins and marketplaces
 
 Install skills, commands, and custom agents from Claude Code plugin repositories or marketplaces using git:

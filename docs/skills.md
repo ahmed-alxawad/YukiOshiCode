@@ -60,6 +60,11 @@ you can set it to `ask` or `deny` like any other tool.
 ```bash
 yukioshi skill add https://github.com/example/skills.git           # name defaults to the repository name
 yukioshi skill add git@github.com:example/skills.git --name team   # choose the folder name
+yukioshi skill add ./my-skills team-skills.zip pack.tar.gz owner-repo-url   # many sources at once
+yukioshi skill add <source> --select review,deploy                 # only those skills
+yukioshi skill add <source> --list                                 # show the skills found, install nothing
+yukioshi skill add --from-file skills.txt                          # one source per line, # comments
+yukioshi skill add <source> --project                              # into .yukioshi/skills of a trusted project
 yukioshi skill list                                                 # installed sources and their URLs
 yukioshi skill remove team
 ```
@@ -73,6 +78,15 @@ found. It refuses a repository without one.
 A skill is only Markdown, so nothing from the repository is ever run: git
 hooks are disabled, the `.git` folder is deleted after cloning, and symbolic
 links are removed so a skill cannot point at files elsewhere on your machine.
+Several sources can be given in one command (git URLs, local folders, `.zip`,
+`.tar.gz` or `.tgz` archives). A failing source never stops the others: the
+command ends with a table of what was installed, skipped (already installed;
+add `--force` to replace it) or failed and why, and exits with 1 if any failed.
+Archives are checked before extraction: entries with absolute paths or `..`,
+links of any kind, more than 2000 entries or more than 50 MB are rejected.
+`--project` installs into the project's `.yukioshi/skills` and requires a
+project you ran `yukioshi trust` on; installs are global by default.
+
 Only folders installed this way can be removed with `skill remove`; folders you
 wrote yourself are never touched. To update a skill, remove it and add it
 again. Skills can still tell the model what to do, so install only from

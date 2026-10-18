@@ -148,7 +148,7 @@ delay; it is on unless `"loop": { "enabled": false }`. See [Features](features.m
 | `yukioshi plugin <module>`               | install an npm plugin and add it to your config (`-g` for the global config, `-f` to replace an installed version) |
 | `yukioshi plugin add <git-url> [plugin]`, `plugin list`, `plugin remove <name>` | install, list, or remove skills, commands, and agents from Claude Code plugins or marketplaces (`--name` sets the folder name; see [Features](features.md#claude-code-plugins-and-marketplaces)) |
 | `yukioshi mcp add`, `list`, `auth`, `logout`, `debug` | manage MCP servers and their sign-in (`add` takes `--url`, `--env`, `--header`) |
-| `yukioshi skill add <git-url> [--name <name>]`, `skill list`, `skill remove <name>` | install, list, or remove skills from a git repository (see [Skills](skills.md#installing-skills-from-git)) |
+| `yukioshi skill add <source>...`, `skill list`, `skill remove <name>` | install, list, or remove skills from many sources at once: git URLs, local folders, and `.zip`/`.tar.gz` archives. Flags: `--select a,b` (only those skills), `--all` (default), `--list` (show what is found, install nothing), `--from-file skills.txt` (one source per line, `#` comments), `--force` (replace an installed source), `--name` (single source only), `--global` (default) or `--project` (trusted project). Prints an installed/skipped/failed summary and exits 1 if any source failed (see [Skills](skills.md#installing-skills-from-git)) |
 
 ## Servers and integrations
 
