@@ -1,4 +1,7 @@
 import { describe, expect, it } from "bun:test"
+import { mkdtemp, writeFile } from "node:fs/promises"
+import os from "node:os"
+import path from "node:path"
 import { runDoctor } from "../src/cli/cmd/doctor"
 
 describe("doctor", () => {
@@ -22,9 +25,51 @@ describe("doctor", () => {
       paths: { config: "/missing-config", state: "/missing-state" },
       command: () => "/bin/tool",
       network: true,
-      fetch: async () => { throw new Error("offline") },
+      fetch: async () => {
+        throw new Error("offline")
+      },
     })
     expect(report.checks.find((check) => check.name === "network")?.status).toBe("problem")
     expect(report.ok).toBe(false)
+  })
+
+  it("does not treat unrelated token environment variables as provider keys", async () => {
+    const report = await runDoctor({
+      env: { DEPLOYMENT_TOKEN: "not-a-provider-key", RANDOM_API_KEY: "also-not-supported" },
+      paths: { config: "/missing-config", state: "/missing-state" },
+      command: () => "/bin/tool",
+    })
+    expect(report.checks.find((check) => check.name === "provider keys")?.status).toBe("problem")
+  })
+
+  it("requires a non-empty provider key value in config", async () => {
+    const config = await mkdtemp(path.join(os.tmpdir(), "yukioshi-doctor-"))
+    await writeFile(
+      path.join(config, "yukioshi.json"),
+      `// "apiKey": "comment-only"
+       { "provider": { "openai": { "options": { "apiKey": "  " } } } }`,
+    )
+    const report = await runDoctor({
+      env: {},
+      paths: { config, state: "/missing-state" },
+      command: () => "/bin/tool",
+    })
+    expect(report.checks.find((check) => check.name === "provider keys")?.status).toBe("problem")
+  })
+
+  it("checks the loader's global config.json path", async () => {
+    const config = await mkdtemp(path.join(os.tmpdir(), "yukioshi-doctor-"))
+    await writeFile(
+      path.join(config, "config.json"),
+      '{ "provider": { "openai": { "options": { "apiKey": "configured" } } } }',
+    )
+    const report = await runDoctor({
+      env: {},
+      paths: { config, state: "/missing-state" },
+      command: () => "/bin/tool",
+    })
+    expect(report.checks.find((check) => check.name === "provider keys")?.status).toBe("ok")
+    expect(report.checks.find((check) => check.name === "config files")?.path).toBe(path.join(config, "config.json"))
+    expect(JSON.stringify(report)).not.toContain("configured")
   })
 })

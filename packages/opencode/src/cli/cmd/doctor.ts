@@ -7,6 +7,7 @@ import { sandboxEffect } from "./debug/sandbox"
 import { sandboxStatus } from "@yukioshi/sandbox"
 import { effectCmd } from "../effect-cmd"
 import { Effect } from "effect"
+import { parse } from "jsonc-parser"
 
 export type DoctorStatus = "ok" | "problem" | "skipped"
 export type DoctorCheck = { name: string; status: DoctorStatus; detail: string; path?: string }
@@ -24,14 +25,44 @@ type DoctorInput = {
   installationMethod?: string
 }
 
-const configNames = ["yukioshi.json", "yukioshi.jsonc", "opencode.json", "opencode.jsonc"]
-const providerEnv = /(?:^|_)(?:API_KEY|TOKEN)$/
+const configNames = ["yukioshi.json", "yukioshi.jsonc", "opencode.json", "opencode.jsonc", "config.json"]
 const providerHosts: Record<string, string> = {
   ANTHROPIC_API_KEY: "https://api.anthropic.com",
   OPENAI_API_KEY: "https://api.openai.com",
   GOOGLE_API_KEY: "https://generativelanguage.googleapis.com",
   GEMINI_API_KEY: "https://generativelanguage.googleapis.com",
   XAI_API_KEY: "https://api.x.ai",
+}
+const supportedProviderEnv = new Set([
+  ...Object.keys(providerHosts),
+  "AZURE_API_KEY",
+  "CEREBRAS_API_KEY",
+  "COHERE_API_KEY",
+  "DEEPINFRA_API_KEY",
+  "DEEPSEEK_API_KEY",
+  "FIREWORKS_API_KEY",
+  "GROQ_API_KEY",
+  "MISTRAL_API_KEY",
+  "OPENROUTER_API_KEY",
+  "PERPLEXITY_API_KEY",
+  "TOGETHER_API_KEY",
+  "YUKIOSHI_API_KEY",
+])
+
+function hasProviderKey(value: unknown): boolean {
+  if (typeof value === "string") return value.trim().length > 0
+  if (Array.isArray(value)) return value.some(hasProviderKey)
+  if (!value || typeof value !== "object") return false
+  return Object.entries(value).some(([name, child]) => {
+    if (name === "key" || name === "apiKey" || name === "apiKeys") return hasProviderKey(child)
+    return child !== null && typeof child === "object" && hasProviderKey(child)
+  })
+}
+
+function configHasProviderKey(text: string) {
+  const errors: { error: number; offset: number; length: number }[] = []
+  const parsed = parse(text, errors, { allowTrailingComma: true }) as { provider?: unknown } | undefined
+  return errors.length === 0 && hasProviderKey(parsed?.provider)
 }
 
 function commandFor(name: string, input: DoctorInput) {
@@ -95,20 +126,27 @@ export async function runDoctor(input: DoctorInput = {}): Promise<DoctorReport> 
     checks.push({ name, status, detail, ...(checkPath ? { path: checkPath } : {}) })
 
   add("version", InstallationVersion ? "ok" : "problem", InstallationVersion || "version is unavailable")
-  const installMethod = input.installationMethod ?? (executable.includes(path.join(".yukioshi", "bin")) || executable.includes(path.join(".local", "bin"))
-    ? "curl"
-    : env.npm_config_user_agent?.split("/")[0] ?? "unknown")
+  const installMethod =
+    input.installationMethod ??
+    (executable.includes(path.join(".yukioshi", "bin")) || executable.includes(path.join(".local", "bin"))
+      ? "curl"
+      : (env.npm_config_user_agent?.split("/")[0] ?? "unknown"))
   add("install method", installMethod === "unknown" ? "problem" : "ok", installMethod)
 
   const configs = await findConfigFiles(cwd, paths.config)
-  add("config files", configs.length ? "ok" : "problem", configs.length ? `${configs.length} found` : "none found", configs[0])
+  add(
+    "config files",
+    configs.length ? "ok" : "problem",
+    configs.length ? `${configs.length} found` : "none found",
+    configs[0],
+  )
 
-  const keyNames = Object.keys(env).filter((name) => providerEnv.test(name) && Boolean(env[name]))
+  const keyNames = Object.keys(env).filter((name) => supportedProviderEnv.has(name) && Boolean(env[name]?.trim()))
   let configured = keyNames.length > 0
   for (const file of configs) {
     try {
       const text = await readFile(file, "utf8")
-      if (/"(?:apiKey|apiKeys|key|provider)"\s*:/.test(text)) configured = true
+      if (configHasProviderKey(text)) configured = true
     } catch {}
   }
   add(
@@ -123,7 +161,11 @@ export async function runDoctor(input: DoctorInput = {}): Promise<DoctorReport> 
   add("rg", rg ? "ok" : "problem", rg ? "available" : "not found", rg ?? undefined)
 
   const sandbox = sandboxStatus()
-  add("sandbox", sandbox.available ? "ok" : "problem", `${sandbox.summary}; ${sandboxEffect(sandbox.available, true, platform)}`)
+  add(
+    "sandbox",
+    sandbox.available ? "ok" : "problem",
+    `${sandbox.summary}; ${sandboxEffect(sandbox.available, true, platform)}`,
+  )
 
   const clipboard =
     platform === "win32"
