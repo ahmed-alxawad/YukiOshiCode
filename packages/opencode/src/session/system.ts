@@ -18,6 +18,7 @@ import type { Provider } from "@/provider/provider"
 import type { Agent } from "@/agent/agent"
 import { Permission } from "@/permission"
 import { Skill } from "@/skill"
+import { ConfigAgentV1 } from "@yukioshi/core/v1/config/agent"
 import { AbsolutePath } from "@yukioshi/core/schema"
 import { Location } from "@yukioshi/core/location"
 import { LocationServiceMap, locationServiceMapLayer } from "@yukioshi/core/location-services"
@@ -52,9 +53,19 @@ export function provider(model: Provider.Model) {
   return [PROMPT_DEFAULT]
 }
 
+/** The agent's `skills` names, trimmed, deduplicated and capped. */
+export function preloadSkillNames(names: readonly string[] | undefined): string[] {
+  return [...new Set((names ?? []).map((name) => name.trim()).filter((name) => name.length > 0))].slice(
+    0,
+    ConfigAgentV1.MAX_PRELOAD_SKILLS,
+  )
+}
+
 export interface Interface {
   readonly environment: (model: Provider.Model) => Effect.Effect<string[]>
   readonly skills: (agent: Agent.Info) => Effect.Effect<string | undefined>
+  /** Content of the skills named in the agent's `skills` field (enabled ones only, at most 32). */
+  readonly preloadedSkills: (agent: Agent.Info) => Effect.Effect<string | undefined>
   readonly mcp: (agent: Agent.Info, permission?: PermissionV1.Ruleset) => Effect.Effect<string | undefined>
   /** The project's saved memory (memory.enabled), kept small by memory.max_chars. */
   readonly memory: () => Effect.Effect<string | undefined>
@@ -132,6 +143,17 @@ const layer = Layer.effect(
           // version of them here and a less verbose version in tool description, rather than vice versa.
           Skill.fmt(list, { verbose: true }),
         ].join("\n")
+      }),
+
+      preloadedSkills: Effect.fn("SystemPrompt.preloadedSkills")(function* (agent: Agent.Info) {
+        const picked = preloadSkillNames(agent.skills)
+        if (picked.length === 0) return
+        const enabled = new Map((yield* skill.available(agent)).map((item) => [item.name, item]))
+        const found = picked.flatMap((name) => enabled.get(name) ?? [])
+        if (found.length === 0) return
+        return found
+          .map((item) => `<preloaded_skill name=${JSON.stringify(item.name)}>\n${item.content.trim()}\n</preloaded_skill>`)
+          .join("\n")
       }),
 
       memory: Effect.fn("SystemPrompt.memory")(function* () {

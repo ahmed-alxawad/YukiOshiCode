@@ -14,7 +14,11 @@ import { Effect, Exit, Schema, Scope } from "effect"
 import { EffectBridge } from "@/effect/bridge"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Database } from "@yukioshi/core/database/database"
-import { backgroundSubagents, markSubagentReport } from "./subagents"
+import { backgroundSubagents, markSubagentReport, parallelSubagents } from "./subagents"
+import { InstanceStore } from "@/project/instance-store"
+import { Worktree } from "../worktree"
+import { Git } from "@/git"
+import { worktreeTools } from "./task-worktree"
 
 export interface TaskPromptOps {
   cancel(sessionID: SessionID): Effect.Effect<void>
@@ -92,14 +96,17 @@ export const TaskTool = Tool.define(
     const scope = yield* Scope.Scope
     const flags = yield* RuntimeFlags.Service
     const database = yield* Database.Service
+    // Only needed for agents with isolation: worktree; the task tool still works without them.
+    const worktreeService = yield* Effect.serviceOption(Worktree.Service)
+    const gitService = yield* Effect.serviceOption(Git.Service)
+    const storeService = yield* Effect.serviceOption(InstanceStore.Service)
 
     const run = Effect.fn("TaskTool.execute")(function* (
       params: Schema.Schema.Type<typeof Parameters>,
       ctx: Tool.Context,
     ) {
       const cfg = yield* config.get()
-      const runInBackground = params.background === true
-      if (runInBackground && !backgroundSubagents(flags, cfg)) {
+      if (params.background === true && !backgroundSubagents(flags, cfg)) {
         return yield* Effect.fail(
           new Error('Background subagents are off. Turn them on with "subagents": { "background": true } in the config.'),
         )
@@ -135,6 +142,20 @@ export const TaskTool = Tool.define(
       const next = yield* agent.get(params.subagent_type)
       if (!next) {
         return yield* Effect.fail(new Error(`Unknown agent type: ${params.subagent_type} is not a valid agent type`))
+      }
+
+      // An agent with background: true starts in the background, but only when background subagents are on.
+      const runInBackground = params.background === true || (next.background === true && backgroundSubagents(flags, cfg))
+      const isolate =
+        next.isolation === "worktree" &&
+        !params.task_id &&
+        parallelSubagents(flags, cfg) &&
+        worktreeService._tag === "Some" &&
+        gitService._tag === "Some" &&
+        storeService._tag === "Some"
+      if (isolate) {
+        // Creating a worktree changes the repository, so plan mode and deny rules stop it here.
+        yield* ctx.ask({ permission: "task_parallel", patterns: ["worktree"], always: ["*"], metadata: { tasks: 1 } })
       }
 
       const session = params.task_id
@@ -202,7 +223,11 @@ export const TaskTool = Tool.define(
       if (!ops) return yield* Effect.fail(new Error("TaskTool requires promptOps in ctx.extra"))
 
       const runTask = Effect.fn("TaskTool.runTask")(function* () {
-        const parts = yield* ops.resolvePromptParts(params.prompt, { restrictToProject: true })
+        const resolved = yield* ops.resolvePromptParts(params.prompt, { restrictToProject: true })
+        // initialPrompt goes before the task text, only on a fresh subagent session.
+        const initial = next.initialPrompt?.trim()
+        const parts =
+          initial && !params.task_id ? [{ type: "text" as const, text: initial + "\n\n" }, ...resolved] : resolved
         const result = yield* ops.prompt({
           messageID: MessageID.ascending(),
           sessionID: nextSession.id,
@@ -226,6 +251,29 @@ export const TaskTool = Tool.define(
           return yield* Effect.fail(new Error(`Subagent failed (task_id: ${nextSession.id}): ${failed.state.error}`))
         }
         return markSubagentReport(result.parts.findLast((item) => item.type === "text")?.text ?? "")
+      })
+
+      const runIsolatedTask = Effect.fn("TaskTool.runIsolatedTask")(function* () {
+        if (!isolate || worktreeService._tag !== "Some" || gitService._tag !== "Some" || storeService._tag !== "Some")
+          return yield* runTask()
+        const tools = worktreeTools(gitService.value, worktreeService.value)
+        // createReady checks the files out before returning, so the subagent never starts in an empty folder.
+        const info = yield* worktreeService.value.createReady({ name: params.description })
+        const base = yield* tools.output(["rev-parse", "HEAD"], info.directory)
+        const outcome = yield* storeService.value.provide({ directory: info.directory }, runTask()).pipe(Effect.exit)
+        const kept = yield* tools.settle(info, base, "task")
+        if (Exit.isFailure(outcome)) return yield* Effect.failCause(outcome.cause)
+        if (!kept) return outcome.value
+        const counts = [
+          ...(kept.changed ? [`${kept.changed} changed file${kept.changed === 1 ? "" : "s"}`] : []),
+          ...(kept.commits ? [`${kept.commits} new commit${kept.commits === 1 ? "" : "s"}`] : []),
+        ]
+        return [
+          outcome.value,
+          `<worktree_changes>This task's changes (${counts.join(", ")}) were kept in ${info.directory}${
+            kept.branch ? ` on branch ${kept.branch}` : ""
+          }, not in the current checkout. Review them with git -C ${JSON.stringify(info.directory)} status and diff, and bring in what is wanted. The worktree can be deleted afterwards with: yukioshi worktree remove ${kept.name}</worktree_changes>`,
+        ].join("\n")
       })
 
       const inject = Effect.fn("TaskTool.injectBackgroundResult")(function* (
@@ -268,7 +316,7 @@ export const TaskTool = Tool.define(
         )
       })
 
-      if (yield* background.extend({ id: nextSession.id, run: runTask() })) {
+      if (yield* background.extend({ id: nextSession.id, run: runIsolatedTask() })) {
         return {
           title: params.description,
           metadata: {
@@ -297,7 +345,7 @@ export const TaskTool = Tool.define(
           }),
           notify(nextSession.id),
         ]),
-        run: runTask().pipe(Effect.onInterrupt(() => ops.cancel(nextSession.id))),
+        run: runIsolatedTask().pipe(Effect.onInterrupt(() => ops.cancel(nextSession.id))),
       })
 
       function backgroundResult() {

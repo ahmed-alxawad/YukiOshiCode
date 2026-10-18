@@ -12,6 +12,7 @@ import { InstanceStore } from "@/project/instance-store"
 import { Worktree } from "../worktree"
 import * as Tool from "./tool"
 import { TaskTool } from "./task"
+import { worktreeTools, type Kept } from "./task-worktree"
 
 const DESCRIPTION =
   "Run multiple subagent tasks concurrently. Each task runs like the task tool, but set worktree=true on a task to give it its own isolated git worktree so it can edit files without colliding with other parallel tasks or the current session (requires a git repository). A worktree task's changes stay in its worktree, on its own branch, and the result says where; they are not applied to the current checkout. Use this instead of sequential task calls when the tasks are independent of each other."
@@ -32,8 +33,6 @@ export const Parameters = Schema.Struct({
 })
 
 const CONCURRENCY = 4
-
-type Kept = { name: string; branch?: string; changed: number; commits: number }
 
 function render(input: { index: number; description: string; worktree?: string; kept?: Kept }, outcome: string) {
   const kept = input.kept
@@ -65,19 +64,7 @@ export const TaskParallelTool = Tool.define(
     const store = yield* InstanceStore.Service
     const git = yield* Git.Service
 
-    const output = (args: string[], cwd: string) =>
-      git.run(args, { cwd }).pipe(Effect.map((result) => (result.exitCode === 0 ? result.text().trim() : undefined)))
-
-    // What a task left in its worktree: uncommitted changes, and commits made after it was created.
-    const changes = Effect.fnUntraced(function* (directory: string, base: string | undefined) {
-      const status = yield* output(["status", "--porcelain"], directory)
-      const commits = base ? yield* output(["rev-list", "--count", `${base}..HEAD`], directory) : undefined
-      return {
-        // An unreadable status counts as a change, so a worktree is never deleted on a guess.
-        changed: status === undefined ? 1 : status.split("\n").filter((line) => line.trim() !== "").length,
-        commits: Number(commits ?? 0) || 0,
-      }
-    })
+    const { output, settle } = worktreeTools(git, worktree)
 
     return {
       description: DESCRIPTION,
@@ -133,22 +120,11 @@ export const TaskParallelTool = Tool.define(
           const kept = new Map<number, Kept>()
           yield* Effect.all(
             Array.from(createdWorktrees.entries()).map(([index, { info, base }]) =>
-              Effect.gen(function* () {
-                const left = yield* changes(info.directory, base)
-                if (left.changed || left.commits) {
-                  kept.set(index, { name: info.name, branch: info.branch, ...left })
-                  return
-                }
-                yield* worktree.remove({ directory: info.directory }).pipe(
-                  Effect.catch((err: Worktree.Error) =>
-                    Effect.logWarning("task_parallel: failed to remove worktree after task", {
-                      index,
-                      directory: info.directory,
-                      error: err.message,
-                    }),
-                  ),
-                )
-              }),
+              settle(info, base, "task_parallel").pipe(
+                Effect.map((left) => {
+                  if (left) kept.set(index, left)
+                }),
+              ),
             ),
             { concurrency: "unbounded", discard: true },
           )

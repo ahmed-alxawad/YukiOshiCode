@@ -129,6 +129,21 @@ describe("session.system", () => {
     }),
   )
 
+  it.effect("preloads the named skills, skipping unknown names and capping at 32", () =>
+    Effect.gen(function* () {
+      const prompt = yield* SystemPrompt.Service
+      const output = yield* prompt.preloadedSkills({ ...build, skills: ["zeta-skill", "nope", " alpha-skill ", "zeta-skill"] })
+      expect(output).toContain('<preloaded_skill name="zeta-skill">\n# zeta-skill\n</preloaded_skill>')
+      expect(output).toContain('name="alpha-skill"')
+      expect(output).not.toContain("nope")
+      expect(output).not.toContain("middle-skill")
+      expect(yield* prompt.preloadedSkills(build)).toBeUndefined()
+      expect(yield* prompt.preloadedSkills({ ...build, skills: ["nope"] })).toBeUndefined()
+      const many = Array.from({ length: 40 }, (_, i) => `s${i}`)
+      expect(SystemPrompt.preloadSkillNames(many)).toEqual(many.slice(0, 32))
+    }),
+  )
+
   it.effect("MCP output includes connected server instructions", () =>
     Effect.gen(function* () {
       const prompt = yield* SystemPrompt.Service

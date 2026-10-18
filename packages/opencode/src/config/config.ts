@@ -974,6 +974,7 @@ const layer = Layer.effect(
           const tightenAgents = <T extends Record<string, any>>(agents: T): T => {
             if (!untrustedAgents) return agents
             for (const [name, agent] of Object.entries(agents)) {
+              if (isRecord(agent)) ConfigAgent.dropUntrustedFields(`${dir} agent ${name}`, agent)
               if (isRecord(agent) && agent["permission"] !== undefined)
                 agent["permission"] = withoutAllowRules(
                   `${dir} agent ${name}`,

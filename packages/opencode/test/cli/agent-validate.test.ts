@@ -6,6 +6,7 @@ import path from "node:path"
 import { cliIt } from "../lib/cli-process"
 import {
   knownModelLookup,
+  runtimeFieldProblems,
   modelProblem,
   scanAgentFiles,
   toolProblems,
@@ -14,6 +15,25 @@ import {
 } from "../../src/cli/cmd/agent"
 
 describe("agent validate helpers", () => {
+  test("runtimeFieldProblems reports skipped skills and ignored background/isolation", () => {
+    const status = (name: string) => (name === "gone" ? "unknown" : name === "off" ? "disabled" : undefined)
+    const problems = runtimeFieldProblems(
+      "a",
+      { skills: ["ok", "gone", "off"], background: true, isolation: "worktree" },
+      { skillStatus: status, background: false, parallel: false },
+    )
+    expect(problems).toHaveLength(4)
+    expect(problems.join("\n")).toContain('"gone" is unknown')
+    expect(problems.join("\n")).toContain('"off" is disabled')
+    expect(problems.join("\n")).toContain("background: true is ignored")
+    expect(problems.join("\n")).toContain("isolation: worktree is ignored")
+    expect(
+      runtimeFieldProblems("a", { background: true, isolation: "worktree" }, { background: true, parallel: true }),
+    ).toEqual([])
+    const many = runtimeFieldProblems("a", { skills: Array.from({ length: 33 }, (_, i) => `s${i}`) }, {})
+    expect(many[0]).toContain("only the first 32")
+  })
+
   test("modelProblem accepts inherit and Claude aliases", () => {
     for (const alias of ["inherit", "sonnet", "opus", "haiku", "Sonnet", " INHERIT "]) {
       expect(modelProblem(alias)).toBeUndefined()

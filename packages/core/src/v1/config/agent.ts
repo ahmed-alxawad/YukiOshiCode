@@ -34,6 +34,22 @@ const AgentSchema = Schema.StructWithRest(
       description:
         "Claude-style permission mode: 'default', 'acceptEdits', or 'plan'. 'bypassPermissions' is never honored.",
     }),
+    skills: Schema.optional(Schema.Array(Schema.String)).annotate({
+      description:
+        "Names of enabled skills whose content is added to this agent's system prompt (at most 32; unknown or disabled names are skipped)",
+    }),
+    background: Schema.optional(Schema.Boolean).annotate({
+      description: "Start this agent in the background when the task tool uses it (needs subagents.background)",
+    }),
+    isolation: Schema.optional(Schema.Literal("worktree")).annotate({
+      description: "Run this agent in its own git worktree when the task tool uses it (needs subagents.parallel)",
+    }),
+    effort: Schema.optional(Schema.String).annotate({
+      description: "Claude-style alias for 'variant'; ignored when 'variant' is set",
+    }),
+    initialPrompt: Schema.optional(Schema.String).annotate({
+      description: "Text added before the first user message of this agent when it runs as a subagent",
+    }),
     disable: Schema.optional(Schema.Boolean),
     description: Schema.optional(Schema.String).annotate({ description: "Description of when to use the agent" }),
     mode: Schema.optional(Schema.Literals(["subagent", "primary", "all"])),
@@ -76,7 +92,15 @@ export const KNOWN_KEYS: ReadonlySet<string> = new Set([
   "tools",
   "disallowedTools",
   "permissionMode",
+  "skills",
+  "background",
+  "isolation",
+  "effort",
+  "initialPrompt",
 ])
+
+// Most skills one agent can preload into its system prompt.
+export const MAX_PRELOAD_SKILLS = 32
 
 // Permission ids YukiOshi knows: the typed keys of ConfigPermissionV1 plus the
 // runtime-only ids the permissionMode mapping below can emit. Not exhaustive — MCP

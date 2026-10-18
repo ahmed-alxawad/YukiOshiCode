@@ -97,3 +97,26 @@ export async function loadMode(dir: string) {
   }
   return result
 }
+
+/**
+ * An untrusted project's agent file may not start background work, create git worktrees, or
+ * preload the project's own skills (names with the "project:" prefix) until the project is
+ * trusted. Mutates the raw agent entry and warns about what was dropped.
+ */
+export function dropUntrustedFields(label: string, agent: Record<string, unknown>) {
+  const dropped: string[] = []
+  for (const key of ["background", "isolation"]) {
+    if (agent[key] === undefined) continue
+    delete agent[key]
+    dropped.push(key)
+  }
+  if (Array.isArray(agent.skills)) {
+    const kept = agent.skills.filter((name) => !(typeof name === "string" && name.trim().startsWith("project:")))
+    if (kept.length !== agent.skills.length) {
+      agent.skills = kept
+      dropped.push("skills (project skills)")
+    }
+  }
+  if (dropped.length)
+    console.warn(`[config] ${label}: ignored ${dropped.join(", ")} until this project is explicitly trusted`)
+}

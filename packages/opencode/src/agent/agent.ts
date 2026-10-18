@@ -55,6 +55,10 @@ export const Info = Schema.Struct({
   prompt: Schema.optional(Schema.String),
   options: Schema.Record(Schema.String, Schema.Unknown),
   steps: Schema.optional(Schema.Finite),
+  skills: Schema.optional(Schema.Array(Schema.String)),
+  background: Schema.optional(Schema.Boolean),
+  isolation: Schema.optional(Schema.Literal("worktree")),
+  initialPrompt: Schema.optional(Schema.String),
 }).annotate({ identifier: "Agent" })
 export type Info = DeepMutable<Schema.Schema.Type<typeof Info>>
 
@@ -399,7 +403,11 @@ const layer = Layer.effect(
               native: false,
             }
           if (value.model) item.model = Provider.parseModel(value.model)
-          item.variant = value.variant ?? item.variant
+          item.variant = value.variant ?? value.effort ?? item.variant
+          item.skills = value.skills ?? item.skills
+          item.background = value.background ?? item.background
+          item.isolation = value.isolation ?? item.isolation
+          item.initialPrompt = value.initialPrompt ?? item.initialPrompt
           item.prompt = value.prompt ?? item.prompt
           item.description = value.description ?? item.description
           item.temperature = value.temperature ?? item.temperature

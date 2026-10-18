@@ -369,7 +369,25 @@ legacy `.opencode/`, or the global config folder. Claude Code-style
 `permissionMode` frontmatter are accepted; `bypassPermissions` is always
 ignored. `yukioshi agent validate` checks the discovered files and
 `yukioshi agent show <name>` prints the resolved source, model, steps, and
-merged permission rules.
+merged permission rules, plus the fields below.
+
+Optional per-agent frontmatter, all off unless you set them:
+
+- `skills: [name, ...]` adds the content of those enabled skills to the agent's
+  system prompt (at most 32). Unknown or disabled names are skipped, never an
+  error; `yukioshi agent validate` reports them.
+- `background: true` makes the `task` tool start this agent in the background.
+  It needs `subagents.background`; otherwise it is ignored and `agent validate`
+  warns.
+- `isolation: worktree` runs this agent in its own Git worktree, like
+  `worktree: true` in `task_parallel`, and keeps the worktree when it has
+  changes. It needs `subagents.parallel`; otherwise it is ignored.
+- `effort` is an alias for `variant`, and `initialPrompt` is text placed before
+  the first message the subagent receives.
+
+An agent file from a project you have not trusted cannot use `background` or
+`isolation`, cannot preload that project's own skills (`project:` names), and
+still loses any `allow` permission rules.
 
 ### Session agents and Claude agent folders
 

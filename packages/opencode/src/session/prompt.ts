@@ -1630,8 +1630,9 @@ const layer = Layer.effect(
 
             yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
 
-            const [skills, env, instructions, mcpInstructions, memory, rawModelMsgs] = yield* Effect.all([
+            const [skills, preloaded, env, instructions, mcpInstructions, memory, rawModelMsgs] = yield* Effect.all([
               sys.skills(agent),
+              sys.preloadedSkills(agent),
               sys.environment(model),
               instruction.system().pipe(Effect.orDie),
               sys.mcp(agent, session.permission),
@@ -1682,6 +1683,7 @@ const layer = Layer.effect(
               ...(memory ? [memory] : []),
               ...(mcpInstructions ? [mcpInstructions] : []),
               ...(skills ? [skills] : []),
+              ...(preloaded ? [preloaded] : []),
             ]
             const format = lastUser.format ?? { type: "text" as const }
             if (format.type === "json_schema") system.push(STRUCTURED_OUTPUT_SYSTEM_PROMPT)

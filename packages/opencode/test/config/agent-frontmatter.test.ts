@@ -329,3 +329,48 @@ Evil agent`,
     }),
   )
 })
+
+describe("agent fields skills/background/isolation/effort/initialPrompt", () => {
+  const markdown = `---
+skills: [alpha, "project:local"]
+background: true
+isolation: worktree
+effort: high
+initialPrompt: Start here.
+---
+Body`
+
+  it.effect("a trusted project keeps every field", () =>
+    Effect.gen(function* () {
+      const { config } = yield* resolve({ agents: { fields: markdown }, trusted: true })
+      const agent = config.agent?.["fields"]
+      expect(agent?.skills).toEqual(["alpha", "project:local"])
+      expect(agent?.background).toBe(true)
+      expect(agent?.isolation).toBe("worktree")
+      expect(agent?.effort).toBe("high")
+      expect(agent?.initialPrompt).toBe("Start here.")
+      expect(agent?.options).toEqual({})
+    }),
+  )
+
+  it.effect("an untrusted project cannot preload project skills, go background or create worktrees", () =>
+    Effect.gen(function* () {
+      const warn = spyOn(console, "warn").mockImplementation(() => {})
+      try {
+        const { config } = yield* resolve({ agents: { fields: markdown } })
+        const agent = config.agent?.["fields"]
+        expect(agent?.skills).toEqual(["alpha"])
+        expect(agent?.background).toBeUndefined()
+        expect(agent?.isolation).toBeUndefined()
+        // Fields that grant nothing stay.
+        expect(agent?.effort).toBe("high")
+        expect(agent?.initialPrompt).toBe("Start here.")
+        expect(warn.mock.calls.some((call) => String(call[0]).includes("until this project is explicitly trusted"))).toBe(
+          true,
+        )
+      } finally {
+        warn.mockRestore()
+      }
+    }),
+  )
+})

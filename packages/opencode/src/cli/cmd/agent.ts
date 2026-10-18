@@ -116,6 +116,38 @@ export function toolProblems(field: "tools" | "disallowedTools", value: unknown)
   return []
 }
 
+/** What validate knows about the runtime: skill names that exist, and whether background/parallel subagents are on. */
+export interface RuntimeKnowledge {
+  /** Returns "unknown" or "disabled" for a skill name that will be skipped, undefined for a usable one. */
+  skillStatus?: (name: string, agentName: string) => "unknown" | "disabled" | undefined
+  background?: boolean
+  parallel?: boolean
+}
+
+/** Flags `skills`, `background` and `isolation` values that will be skipped or ignored at runtime. */
+export function runtimeFieldProblems(name: string, data: Record<string, unknown>, runtime: RuntimeKnowledge): string[] {
+  const problems: string[] = []
+  if (Array.isArray(data.skills)) {
+    const names = data.skills.filter((name): name is string => typeof name === "string")
+    if (names.length > ConfigAgentV1.MAX_PRELOAD_SKILLS) {
+      problems.push(
+        `skills lists ${names.length} names; only the first ${ConfigAgentV1.MAX_PRELOAD_SKILLS} are preloaded`,
+      )
+    }
+    for (const entry of names.slice(0, ConfigAgentV1.MAX_PRELOAD_SKILLS)) {
+      const status = runtime.skillStatus?.(entry.trim(), name)
+      if (status) problems.push(`skills entry "${entry}" is ${status} and will be skipped`)
+    }
+  }
+  if (data.background === true && runtime.background === false) {
+    problems.push(`background: true is ignored because "subagents": { "background": true } is not set in the config`)
+  }
+  if (data.isolation === "worktree" && runtime.parallel === false) {
+    problems.push(`isolation: worktree is ignored because "subagents": { "parallel": true } is not set in the config`)
+  }
+  return problems
+}
+
 /** Flags frontmatter fields the agent schema does not know. */
 export function unknownFieldProblems(data: Record<string, unknown>): string[] {
   return Object.keys(data)
@@ -157,7 +189,7 @@ export function schemaProblems(file: string, name: string, data: Record<string, 
  */
 export async function scanAgentFiles(
   directories: string[],
-  opts: { knownModel?: KnownModelLookup } = {},
+  opts: { knownModel?: KnownModelLookup; runtime?: RuntimeKnowledge } = {},
 ): Promise<AgentFileReport[]> {
   const reports: AgentFileReport[] = []
   for (const dir of directories) {
@@ -188,6 +220,7 @@ export async function scanAgentFiles(
         const model = modelProblem(data.model, opts.knownModel)
         if (model) problems.push(model)
       }
+      problems.push(...runtimeFieldProblems(name, data, opts.runtime ?? {}))
       problems.push(...schemaProblems(file, name, data, md.content.trim()))
       reports.push({ file, name, problems })
     }
@@ -210,7 +243,7 @@ export async function claudeAgentDirs(cfg: { agent_sources?: readonly string[] }
 /** Scans all agent files and additionally flags duplicate resolved names, naming the winning file. */
 export async function validateAgentFiles(
   directories: string[],
-  opts: { knownModel?: KnownModelLookup } = {},
+  opts: { knownModel?: KnownModelLookup; runtime?: RuntimeKnowledge } = {},
 ): Promise<AgentValidationReport> {
   const files = await scanAgentFiles(directories, opts)
   const winners = new Map<string, string>()
@@ -481,8 +514,31 @@ const AgentValidateCommand = effectCmd({
     const catalog = yield* ModelsDev.Service.use((svc) => svc.get()).pipe(
       Effect.catch(() => Effect.succeed({} as Record<string, { models?: Record<string, unknown> }>)),
     )
+    const { Skill } = yield* Effect.promise(() => import("@/skill"))
+    const { Permission } = yield* Effect.promise(() => import("@/permission"))
+    const { backgroundSubagents, parallelSubagents } = yield* Effect.promise(() => import("../../tool/subagents"))
+    const { RuntimeFlags } = yield* Effect.promise(() => import("@/effect/runtime-flags"))
+    const flags = yield* RuntimeFlags.Service
+    const skills = yield* Skill.Service.use((svc) => svc.all())
+    const known = new Set(skills.map((item) => item.name))
+    const agents = yield* Effect.promise(() => import("../../agent/agent")).pipe(
+      Effect.flatMap(({ Agent }) => Agent.Service.use((svc) => svc.list())),
+    )
     const report = yield* Effect.promise(() =>
-      validateAgentFiles(dirs, { knownModel: knownModelLookup(catalog, cfg.provider) }),
+      validateAgentFiles(dirs, {
+        knownModel: knownModelLookup(catalog, cfg.provider),
+        runtime: {
+          skillStatus: (name, agentName) => {
+            if (!known.has(name)) return "unknown"
+            const agent = agents.find((item) => item.name === agentName)
+            return agent && Permission.evaluate("skill", name, agent.permission).action === "deny"
+              ? "disabled"
+              : undefined
+          },
+          background: backgroundSubagents(flags, cfg),
+          parallel: parallelSubagents(flags, cfg),
+        },
+      }),
     )
 
     if (args.format === "json") {
@@ -544,6 +600,11 @@ const AgentShowCommand = effectCmd({
           mode: agent.mode,
           model: agent.model ? `${agent.model.providerID}/${agent.model.modelID}` : null,
           steps: agent.steps ?? null,
+          variant: agent.variant ?? null,
+          skills: agent.skills ?? [],
+          background: agent.background ?? false,
+          isolation: agent.isolation ?? null,
+          initialPrompt: agent.initialPrompt ?? null,
           permission: agent.permission,
         },
         null,
