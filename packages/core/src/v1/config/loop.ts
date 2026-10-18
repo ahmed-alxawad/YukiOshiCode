@@ -5,7 +5,7 @@ import { PositiveInt } from "../../schema"
 
 export const Info = Schema.Struct({
   enabled: Schema.optional(Schema.Boolean).annotate({
-    description: "Turn on /loop, which runs a prompt or slash command again on an interval. Off by default.",
+    description: "Allow /loop, which runs a prompt or slash command again on an interval. On by default; set false to turn it off.",
   }),
   max_runs: Schema.optional(PositiveInt).annotate({
     description: "Most runs of one loop before it stops by itself (default 50).",

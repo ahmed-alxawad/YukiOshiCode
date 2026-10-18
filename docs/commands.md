@@ -134,9 +134,9 @@ Manage recurring prompts run by your operating system's background scheduler (cr
 | `yukioshi tasks`                | background shell jobs and background subagents of a session (`--session`, `--format json`; read-only) |
 | `yukioshi tasks --all`          | every session on this machine that is running something now: turn, goal, shell job, subagent (`--format json`; read-only) |
 
-In the TUI, `/changes` shows the files changed by the latest turn. With
-`"loop": { "enabled": true }`, `/loop 5m <prompt>` runs a prompt again on an
-interval; see [Features](features.md#loop).
+In the TUI, `/changes` shows the files changed by the latest turn. `/loop 5m <prompt>`
+runs a prompt again on an interval, and `/loop <prompt>` lets the agent pick the
+delay; it is on unless `"loop": { "enabled": false }`. See [Features](features.md#loop).
 
 ## Agents, plugins, and MCP
 

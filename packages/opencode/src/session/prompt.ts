@@ -2149,6 +2149,43 @@ const layer = Layer.effect(
     const repeatToast = (message: string, variant: "info" | "warning") =>
       events.publish(TuiEvent.ToastShow, { title: "Loop", message, variant, duration: 6000 }).pipe(Effect.ignore)
 
+    // Runs one loop iteration. In a self-paced loop the loop_wait tool is open during the run, and what the
+    // agent asked for (a delay, or a stop) is applied to the loop afterwards. Returns a stop note, if any.
+    const pacedRun = Effect.fnUntraced(function* (input: CommandInput, id: number) {
+      const entry = repeats.get(input.sessionID)
+      const selfPaced = entry?.id === id && entry.active.selfPaced === true
+      const minS = (yield* config.get()).loop?.min_interval ?? SessionRepeat.DEFAULT_MIN_INTERVAL_S
+      if (selfPaced) SessionRepeat.beginPaced(input.sessionID, minS)
+      const text = entry?.active.prompt ?? ""
+      const exit = yield* Effect.exit(
+        runRepeat(
+          input,
+          selfPaced && !text.startsWith("/")
+            ? `${text}\n\n(Self-paced loop: when this run is done, call loop_wait with seconds until the next run and a short reason, or stop: true if nothing more is needed.)`
+            : text,
+        ),
+      )
+      const wait = selfPaced ? SessionRepeat.endPaced(input.sessionID) : undefined
+      const now = repeats.get(input.sessionID)
+      let stopNote: string | undefined
+      if (wait && now?.id === id) {
+        if (wait.stop) stopNote = `Stopped: the agent ended the loop${wait.reason ? ` (${wait.reason})` : ""}.`
+        else if (wait.seconds !== undefined) {
+          repeats.set(input.sessionID, {
+            ...now,
+            active: { ...now.active, intervalMs: wait.seconds * 1000, reason: wait.reason },
+          })
+          yield* repeatToast(`Next run in ${SessionRepeat.duration(wait.seconds * 1000)}${wait.reason ? `: ${wait.reason}` : ""}`, "info")
+        }
+      } else if (selfPaced && now?.id === id) {
+        repeats.set(input.sessionID, {
+          ...now,
+          active: { ...now.active, intervalMs: SessionRepeat.DEFAULT_INTERVAL_MS, reason: undefined },
+        })
+      }
+      return { exit, stopNote }
+    })
+
     const repeatLoop = (input: CommandInput, id: number): Effect.Effect<void> =>
       Effect.gen(function* () {
         const sessionID = input.sessionID
@@ -2171,8 +2208,8 @@ const layer = Layer.effect(
           const run = before.active.runs + 1
           repeats.set(sessionID, { ...before, active: { ...before.active, runs: run, nextAt: undefined } })
           yield* repeatToast(`Run ${run} of ${before.active.maxRuns}: ${before.active.prompt.slice(0, 80)} · /loop stop to end`, "info")
-          const exit = yield* Effect.exit(runRepeat(input, before.active.prompt))
-          const failure = Exit.isSuccess(exit) ? repeatFailure(exit.value) : "Stopped: the last run could not start."
+          const { exit, stopNote } = yield* pacedRun(input, id)
+          const failure = Exit.isSuccess(exit) ? (repeatFailure(exit.value) ?? stopNote) : "Stopped: the last run could not start."
           if (failure && repeats.get(sessionID)?.id === id) {
             repeats.delete(sessionID)
             repeatNotes.set(sessionID, failure)
@@ -2195,9 +2232,9 @@ const layer = Layer.effect(
     )(function* (input: CommandInput) {
       const cfg = yield* config.get()
       const sessionID = input.sessionID
-      if (cfg.loop?.enabled !== true)
-        return yield* goalReply(input, '/loop is off. Turn it on with "loop": { "enabled": true } in yukioshi.json.')
-      const parsed = SessionRepeat.parse(input.arguments, cfg.loop.min_interval ?? SessionRepeat.DEFAULT_MIN_INTERVAL_S)
+      if (cfg.loop?.enabled === false)
+        return yield* goalReply(input, '/loop is off. Turn it on by removing "loop": { "enabled": false } from yukioshi.json.')
+      const parsed = SessionRepeat.parse(input.arguments, cfg.loop?.min_interval ?? SessionRepeat.DEFAULT_MIN_INTERVAL_S)
       if (parsed.kind === "invalid") return yield* goalReply(input, parsed.message)
       if (parsed.kind === "status")
         return yield* goalReply(input, SessionRepeat.status(repeats.get(sessionID)?.active, repeatNotes.get(sessionID)))
@@ -2214,12 +2251,18 @@ const layer = Layer.effect(
       const active: SessionRepeat.Active = {
         prompt: parsed.prompt,
         intervalMs: parsed.intervalMs,
+        selfPaced: parsed.selfPaced,
         runs: 1,
-        maxRuns: cfg.loop.max_runs ?? SessionRepeat.DEFAULT_MAX_RUNS,
+        maxRuns: cfg.loop?.max_runs ?? SessionRepeat.DEFAULT_MAX_RUNS,
       }
       repeats.set(sessionID, { id, active })
-      const result = yield* runRepeat(input, parsed.prompt)
-      const failure = repeatFailure(result)
+      const first = yield* pacedRun(input, id)
+      if (Exit.isFailure(first.exit)) {
+        if (repeats.get(sessionID)?.id === id) repeats.delete(sessionID)
+        return yield* Effect.failCause(first.exit.cause)
+      }
+      const result = first.exit.value
+      const failure = repeatFailure(result) ?? first.stopNote
       if (failure) {
         if (repeats.get(sessionID)?.id === id) repeats.delete(sessionID)
         repeatNotes.set(sessionID, failure)

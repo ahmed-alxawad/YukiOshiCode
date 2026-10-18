@@ -110,7 +110,7 @@ export const Info = Schema.Struct({
     description: "Mask secrets before they are sent to the model (on by default)",
   }),
   loop: Schema.optional(ConfigLoopV1.Info).annotate({
-    description: "/loop: run a prompt or slash command again on an interval (off by default)",
+    description: "/loop: run a prompt or slash command again on an interval (on by default)",
   }),
   goal: Schema.optional(ConfigGoalV1.Info).annotate({
     description: "Standing goals (/goal) that YukiOshi keeps working on across turns until they are met",

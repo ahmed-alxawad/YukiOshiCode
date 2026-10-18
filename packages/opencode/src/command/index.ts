@@ -122,10 +122,11 @@ const layer = Layer.effect(
         }
       }
 
-      if (cfg.loop?.enabled === true) {
+      // Always listed so it can be found; when loop.enabled is false, running it explains how to turn it on.
+      {
         commands[Default.LOOP] = {
           name: Default.LOOP,
-          description: "run a prompt or /command again on an interval [<interval> <prompt> | status | stop]",
+          description: "run a prompt or /command again on an interval [<interval>] <prompt> | status | stop",
           source: "command",
           template: "$ARGUMENTS",
           hints: ["$ARGUMENTS"],

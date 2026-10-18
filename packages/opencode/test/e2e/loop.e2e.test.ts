@@ -38,4 +38,32 @@ describe("loop", () => {
     const requests = yield* llm.inputs
     expect(requests.filter((request) => !JSON.stringify(request).includes("Generate a title for this conversation"))).toHaveLength(2)
   }), 60_000)
+
+  const post = (url: string, arguments_: string) =>
+    Effect.promise(async () => {
+      const created = await fetch(`${url}/session`, { method: "POST" })
+      const session = (await created.json()) as { id: string }
+      const res = await fetch(`${url}/session/${session.id}/command`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ command: "loop", arguments: arguments_, model: "test/test-model" }),
+      })
+      return JSON.stringify(await res.json())
+    })
+
+  cliIt.live("is on by default and listed", ({ llm, opencode }) => Effect.gen(function* () {
+    const server = yield* opencode.serve({ env: { YUKIOSHI_CONFIG_CONTENT: config(llm.url) } })
+    const list = yield* Effect.promise(async () => (await (await fetch(`${server.url}/command`)).json()) as { name: string; source?: string }[])
+    expect(list.some((c) => c.name === "loop" && c.source === "command")).toBe(true)
+    const reply = yield* post(server.url, "status")
+    expect(reply).toContain("No loop is running")
+    expect(reply).not.toContain("/loop is off")
+  }), 60_000)
+
+  cliIt.live("stays listed when disabled and says how to enable it", ({ llm, opencode }) => Effect.gen(function* () {
+    const server = yield* opencode.serve({ env: { YUKIOSHI_CONFIG_CONTENT: config(llm.url, { loop: { enabled: false } }) } })
+    const list = yield* Effect.promise(async () => (await (await fetch(`${server.url}/command`)).json()) as { name: string; source?: string }[])
+    expect(list.some((c) => c.name === "loop" && c.source === "command")).toBe(true)
+    expect(yield* post(server.url, "5m ping")).toContain("/loop is off")
+  }), 60_000)
 })

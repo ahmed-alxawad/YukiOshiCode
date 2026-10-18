@@ -19,6 +19,7 @@ import { InvalidTool } from "./invalid"
 import { SkillTool } from "./skill"
 import { MemoryRecallTool } from "./memory-recall"
 import { MemorySaveTool } from "./memory-save"
+import { LoopWaitTool } from "./loop-wait"
 import { TaskParallelTool } from "./task-parallel"
 import { backgroundSubagents, parallelSubagents } from "./subagents"
 import { JobListTool, JobStopTool, MonitorTool, backgroundShell } from "./background-shell"
@@ -133,6 +134,7 @@ const layer = Layer.effect(
     const skilltool = yield* SkillTool
     const memoryRecallTool = yield* MemoryRecallTool
     const memorySaveTool = yield* MemorySaveTool
+    const loopWaitTool = yield* LoopWaitTool
     const taskParallelTool = yield* TaskParallelTool
     const sessionSearchTool = yield* SessionSearchTool
     const skillSaveTool = yield* SkillSaveTool
@@ -265,6 +267,7 @@ const layer = Layer.effect(
           ...(memoryEnabled
             ? { memoryRecall: Tool.init(memoryRecallTool), memorySave: Tool.init(memorySaveTool) }
             : {}),
+          ...(cfg.loop?.enabled !== false ? { loopWait: Tool.init(loopWaitTool) } : {}),
           ...(backgroundSubagents(flags, cfg) ? { taskMessage: Tool.init(taskMessageTool) } : {}),
           ...(parallelTasksEnabled ? { taskParallel: Tool.init(taskParallelTool) } : {}),
           ...(indexingEnabled ? { codeSearch: Tool.init(codeSearchTool) } : {}),
@@ -300,6 +303,7 @@ const layer = Layer.effect(
             tool.patch,
             ...(tool.memoryRecall ? [tool.memoryRecall] : []),
             ...(tool.memorySave ? [tool.memorySave] : []),
+            ...(tool.loopWait ? [tool.loopWait] : []),
             ...(tool.taskMessage ? [tool.taskMessage] : []),
             ...(tool.taskParallel ? [tool.taskParallel] : []),
             ...(tool.codeSearch ? [tool.codeSearch] : []),

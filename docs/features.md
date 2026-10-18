@@ -72,18 +72,21 @@ it needs you, and 4 when it used all its rounds (see
 
 ## Loop
 
-Off by default. Turn it on with `"loop": { "enabled": true }`, and `/loop`
+On by default; turn it off with `"loop": { "enabled": false }` (`/loop` stays in
+the command list and then says how to turn it on). `/loop`
 runs a prompt or a slash command again on an interval in the current session,
 for example to watch a CI run or a deploy:
 
 ```
 /loop 5m check whether the CI run for this branch has finished and summarise failures
 /loop 30m /review
+/loop watch the deploy until it is healthy
 ```
 
 | Command                    | Does                                              |
 | -------------------------- | ------------------------------------------------- |
-| `/loop <interval> <prompt>` | run it now, then again every interval (`90s`, `5m`, `1h30m`; 10 minutes if left out) |
+| `/loop <interval> <prompt>` | run it now, then again every interval (`90s`, `5m`, `1h30m`) |
+| `/loop <prompt>`           | self-paced: the agent picks the delay with its `loop_wait` tool (delay and reason shown in the notice; `stop` ends it; 10 minutes if it does not choose) |
 | `/loop`                    | show the loop, its runs, and when it runs next    |
 | `/loop stop`               | stop the loop                                     |
 
@@ -93,7 +96,8 @@ not keep spending tokens unnoticed. A loop stops by itself when a run fails, whe
 after `loop.max_runs` runs (default 50). Intervals shorter than
 `loop.min_interval` (default 60 seconds) are raised to it. One loop runs per
 session, and it lasts as long as the terminal UI or `yukioshi serve` keeps
-running; `yukioshi run` exits after the first run.
+running; `yukioshi run` exits after the first run. For recurring work that must survive closing the
+terminal, use [scheduled tasks](#scheduled-tasks). The bundled `loop` skill explains this to the agent.
 
 ## Sending a message while the agent works
 

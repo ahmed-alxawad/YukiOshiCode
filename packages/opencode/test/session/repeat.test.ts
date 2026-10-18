@@ -27,6 +27,7 @@ describe("SessionRepeat", () => {
       intervalMs: SessionRepeat.DEFAULT_INTERVAL_MS,
       prompt: "/review",
       clamped: false,
+      selfPaced: true,
     })
     // Shorter than the minimum is raised to it.
     expect(SessionRepeat.parse("10s ping", 60)).toEqual({ kind: "start", intervalMs: 60_000, prompt: "ping", clamped: true })
@@ -45,5 +46,24 @@ describe("SessionRepeat", () => {
     expect(text).toContain("Runs: 2 of 50")
     expect(text).toContain("Next run in 2m")
     expect(SessionRepeat.status(undefined, "Stopped: you interrupted a run.")).toStartWith("Stopped: you interrupted")
+  })
+
+  test("self-paced waits clamp, and are refused outside a loop run", () => {
+    expect(SessionRepeat.requestWait("s1", { seconds: 120 }).ok).toBe(false)
+    SessionRepeat.beginPaced("s1", 60)
+    expect(SessionRepeat.requestWait("s1", { seconds: 5, reason: "soon" })).toEqual({
+      ok: true,
+      wait: { seconds: 60, reason: "soon" },
+    })
+    expect(SessionRepeat.requestWait("s1", { seconds: 999_999 })).toMatchObject({ ok: true, wait: { seconds: 3600 } })
+    expect(SessionRepeat.requestWait("s1", {}).ok).toBe(false)
+    expect(SessionRepeat.endPaced("s1")).toMatchObject({ seconds: 3600 })
+    // No call during a run: nothing recorded, so the scheduler falls back to the default.
+    SessionRepeat.beginPaced("s1", 60)
+    expect(SessionRepeat.endPaced("s1")).toBeUndefined()
+    expect(SessionRepeat.requestWait("s1", { stop: true }).ok).toBe(false)
+    SessionRepeat.beginPaced("s2", 60)
+    expect(SessionRepeat.requestWait("s2", { stop: true })).toMatchObject({ ok: true, wait: { stop: true } })
+    SessionRepeat.endPaced("s2")
   })
 })

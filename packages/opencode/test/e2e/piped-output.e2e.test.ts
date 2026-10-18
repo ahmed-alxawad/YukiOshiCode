@@ -24,6 +24,7 @@ const bundled = [
   "engineering:system-design",
   "engineering:tech-debt",
   "engineering:testing-strategy",
+  "loop",
   "nightmare",
   "productivity:memory-management",
   "productivity:start",
