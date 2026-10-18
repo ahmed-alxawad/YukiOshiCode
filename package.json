@@ -13,7 +13,7 @@
     "upgrade-opentui": "bun run script/upgrade-opentui.ts",
     "postinstall": "bun run --cwd packages/core fix-node-pty",
     "prepare": "husky",
-    "test": "bun test",
+    "test": "bun test"
   },
   "workspaces": {
     "packages": ["packages/*", "packages/sdk/js"],
