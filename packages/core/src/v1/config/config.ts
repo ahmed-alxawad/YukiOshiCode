@@ -149,6 +149,10 @@ export const Info = Schema.Struct({
     description:
       "Automatically update to the latest version. Set to true to auto-update, false to disable, or 'notify' to show update notifications",
   }),
+  agent_sources: Schema.optional(Schema.mutable(Schema.Array(Schema.Literals(["claude"])))).annotate({
+    description:
+      "Extra read-only subagent sources (global config only). 'claude' also discovers ~/.claude/agents and <project>/.claude/agents. Default: none.",
+  }),
   disabled_providers: Schema.optional(Schema.mutable(Schema.Array(Schema.String))).annotate({
     description: "Disable providers that are loaded automatically",
   }),

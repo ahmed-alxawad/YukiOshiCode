@@ -32,6 +32,7 @@ explicitly denied), `--mini` (a minimal interface), `--no-replay`,
 | -------------------------- | ----------------------------------------------------------- |
 | `-m, --model`              | model as `provider/model`                                   |
 | `--agent`                  | mode or agent: `build`, `plan`, `goal`, `reasoning`, `research`, `auto`, or a custom agent; an unknown name stops with an error |
+| `--agents`                 | session-only subagents as a JSON object or a path to a JSON file (max 64 KB): `{"name": {"description": "...", "prompt": "...", "tools": ["Read"], "model": "..."}}`. `prompt` is the system prompt; other fields behave like [markdown agent](features.md#subagents) frontmatter. Use them with `--agent <name>` or the task tool. Your parent session's deny rules still apply and `bypassPermissions` is ignored |
 | `--mode`                   | permission mode: `manual`, `auto`, `auto-all`, `plan`, or `review` (what it may do without asking; not the same as `--agent auto`; see [review mode](permissions-and-safety.md#review-mode)) |
 | `-c, --continue`           | continue the last session                                   |
 | `-s, --session`            | continue a session by id                                    |

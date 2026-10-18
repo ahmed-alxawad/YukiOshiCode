@@ -25,9 +25,30 @@ function warnIgnored(agentFile: string, data: Record<string, unknown>) {
   }
 }
 
-export async function load(dir: string) {
+// Claude-style agent directory (`~/.claude`, `<project>/.claude`): only `agents/` is read.
+export async function loadClaude(dir: string) {
+  return load(dir, "agents/**/*.md", ["agents/"])
+}
+
+// Session-only agents from `yukioshi run --agents`: the same field handling as markdown
+// agents, with `prompt` as the system prompt. Throws a readable error on a bad entry.
+export function fromRecord(input: Record<string, unknown>, source = "--agents") {
   const result: Record<string, DeepMutable<ConfigAgentV1.Info>> = {}
-  for (const item of await Glob.scan("{agent,agents}/**/*.md", {
+  for (const [name, value] of Object.entries(input)) {
+    if (typeof value !== "object" || value === null || Array.isArray(value))
+      throw new Error(`${source}: agent "${name}" must be an object`)
+    const data = value as Record<string, unknown>
+    if (typeof data.prompt !== "string" || !data.prompt.trim())
+      throw new Error(`${source}: agent "${name}" needs a non-empty "prompt" (the system prompt)`)
+    warnIgnored(`${source} ${name}`, data)
+    result[name] = ConfigParse.schema(ConfigAgentV1.Info, { name, ...data, prompt: data.prompt.trim() }, `${source}:${name}`)
+  }
+  return result
+}
+
+export async function load(dir: string, pattern = "{agent,agents}/**/*.md", prefixes = ["agent/", "agents/"]) {
+  const result: Record<string, DeepMutable<ConfigAgentV1.Info>> = {}
+  for (const item of await Glob.scan(pattern, {
     cwd: dir,
     absolute: true,
     dot: true,
@@ -36,7 +57,7 @@ export async function load(dir: string) {
     const md = await ConfigMarkdown.parse(item).catch(() => undefined)
     if (!md) continue
 
-    const name = configEntryNameFromPath(path.relative(dir, item), ["agent/", "agents/"])
+    const name = configEntryNameFromPath(path.relative(dir, item), prefixes)
 
     warnIgnored(item, md.data)
     const config = {

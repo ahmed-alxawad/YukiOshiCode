@@ -13,6 +13,7 @@ import { effectCmd, fail } from "../effect-cmd"
 import { requireTerminal } from "../needs-terminal"
 import { ConfigAgentV1 } from "@yukioshi/core/v1/config/agent"
 import { Glob } from "@yukioshi/core/util/glob"
+import { isClaudeDir, withClaudeDirs } from "@/config/claude-agents"
 import { ConfigMarkdown } from "@/config/markdown"
 import { ConfigParse } from "@/config/parse"
 import { configEntryNameFromPath } from "@/config/entry-name"
@@ -160,13 +161,14 @@ export async function scanAgentFiles(
 ): Promise<AgentFileReport[]> {
   const reports: AgentFileReport[] = []
   for (const dir of directories) {
-    for (const file of await Glob.scan("{agent,agents}/**/*.md", {
+    const claude = isClaudeDir(dir)
+    for (const file of await Glob.scan(claude ? "agents/**/*.md" : "{agent,agents}/**/*.md", {
       cwd: dir,
       absolute: true,
       dot: true,
       symlink: true,
     })) {
-      const derived = configEntryNameFromPath(path.relative(dir, file), ["agent/", "agents/"])
+      const derived = configEntryNameFromPath(path.relative(dir, file), claude ? ["agents/"] : ["agent/", "agents/"])
       const md = await ConfigMarkdown.parse(file).catch((error: unknown) => error as Error)
       if (md instanceof Error) {
         const detail = (md as { data?: { message?: string } }).data?.message ?? md.message
@@ -191,6 +193,18 @@ export async function scanAgentFiles(
     }
   }
   return reports
+}
+
+/** Existing Claude agent directories to scan; empty unless the global config sets agent_sources: ["claude"]. */
+export async function claudeAgentDirs(cfg: { agent_sources?: readonly string[] }, cwd = process.cwd()) {
+  if (!cfg.agent_sources?.includes("claude")) return []
+  const found: string[] = [path.join(Global.Path.home, ".claude")]
+  for (let dir = cwd; ; dir = path.dirname(dir)) {
+    const candidate = path.join(dir, ".claude")
+    if (!found.includes(candidate)) found.push(candidate)
+    if (path.dirname(dir) === dir) break
+  }
+  return found
 }
 
 /** Scans all agent files and additionally flags duplicate resolved names, naming the winning file. */
@@ -458,8 +472,12 @@ const AgentValidateCommand = effectCmd({
   handler: Effect.fn("Cli.agent.validate")(function* (args) {
     const { Config } = yield* Effect.promise(() => import("@/config/config"))
     const { ModelsDev } = yield* Effect.promise(() => import("@yukioshi/core/models-dev"))
-    const dirs = yield* Config.Service.use((svc) => svc.directories())
     const cfg = yield* Config.Service.use((svc) => svc.get())
+    const dirs = withClaudeDirs(
+      yield* Config.Service.use((svc) => svc.directories()),
+      yield* Effect.promise(() => claudeAgentDirs(cfg)),
+      Global.Path.config,
+    )
     const catalog = yield* ModelsDev.Service.use((svc) => svc.get()).pipe(
       Effect.catch(() => Effect.succeed({} as Record<string, { models?: Record<string, unknown> }>)),
     )
@@ -508,7 +526,12 @@ const AgentShowCommand = effectCmd({
 
     // Locate the markdown file this agent came from, if any. The same scan order as
     // config loading applies, so the last file with the resolved name is the winner.
-    const dirs = yield* Config.Service.use((svc) => svc.directories())
+    const cfg = yield* Config.Service.use((svc) => svc.get())
+    const dirs = withClaudeDirs(
+      yield* Config.Service.use((svc) => svc.directories()),
+      yield* Effect.promise(() => claudeAgentDirs(cfg)),
+      Global.Path.config,
+    )
     const files = yield* Effect.promise(() => scanAgentFiles(dirs))
     const source = files.findLast((file) => file.name === agent.name)?.file ?? null
 

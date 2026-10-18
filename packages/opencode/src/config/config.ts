@@ -526,6 +526,9 @@ const layer = Layer.effect(
           if (next.audit) {
             delete next.audit
           }
+          // agent_sources widens what is discovered from the user's home and repository, so only
+          // the user's own (global) config may turn it on.
+          delete next.agent_sources
           // webfetch.allow_private turns off the private-address prompt, so a repository must not be
           // able to switch it on for whoever works in it: global config only (same rule as audit).
           if (next.webfetch) {
@@ -890,7 +893,36 @@ const layer = Layer.effect(
 
         const deps: Fiber.Fiber<void>[] = []
 
+        const claudeEnabled = result.agent_sources?.includes("claude") === true
+        let claudeLoaded = !claudeEnabled
+        const loadClaudeAgents = Effect.fn("Config.loadClaudeAgents")(function* () {
+          claudeLoaded = true
+          const globalClaude = path.join(Global.Path.home, ".claude")
+          const projectClaude = Flag.YUKIOSHI_DISABLE_PROJECT_CONFIG
+            ? []
+            : yield* fs.up({ targets: [".claude"], start: ctx.directory, stop: ctx.worktree })
+          const sources = [
+            { dir: globalClaude, project: false },
+            ...projectClaude.filter((dir) => dir !== globalClaude).map((dir) => ({ dir, project: true })),
+          ]
+          for (const { dir, project } of sources) {
+            const agents = yield* Effect.promise(() => ConfigAgent.loadClaude(dir))
+            if (project && !projectTrusted) {
+              for (const [name, agent] of Object.entries(agents)) {
+                if (isRecord(agent) && (agent as any)["permission"] !== undefined)
+                  (agent as any)["permission"] = withoutAllowRules(
+                    `${dir} agent ${name}`,
+                    (agent as any)["permission"],
+                    (result.agent?.[name] as Record<string, unknown> | undefined)?.["permission"],
+                  )
+              }
+            }
+            result.agent = mergeDeep(result.agent ?? {}, agents)
+          }
+        })
+
         for (const entry of directoryEntries) {
+          if (!claudeLoaded && entry.scope !== "global") yield* loadClaudeAgents()
           const dir = entry.path
           const isProject =
             entry.scope === "project" ||
@@ -961,6 +993,18 @@ const layer = Layer.effect(
           } else {
             yield* mergePluginOrigins(dir, list, entry.scope === "global" ? "global" : undefined)
           }
+        }
+
+        if (!claudeLoaded) yield* loadClaudeAgents()
+
+        // `yukioshi run --agents`: session-only agents from the user's own command line, so they
+        // are not filtered like project config, but they merge like any agent: parent deny rules
+        // still apply at the task tool and bypassPermissions is dropped by the agent schema.
+        if (process.env.YUKIOSHI_SESSION_AGENTS) {
+          result.agent = mergeDeep(
+            result.agent ?? {},
+            ConfigAgent.fromRecord(JSON.parse(process.env.YUKIOSHI_SESSION_AGENTS)),
+          )
         }
 
         if (process.env.YUKIOSHI_CONFIG_CONTENT) {

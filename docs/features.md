@@ -371,6 +371,12 @@ ignored. `yukioshi agent validate` checks the discovered files and
 `yukioshi agent show <name>` prints the resolved source, model, steps, and
 merged permission rules.
 
+### Session agents and Claude agent folders
+
+`yukioshi run --agents '<json or file>'` defines subagents for that run only, using the same fields as markdown agents (`prompt` is the system prompt). They come from your own command line, so they are not treated as untrusted project files, but they cannot widen what the parent session denies.
+
+To reuse existing Claude subagents, set `"agent_sources": ["claude"]` in your global config (a project config cannot set it; default is off). YukiOshi then reads `~/.claude/agents/*.md` and, for the project, `.claude/agents/*.md` found by walking up like other project agent folders. Project ones get the same untrusted-project filtering as `.yukioshi/agents` (allow rules are dropped until you trust the project). Precedence on a name clash: `--agents`, then `.yukioshi`/`.opencode`, then `.claude`, then global. `yukioshi agent validate` reports duplicates and which file wins.
+
 ## Background shell commands
 
 The agent can start a long command, such as a dev server or a build, and keep

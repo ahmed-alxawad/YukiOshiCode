@@ -193,6 +193,10 @@ export const RunCommand = effectCmd({
         type: "string",
         describe: "mode or agent: build, plan, goal, reasoning, research, auto, or a custom agent",
       })
+      .option("agents", {
+        type: "string",
+        describe: "session-only subagents as a JSON object or a path to a JSON file: {name: {description, prompt, tools, model}}",
+      })
       .option("format", {
         type: "string",
         choices: ["default", "json"],
@@ -320,6 +324,14 @@ export const RunCommand = effectCmd({
         describe: "enable direct interactive demo slash commands; pass one as the message to run it immediately",
       }),
   handler: Effect.fn("Cli.run")(function* (args) {
+    if (args.agents !== undefined) {
+      const { parseSessionAgents } = yield* Effect.promise(() => import("@/config/session-agents"))
+      try {
+        process.env.YUKIOSHI_SESSION_AGENTS = parseSessionAgents(args.agents)
+      } catch (error) {
+        return yield* fail(error instanceof Error ? error.message : String(error))
+      }
+    }
     const { Agent } = yield* Effect.promise(() => import("@/agent/agent"))
     const { RuntimeFlags } = yield* Effect.promise(() => import("@/effect/runtime-flags"))
     const { InstanceRef } = yield* Effect.promise(() => import("@/effect/instance-ref"))
@@ -1324,6 +1336,7 @@ export async function runMini(input: MiniCommandInput) {
     share: undefined,
     model: input.model,
     agent: input.agent,
+    agents: undefined,
     format: "default",
     file: undefined,
     title: undefined,
