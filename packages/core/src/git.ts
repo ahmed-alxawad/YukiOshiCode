@@ -2,7 +2,10 @@ export * as Git from "./git"
 
 import path from "path"
 import { randomUUID } from "crypto"
-import { Context, Effect, Layer, Schema, Stream } from "effect"
+import { execFile } from "node:child_process"
+import { promises as fsPromises } from "node:fs"
+import { promisify } from "node:util"
+import { Context, Duration, Effect, Layer, Schema, Stream } from "effect"
 import { ChildProcess } from "effect/unstable/process"
 import { AbsolutePath, RelativePath } from "./schema"
 import { FSUtil } from "./fs-util"
@@ -14,6 +17,74 @@ import { KeyedMutex } from "./effect/keyed-mutex"
 // Every git command gets a time limit so a stuck remote or a lock cannot hang the app. Override with
 // YUKIOSHI_GIT_TIMEOUT_MS.
 const gitTimeout = () => AppProcess.envTimeout("YUKIOSHI_GIT_TIMEOUT_MS", 120_000)
+const execFileAsync = promisify(execFile)
+const gitGrace = Duration.seconds(5)
+
+const gitCommand = (args: string[], options: ChildProcess.CommandOptions = {}) =>
+  ChildProcess.make("git", args, { ...options, forceKillAfter: gitGrace })
+
+async function processHoldsFile(file: string) {
+  const probes = [
+    { command: "fuser", args: ["-s", file] },
+    { command: "lsof", args: ["-t", "--", file] },
+  ]
+  for (const probe of probes) {
+    try {
+      await execFileAsync(probe.command, probe.args)
+      return true
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue
+      const code = (error as NodeJS.ErrnoException & { status?: number }).status
+      if (code === 1) return false
+    }
+  }
+
+  if (process.platform !== "linux") return true
+  try {
+    const target = await fsPromises.realpath(file)
+    const processes = await fsPromises.readdir("/proc")
+    for (const pid of processes) {
+      if (!/^\d+$/.test(pid)) continue
+      try {
+        const descriptors = await fsPromises.readdir(`/proc/${pid}/fd`)
+        for (const descriptor of descriptors) {
+          try {
+            if ((await fsPromises.realpath(`/proc/${pid}/fd/${descriptor}`)) === target) return true
+          } catch {
+            // A process may exit or close the descriptor while it is being inspected.
+          }
+        }
+      } catch {
+        // Process-owned /proc entries can disappear or be inaccessible.
+      }
+    }
+    return false
+  } catch {
+    return true
+  }
+}
+
+async function removeStaleIndexLock(worktree: string) {
+  const dotgit = path.join(worktree, ".git")
+  let gitDirectory = dotgit
+  try {
+    const dotgitInfo = await fsPromises.lstat(dotgit)
+    if (!dotgitInfo.isDirectory()) {
+      const pointer = await fsPromises.readFile(dotgit, "utf8")
+      const match = pointer.match(/^gitdir:\s*(.+?)\s*$/m)
+      if (!match) return
+      gitDirectory = path.resolve(path.dirname(dotgit), match[1]!)
+    }
+    const lock = path.join(gitDirectory, "index.lock")
+    const info = await fsPromises.stat(lock)
+    const uid = process.getuid?.()
+    if (uid === undefined || info.uid !== uid || Date.now() - info.mtimeMs <= 60_000) return
+    if (await processHoldsFile(lock)) return
+    await fsPromises.unlink(lock)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") return
+  }
+}
 
 export class Repository extends Schema.Class<Repository>("Git.Repository")({
   worktree: AbsolutePath,
@@ -331,9 +402,10 @@ const layer = Layer.effect(
       args: string[],
       options?: { stdin?: string; env?: Record<string, string> },
     ) {
+      yield* Effect.promise(() => removeStaleIndexLock(repository.worktree))
       const result = yield* proc
         .run(
-          ChildProcess.make("git", repositoryArgs(repository, args), {
+          gitCommand(repositoryArgs(repository, args), {
             cwd: repository.worktree,
             env: options?.env,
             extendEnv: true,
@@ -497,9 +569,10 @@ const layer = Layer.effect(
       paths: readonly RelativePath[]
     }) {
       if (!input.paths.length) return new Set<RelativePath>()
+      yield* Effect.promise(() => removeStaleIndexLock(input.repository.worktree))
       const result = yield* proc
         .run(
-          ChildProcess.make("git", repositoryArgs(input.repository, ["check-ignore", "--no-index", "--stdin", "-z"]), {
+          gitCommand(repositoryArgs(input.repository, ["check-ignore", "--no-index", "--stdin", "-z"]), {
             cwd: input.repository.worktree,
             extendEnv: true,
           }),
@@ -795,9 +868,10 @@ const layer = Layer.effect(
       path: AbsolutePath
       changes: ChangeSet
     }) {
+      yield* Effect.promise(() => removeStaleIndexLock(input.path))
       const result = yield* proc
         .run(
-          ChildProcess.make("git", ["apply", "-"], {
+          gitCommand(["apply", "-"], {
             cwd: input.path,
             extendEnv: true,
             stdin: Stream.make(new TextEncoder().encode(input.changes)),
@@ -864,8 +938,9 @@ const layer = Layer.effect(
       worktreeDirectory?: AbsolutePath,
       cwd = repository.worktree,
     ) {
+      yield* Effect.promise(() => removeStaleIndexLock(cwd))
       const result = yield* proc
-        .run(ChildProcess.make("git", args, { cwd, extendEnv: true, stdin: "ignore" }), { timeout: gitTimeout() })
+        .run(gitCommand(args, { cwd, extendEnv: true, stdin: "ignore" }), { timeout: gitTimeout() })
         .pipe(
           Effect.mapError(
             (cause) => new WorktreeError({ operation, directory: worktreeDirectory, message: cause.message, cause }),
@@ -963,25 +1038,29 @@ function run(cwd: string, proc: AppProcess.Interface) {
 
 function execute(cwd: string, proc: AppProcess.Interface) {
   return (args: string[]) =>
-    proc
-      .run(
-        ChildProcess.make("git", args, {
-          cwd,
-          extendEnv: true,
-          stdin: "ignore",
-        }),
-        { timeout: gitTimeout() },
-      )
-      .pipe(
-        Effect.map(
-          (result) =>
-            ({
-              exitCode: result.exitCode,
-              text: result.stdout.toString("utf8"),
-              stderr: result.stderr.toString("utf8"),
-            }) satisfies Result,
-        ),
-      )
+    Effect.promise(() => removeStaleIndexLock(cwd)).pipe(
+      Effect.andThen(
+        proc
+          .run(
+            gitCommand(args, {
+              cwd,
+              extendEnv: true,
+              stdin: "ignore",
+            }),
+            { timeout: gitTimeout() },
+          )
+          .pipe(
+            Effect.map(
+              (result) =>
+                ({
+                  exitCode: result.exitCode,
+                  text: result.stdout.toString("utf8"),
+                  stderr: result.stderr.toString("utf8"),
+                }) satisfies Result,
+            ),
+          ),
+      ),
+    )
 }
 
 function resolvePath(cwd: string, value: string) {
