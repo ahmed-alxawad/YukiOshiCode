@@ -1212,6 +1212,24 @@ const layer = Layer.effect(
         })
         for (const warning of start.warnings) yield* Effect.logWarning("session start hook warning", { warning })
         startContext.push(...start.context)
+        if (session.parentID) {
+          // Task titles are "<description> (@<agent> subagent)"; the hook gets the two parts separately.
+          const agentName = session.agent ?? input.agent ?? ""
+          const suffix = ` (@${agentName} subagent)`
+          const subStart = yield* hooks.run({
+            hooks: cfg.hooks,
+            event: "SubagentStart",
+            payload: {
+              session_id: input.sessionID,
+              parent_session_id: session.parentID,
+              agent_name: agentName,
+              description: session.title.endsWith(suffix) ? session.title.slice(0, -suffix.length) : session.title,
+            },
+            cwd: hooksCwd,
+          })
+          for (const warning of subStart.warnings)
+            yield* Effect.logWarning("subagent start hook warning", { warning })
+        }
       }
 
       const promptText = input.parts

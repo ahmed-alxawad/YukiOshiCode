@@ -14,7 +14,7 @@ import { Effect, Exit, Schema, Scope } from "effect"
 import { EffectBridge } from "@/effect/bridge"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Database } from "@yukioshi/core/database/database"
-import { backgroundSubagents } from "./subagents"
+import { backgroundSubagents, markSubagentReport } from "./subagents"
 
 export interface TaskPromptOps {
   cancel(sessionID: SessionID): Effect.Effect<void>
@@ -225,7 +225,7 @@ export const TaskTool = Tool.define(
         if (failed?.type === "tool" && failed.state.status === "error") {
           return yield* Effect.fail(new Error(`Subagent failed (task_id: ${nextSession.id}): ${failed.state.error}`))
         }
-        return result.parts.findLast((item) => item.type === "text")?.text ?? ""
+        return markSubagentReport(result.parts.findLast((item) => item.type === "text")?.text ?? "")
       })
 
       const inject = Effect.fn("TaskTool.injectBackgroundResult")(function* (

@@ -25,7 +25,7 @@ const LOW: ReadonlySet<string> = new Set([
   "job_list",
   "job_stop",
 ])
-const MEDIUM: ReadonlySet<string> = new Set(["webfetch", "websearch", "external_directory"])
+const MEDIUM: ReadonlySet<string> = new Set(["webfetch", "websearch", "external_directory", "task_message"])
 const HIGH: ReadonlySet<string> = new Set(["bash", "edit", "write", "apply_patch", "memory_save", "skill_save", "delegate"])
 
 export function classify(action: string): Level {

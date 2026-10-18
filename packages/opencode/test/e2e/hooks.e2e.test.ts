@@ -36,7 +36,10 @@ describe("hooks", () => {
       Effect.gen(function* () {
         const stops = path.join(home, "stop.log")
         const subagentStops = path.join(home, "subagent-stop.log")
-        globalConfig(home, { hooks: { stop: [record(stops)], subagentStop: [record(subagentStops)] } })
+        const subagentStarts = path.join(home, "subagent-start.log")
+        globalConfig(home, {
+          hooks: { stop: [record(stops)], subagentStart: [record(subagentStarts)], subagentStop: [record(subagentStops)] },
+        })
         yield* llm.push(
           reply().tool("task", { description: "look around", prompt: "look around", subagent_type: "general" }),
           reply().text("looked around").stop(),
@@ -53,6 +56,15 @@ describe("hooks", () => {
         expect(stop).toHaveLength(1)
         expect(stop[0]).toMatchObject({ hook_event_name: "Stop" })
         expect(stop[0]).not.toHaveProperty("parent_session_id")
+        const starts = lines(subagentStarts)
+        expect(starts).toHaveLength(1)
+        expect(starts[0]).toMatchObject({
+          hook_event_name: "SubagentStart",
+          agent_name: "general",
+          description: "look around",
+          parent_session_id: stop[0]!.session_id,
+          session_id: subagent[0]!.session_id,
+        })
         expect(subagent).toHaveLength(1)
         expect(subagent[0]).toMatchObject({ hook_event_name: "SubagentStop", parent_session_id: stop[0]!.session_id })
       }),

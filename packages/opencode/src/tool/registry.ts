@@ -10,6 +10,7 @@ import { GlobTool } from "./glob"
 import { GrepTool } from "./grep"
 import { ReadTool } from "./read"
 import { TaskTool } from "./task"
+import { TaskMessageTool } from "./task-message"
 import { Database } from "@yukioshi/core/database/database"
 import { TodoWriteTool } from "./todo"
 import { WebFetchTool } from "./webfetch"
@@ -19,7 +20,7 @@ import { SkillTool } from "./skill"
 import { MemoryRecallTool } from "./memory-recall"
 import { MemorySaveTool } from "./memory-save"
 import { TaskParallelTool } from "./task-parallel"
-import { parallelSubagents } from "./subagents"
+import { backgroundSubagents, parallelSubagents } from "./subagents"
 import { JobListTool, JobStopTool, MonitorTool, backgroundShell } from "./background-shell"
 import { SessionSearchTool } from "./session-search"
 import { SkillSaveTool } from "./skill-save"
@@ -115,6 +116,7 @@ const layer = Layer.effect(
 
     const invalid = yield* InvalidTool
     const task = yield* TaskTool
+    const taskMessageTool = yield* TaskMessageTool
     const read = yield* ReadTool
     const question = yield* QuestionTool
     const todo = yield* TodoWriteTool
@@ -263,6 +265,7 @@ const layer = Layer.effect(
           ...(memoryEnabled
             ? { memoryRecall: Tool.init(memoryRecallTool), memorySave: Tool.init(memorySaveTool) }
             : {}),
+          ...(backgroundSubagents(flags, cfg) ? { taskMessage: Tool.init(taskMessageTool) } : {}),
           ...(parallelTasksEnabled ? { taskParallel: Tool.init(taskParallelTool) } : {}),
           ...(indexingEnabled ? { codeSearch: Tool.init(codeSearchTool) } : {}),
           ...(codeGraphEnabled ? { codeGraph: Tool.init(codeGraphTool) } : {}),
@@ -297,6 +300,7 @@ const layer = Layer.effect(
             tool.patch,
             ...(tool.memoryRecall ? [tool.memoryRecall] : []),
             ...(tool.memorySave ? [tool.memorySave] : []),
+            ...(tool.taskMessage ? [tool.taskMessage] : []),
             ...(tool.taskParallel ? [tool.taskParallel] : []),
             ...(tool.codeSearch ? [tool.codeSearch] : []),
             ...(tool.codeGraph ? [tool.codeGraph] : []),

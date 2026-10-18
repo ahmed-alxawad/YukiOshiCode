@@ -9,7 +9,7 @@ describe("RiskClassifier.classify", () => {
   })
 
   test("network and out-of-tree access is medium risk", () => {
-    for (const action of ["webfetch", "websearch", "external_directory"]) {
+    for (const action of ["webfetch", "websearch", "external_directory", "task_message"]) {
       expect(RiskClassifier.classify(action)).toBe("medium")
     }
   })

@@ -21015,6 +21015,19 @@
               ]
             }
           },
+          "subagentStart": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/HookHttp"
+                },
+                {
+                  "$ref": "#/components/schemas/HookCommand"
+                }
+              ]
+            }
+          },
           "subagentStop": {
             "type": "array",
             "items": {

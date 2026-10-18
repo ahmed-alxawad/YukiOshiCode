@@ -61,6 +61,9 @@ export const Info = Schema.Struct({
   stop: Schema.optional(Schema.Array(Hook)).annotate({
     description: "When a task completes.",
   }),
+  subagentStart: Schema.optional(Schema.Array(Hook)).annotate({
+    description: "When a subagent session starts (foreground, background or parallel).",
+  }),
   subagentStop: Schema.optional(Schema.Array(Hook)).annotate({
     description: "When a subagent finishes its task.",
   }),

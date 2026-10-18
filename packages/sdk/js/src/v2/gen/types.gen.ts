@@ -1725,6 +1725,7 @@ export type HooksConfig = {
   userPromptSubmit?: Array<HookHttp | HookCommand>
   sessionStart?: Array<HookHttp | HookCommand>
   stop?: Array<HookHttp | HookCommand>
+  subagentStart?: Array<HookHttp | HookCommand>
   subagentStop?: Array<HookHttp | HookCommand>
   preCompact?: Array<HookHttp | HookCommand>
   notification?: Array<HookHttp | HookCommand>

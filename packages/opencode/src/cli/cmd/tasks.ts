@@ -174,7 +174,7 @@ export const TasksCommand = effectCmd({
     const background = new Set<string>()
     for (const message of messages) {
       for (const part of message.parts) {
-        if (part.type !== "tool" || part.tool !== "task" || part.state.status === "pending") continue
+        if (part.type !== "tool" || (part.tool !== "task" && part.tool !== "task_message") || part.state.status === "pending") continue
         const meta = part.state.metadata as Record<string, unknown> | undefined
         if (meta?.background === true && typeof meta.sessionId === "string") background.add(meta.sessionId)
       }

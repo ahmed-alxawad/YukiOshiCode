@@ -15,6 +15,7 @@ unchanged.
 | `userPromptSubmit` | before your message is sent                       | yes; standard output is added as context |
 | `sessionStart`     | when a session starts                             | no; standard output is added as context |
 | `stop`             | when a task completes                             | no                                    |
+| `subagentStart`    | when a subagent session starts                    | no                                    |
 | `subagentStop`     | when a subagent finishes its task                 | no                                    |
 | `preCompact`       | before a long conversation is compacted           | no                                    |
 | `notification`     | when the agent is waiting for your approval       | no                                    |
@@ -46,7 +47,8 @@ For an HTTP hook, see [HTTP hooks](#http-hooks) below.
 Event data arrives as JSON on standard input. It always includes
 `hook_event_name` and `cwd`; tool events add `tool_name`, `tool_input`,
 `tool_use_id`, and `session_id`, and `userPromptSubmit` adds `prompt`.
-`subagentStop` has `session_id` and `parent_session_id`, and `preCompact` has
+`subagentStart` has `session_id`, `parent_session_id`, `agent_name` and `description` (the task
+description), and `subagentStop` has `session_id` and `parent_session_id`, and `preCompact` has
 `session_id` and `trigger` (`auto`, or `manual` when you asked for it).
 `stop` runs only for the session you started, not for its subagents.
 

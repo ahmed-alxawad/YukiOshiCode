@@ -15,6 +15,7 @@ export type EventName =
   | "UserPromptSubmit"
   | "SessionStart"
   | "Stop"
+  | "SubagentStart"
   | "SubagentStop"
   | "PreCompact"
   | "Notification"
@@ -25,6 +26,7 @@ const CONFIG_KEYS: Readonly<Record<EventName, keyof ConfigHooksV1.Info>> = {
   UserPromptSubmit: "userPromptSubmit",
   SessionStart: "sessionStart",
   Stop: "stop",
+  SubagentStart: "subagentStart",
   SubagentStop: "subagentStop",
   PreCompact: "preCompact",
   Notification: "notification",
