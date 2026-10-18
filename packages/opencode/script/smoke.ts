@@ -101,6 +101,8 @@ const env: Record<string, string> = {
   ...(process.env as Record<string, string>),
   HOME: home,
   USERPROFILE: home,
+  // Pin the scheduler's user home explicitly. Some macOS runtimes do not derive os.homedir() from HOME.
+  YUKIOSHI_TEST_HOME: home,
   XDG_CONFIG_HOME: xdg.config,
   XDG_DATA_HOME: xdg.data,
   XDG_STATE_HOME: xdg.state,
