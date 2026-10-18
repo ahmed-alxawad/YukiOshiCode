@@ -276,6 +276,13 @@ const cli = yargs(args)
       load: () => loadCommand("db"),
     }),
   )
+  .command(
+    lazyCommand({
+      command: "doctor",
+      describe: "check installation, providers, tools, sandbox, clipboard, and state",
+      load: () => loadCommand("doctor"),
+    }),
+  )
   .fail((msg, err) => {
     if (
       msg?.startsWith("Unknown argument") ||

@@ -162,6 +162,7 @@ interval; see [Features](features.md#loop).
 
 | Command                         | Does                                                   |
 | ------------------------------- | ------------------------------------------------------ |
+| `yukioshi doctor`               | check the installation, config, provider keys, Git, ripgrep, sandbox, clipboard, and writable state (`--network`, `--format json`) |
 | `yukioshi debug config`         | print the merged configuration                          |
 | `yukioshi debug paths`          | print YukiOshi's data, config, and cache folders        |
 | `yukioshi debug sandbox`        | whether the OS sandbox can run here, and what `sandbox.enabled` does (`--format json`) |

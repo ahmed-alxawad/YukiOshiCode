@@ -4,6 +4,7 @@ import { AgentCommand } from "./cmd/agent"
 import { ConsoleCommand } from "./cmd/account"
 import { CheckpointCommand } from "./cmd/checkpoint"
 import { DbCommand } from "./cmd/db"
+import { DoctorCommand } from "./cmd/doctor"
 import { DebugCommand } from "./cmd/debug"
 import { ExportCommand } from "./cmd/export"
 import { GenerateCommand } from "./cmd/generate"
@@ -33,6 +34,7 @@ const commands = {
   console: ConsoleCommand,
   checkpoint: CheckpointCommand,
   db: DbCommand,
+  doctor: DoctorCommand,
   debug: DebugCommand,
   export: ExportCommand,
   generate: GenerateCommand,
