@@ -67,9 +67,9 @@ bun run script/bench.ts
 bun run script/bench.ts --runs 20 --binary ./dist/yukioshi-linux-x64/bin/yukioshi
 ```
 
-The header names Linux/macOS/Windows as supported platforms and states that no
-comparison with other tools is claimed. These numbers are diagnostic only and
-make no AI speed claims.
+The output names Linux/macOS/Windows as supported platforms and explicitly
+states that it is diagnostics only, makes no comparison with other tools, and
+makes no AI speed claims.
 
 ## Building
 

@@ -57,6 +57,9 @@ export function formatMetric(name: string, values: readonly number[]) {
   return `${name.padEnd(25)} median=${summary.median.toFixed(1)}ms p90=${summary.p90.toFixed(1)}ms min=${summary.min.toFixed(1)}ms max=${summary.max.toFixed(1)}ms`
 }
 
+export const disclaimer =
+  "Diagnostics only: no comparison with other tools is claimed, and no AI speed claims are made."
+
 function sse(text: string) {
   const chunk = {
     id: "bench",
@@ -75,7 +78,7 @@ function sse(text: string) {
   return `data: ${JSON.stringify(chunk)}\n\ndata: ${JSON.stringify(done)}\n\ndata: [DONE]\n\n`
 }
 
-type FakeModel = { readonly url: string; readonly requests: number; stop(): void }
+type FakeModel = { readonly url: string; readonly requests: number; stop(): Promise<void> }
 
 function fakeModel(onRequest: (request: Request) => void): FakeModel {
   let requests = 0
@@ -94,7 +97,9 @@ function fakeModel(onRequest: (request: Request) => void): FakeModel {
       return requests
     },
     url: `${server.url}v1`,
-    stop: () => server.stop(true),
+    stop: async () => {
+      await server.stop(true)
+    },
   }
 }
 
@@ -180,14 +185,13 @@ async function main() {
       firstRequestResolve = undefined
     }
   } finally {
-    model.stop()
+    await model.stop()
     fs.rmSync(root, { recursive: true, force: true })
   }
 
   console.log("YukiOshi Code CLI benchmark (local fake instant model)")
-  console.log(
-    "Platforms: Linux/macOS/Windows; this run: " + process.platform + ". No comparison with other tools is claimed.",
-  )
+  console.log("Platforms: Linux/macOS/Windows; this run: " + process.platform)
+  console.log(disclaimer)
   console.log(`Samples: ${runs}`)
   console.log(formatMetric("--version", samples.version))
   console.log(formatMetric("run --help", samples.help))

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { formatMetric, parseArgs, summarize } from "../script/bench"
+import { disclaimer, formatMetric, parseArgs, summarize } from "../script/bench"
 
 describe("CLI benchmark helpers", () => {
   test("uses nearest-rank median and p90 with stable extrema", () => {
@@ -9,5 +9,11 @@ describe("CLI benchmark helpers", () => {
   test("defaults to ten samples and formats every required statistic", () => {
     expect(parseArgs([])).toEqual({ runs: 10, binary: undefined })
     expect(formatMetric("turn", [1, 2, 3])).toContain("median=2.0ms p90=3.0ms min=1.0ms max=3.0ms")
+  })
+
+  test("labels the output as diagnostics without comparison or AI speed claims", () => {
+    expect(disclaimer).toContain("Diagnostics only")
+    expect(disclaimer).toContain("no comparison with other tools")
+    expect(disclaimer).toContain("no AI speed claims")
   })
 })
