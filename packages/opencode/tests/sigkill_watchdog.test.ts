@@ -1,7 +1,7 @@
 // Regression test for SIGKILL watchdog - ensures child process continues after parent exit
 import { describe, it, expect, afterAll } from "bun:test";
-import { spawn, readFileSync, rmSync, mkdtempSync, writeFileSync } from "child_process";
-import { mkdtempSync as mkTmp, writeFileSync as wf, readFileSync as rf, rmSync as rm } from "fs";
+import { spawn } from "child_process";
+import { mkdtempSync as mkTmp, readFileSync as rf, rmSync as rm } from "fs";
 import { join } from "path";
 
 describe("SIGKILL watchdog", () => {
