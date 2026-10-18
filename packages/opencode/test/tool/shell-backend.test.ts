@@ -103,7 +103,7 @@ const alive = (pid: number) => {
     return false
   }
 }
-process.env.PATH = FAKE + ":" + process.env.PATH
+process.env.PATH = FAKE + path.delimiter + process.env.PATH
 
 const withGlobal = <A, E, R>(shell: object, self: Effect.Effect<A, E, R>) =>
   Effect.gen(function* () {
@@ -186,6 +186,28 @@ describe("shell backend plan", () => {
   })
 })
 
+// The fakes are POSIX sh scripts; on Windows only the real-process tests are skipped (the pure plan/quote
+// tests below run everywhere).
+const posix = process.platform === "win32"
+const itPosix = posix ? it.live.skip : it.live
+const testPosix = posix ? test.skip : test
+
+describe("shell backend argv without executing anything", () => {
+  test("ssh plan keeps the remote command as exactly one argument after --", () => {
+    for (const text of [`it's "quoted"`, "$(touch PWNED); echo '", "a\nb && c"]) {
+      const plan = ShellBackend.plan({ backend: "ssh", ssh: ssh.ssh }, {
+        command: `printf %s ${ShellBackend.quote(text)}`, cwd: "/p", env: {}, root: "/p",
+      })
+      expect(plan.args.indexOf("--")).toBe(plan.args.length - 2)
+      expect(plan.args.at(-1)).toStartWith("sh -c ")
+    }
+  })
+  test("quote() wraps in single quotes and escapes embedded quotes", () => {
+    expect(ShellBackend.quote("a'b")).toBe(`'a'\\''b'`)
+    expect(ShellBackend.quote("$HOME `x`")).toBe("'$HOME `x`'")
+  })
+})
+
 describe("shell backend execution with fake docker and ssh", () => {
   const nasty = [
     `it's "quoted" and 'single'`,
@@ -195,7 +217,7 @@ describe("shell backend execution with fake docker and ssh", () => {
     "a b\\c $HOME ${HOME}",
   ]
 
-  test("quote() survives a real shell round trip", () => {
+  testPosix("quote() survives a real shell round trip", () => {
     for (const text of nasty) {
       const out = Bun.spawnSync(["sh", "-c", `printf %s ${ShellBackend.quote(text)}`], { cwd: FAKE })
       expect(out.stdout.toString()).toBe(text)
@@ -203,7 +225,7 @@ describe("shell backend execution with fake docker and ssh", () => {
     expect(existsSync(path.join(FAKE, "PWNED"))).toBe(false)
   })
 
-  test("ssh remote command stays one command; no extra arguments or injection", () => {
+  testPosix("ssh remote command stays one command; no extra arguments or injection", () => {
     for (const text of nasty) {
       reset()
       const plan = ShellBackend.plan({ backend: "ssh", ssh: ssh.ssh }, {
@@ -218,7 +240,7 @@ describe("shell backend execution with fake docker and ssh", () => {
     expect(existsSync(path.join(FAKE, "PWNED"))).toBe(false)
   })
 
-  it.live("docker via the shell tool: argv, workdir, filtered env, output", () =>
+  itPosix("docker via the shell tool: argv, workdir, filtered env, output", () =>
     Effect.gen(function* () {
       reset()
       const tmp = yield* tmpdirScoped()
@@ -237,7 +259,7 @@ describe("shell backend execution with fake docker and ssh", () => {
     }),
   )
 
-  it.live("docker: timeout kills the client and docker kill runs for the container", () =>
+  itPosix("docker: timeout kills the client and docker kill runs for the container", () =>
     Effect.gen(function* () {
       reset()
       const tmp = yield* tmpdirScoped()
@@ -253,7 +275,7 @@ describe("shell backend execution with fake docker and ssh", () => {
     }),
   )
 
-  it.live("ssh: abort kills the client", () =>
+  itPosix("ssh: abort kills the client", () =>
     Effect.gen(function* () {
       reset()
       const tmp = yield* tmpdirScoped()

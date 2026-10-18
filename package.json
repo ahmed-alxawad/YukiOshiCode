@@ -13,7 +13,7 @@
     "upgrade-opentui": "bun run script/upgrade-opentui.ts",
     "postinstall": "bun run --cwd packages/core fix-node-pty",
     "prepare": "husky",
-    "test": "bun test"
+    "test": "echo 'do not run tests from root' && exit 1"
   },
   "workspaces": {
     "packages": ["packages/*", "packages/sdk/js"],
@@ -95,10 +95,19 @@
   },
   "devDependencies": {
     "@actions/artifact": "5.0.1",
-    "@tsconfig/bun": "1.0.9",
-    "@types/bun": "1.3.13",
-    "@typescript/native-preview": "7.0.0-dev.20251207.1",
-    "sst": "4.13.1",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/mime-types": "3.0.1",
+    "@typescript/native-preview": "catalog:",
+    "bun-types": "1.3.13",
+    "glob": "13.0.5",
+    "husky": "9.1.7",
+    "oxlint": "1.60.0",
+    "oxlint-tsgolint": "0.21.0",
+    "prettier": "3.6.2",
+    "semver": "^7.6.0",
+    "sst": "catalog:",
+    "turbo": "2.10.2"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.933.0",
@@ -106,7 +115,7 @@
     "@yukioshi/script": "workspace:*",
     "@yukioshi/sdk": "workspace:*",
     "heap-snapshot-toolkit": "1.1.3",
-    "typescript": "5.8.2",
+    "typescript": "catalog:"
   },
   "repository": {
     "type": "git",
@@ -131,16 +140,25 @@
   ],
   "overrides": {
     "@ai-sdk/anthropic": "3.0.111",
+    "@fastify/busboy": "3.2.3",
     "@opentui/core": "catalog:",
     "@opentui/keymap": "catalog:",
     "@opentui/solid": "catalog:",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
+    "brace-expansion": "5.0.12",
+    "dompurify": "3.4.17",
     "fast-uri": "3.1.8",
     "fast-xml-parser": "5.7.3",
-    "fastify": "5.12.2",
+    "fastify": "5.12.5",
+    "find-my-way": "9.6.0",
+    "hono": "4.12.18",
+    "js-yaml": "3.15.2",
+    "minimatch": "10.2.6",
     "open": "11.0.4",
-    "tar": "7.5.21"
+    "source-map-js": "1.2.2",
+    "tar": "7.5.21",
+    "ws": "8.21.0"
   },
   "patchedDependencies": {
     "@dnd-kit/dom@0.5.0": "patches/@dnd-kit%2Fdom@0.5.0.patch",

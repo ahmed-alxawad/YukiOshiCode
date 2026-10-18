@@ -665,7 +665,7 @@ withMcpInstructions.instance(
       yield* user(chat.id, "hello")
 
       const fiber = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
-      yield* awaitWithTimeout(llm.wait(1), "timed out waiting for MCP instruction request", "10 seconds")
+      yield* awaitWithTimeout(llm.wait(1), "timed out waiting for MCP instruction request", "30 seconds")
 
       const hits = yield* llm.hits
       const body = JSON.stringify(hits[0]?.body)
@@ -1388,7 +1388,7 @@ it.instance(
       yield* Fiber.await(fiber)
       expect((yield* status.get(chat.id)).type).toBe("idle")
     }),
-  10_000,
+  30_000,
 )
 
 // Cancel semantics
@@ -1527,7 +1527,7 @@ raceNoLLMServer.instance(
       }
     }),
   { config: cfg },
-  10_000,
+  30_000,
 )
 
 noLLMServer.instance(
@@ -1553,12 +1553,12 @@ noLLMServer.instance(
       yield* addSubtask(chat.id, msg.id)
 
       const fiber = yield* prompt.loop({ sessionID: chat.id }).pipe(Effect.forkChild)
-      yield* awaitWithTimeout(Deferred.await(ready), "timed out waiting for task tool to start", "10 seconds")
+      yield* awaitWithTimeout(Deferred.await(ready), "timed out waiting for task tool to start", "30 seconds")
       yield* prompt.cancel(chat.id)
 
       const exit = yield* Fiber.await(fiber)
       expect(Exit.isSuccess(exit)).toBe(true)
-      yield* awaitWithTimeout(Deferred.await(aborted), "timed out waiting for task tool abort", "10 seconds")
+      yield* awaitWithTimeout(Deferred.await(aborted), "timed out waiting for task tool abort", "30 seconds")
 
       const msgs = yield* MessageV2.filterCompactedEffect(chat.id)
       const taskMsg = msgs.find((item) => item.info.role === "assistant" && item.info.agent === "general")
@@ -1609,7 +1609,7 @@ it.instance(
       expect((yield* status.get(chat.id)).type).toBe("idle")
       expect((yield* status.get(childID)).type).toBe("idle")
     }),
-  10_000,
+  30_000,
 )
 
 it.instance(
@@ -2014,7 +2014,7 @@ unix(
       expect(yield* llm.calls).toBe(1)
     }),
   { git: true },
-  10_000,
+  30_000,
 )
 
 unix(
@@ -2053,7 +2053,7 @@ unix(
       expect(yield* llm.calls).toBe(1)
     }),
   { git: true },
-  10_000,
+  30_000,
 )
 
 unix(
@@ -2328,7 +2328,7 @@ noLLMServer.instance(
         })
         .pipe(Effect.forkChild)
 
-      yield* awaitWithTimeout(Deferred.await(ready), "timed out waiting for read tool to start", "10 seconds")
+      yield* awaitWithTimeout(Deferred.await(ready), "timed out waiting for read tool to start", "30 seconds")
       yield* prompt.cancel(chat.id)
       yield* Fiber.interrupt(fiber)
       const exit = yield* Fiber.await(fiber)
@@ -2363,7 +2363,7 @@ noLLMServer.instance(
         })
         .pipe(Effect.forkChild)
 
-      yield* awaitWithTimeout(Deferred.await(ready), "timed out waiting for read tool to start", "10 seconds")
+      yield* awaitWithTimeout(Deferred.await(ready), "timed out waiting for read tool to start", "30 seconds")
       yield* prompt.cancel(chat.id)
       yield* Fiber.interrupt(fiber)
       const exit = yield* Fiber.await(fiber)

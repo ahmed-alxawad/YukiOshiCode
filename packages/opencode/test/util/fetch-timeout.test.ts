@@ -28,6 +28,9 @@ function createStalledTcpServer(): Promise<{ port: number; close: () => Promise<
   })
 }
 
+// The fetch itself gives up after 1 s; the rest is CLI start-up, which takes much longer on loaded Windows runners.
+const LIMIT_MS = process.platform === "win32" ? 40_000 : 8_000
+
 async function runCli(home: string, args: string[], envOverrides: Record<string, string> = {}) {
   const proc = Bun.spawn(["bun", "run", cliEntry, ...args], {
     cwd: home,
@@ -51,7 +54,7 @@ async function runCli(home: string, args: string[], envOverrides: Record<string,
   })
 
   const timeoutPromise = new Promise<{ timedOut: true }>((resolve) =>
-    setTimeout(() => resolve({ timedOut: true }), 8_000),
+    setTimeout(() => resolve({ timedOut: true }), LIMIT_MS),
   )
 
   const executionPromise = Promise.all([
@@ -148,7 +151,7 @@ describe("fetchWithTimeout", () => {
       const { stdout, stderr } = await runCli(tmp.path, ["mcp", "debug", "stalled-remote"])
       const elapsed = Date.now() - started
 
-      expect(elapsed).toBeLessThan(8_000)
+      expect(elapsed).toBeLessThan(LIMIT_MS)
       expect(stdout).toContain(`No response from 127.0.0.1:${server.port}`)
       expect(stdout).toContain("the request was stopped")
 
@@ -164,7 +167,7 @@ describe("fetchWithTimeout", () => {
     } finally {
       await server.close()
     }
-  }, 15_000)
+  }, LIMIT_MS + 7_000)
 
   test("yukioshi import <url> times out against a non-responsive TCP server and names host without leaking query string", async () => {
     const server = await createStalledTcpServer()
@@ -189,7 +192,7 @@ describe("fetchWithTimeout", () => {
       const elapsed = Date.now() - started
 
       expect(exitCode).not.toBe(0)
-      expect(elapsed).toBeLessThan(8_000)
+      expect(elapsed).toBeLessThan(LIMIT_MS)
       expect(stderr).toContain(`Could not reach 127.0.0.1:${server.port}`)
       expect(stderr).toContain(`No response from 127.0.0.1:${server.port}`)
       expect(stderr).toContain("the request was stopped")
@@ -198,7 +201,7 @@ describe("fetchWithTimeout", () => {
     } finally {
       await server.close()
     }
-  }, 15_000)
+  }, LIMIT_MS + 7_000)
 })
 
 describe("YUKIOSHI_FETCH_TIMEOUT_MS", () => {

@@ -3,7 +3,7 @@
 // .gitignore is respected), definitions from per-language patterns, and files are ranked by how many other
 // files mention their symbols (a small deterministic PageRank). Local only: no network, no model calls.
 
-import { execFileSync } from "child_process"
+import { spawnSync } from "child_process"
 import fs from "fs"
 import path from "path"
 
@@ -58,11 +58,13 @@ export function definitions(file: string, text: string): Def[] {
 export function listFiles(root: string, max = MAX_FILES): string[] {
   let out: string
   try {
-    out = execFileSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], {
+    const r = spawnSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], {
       cwd: root,
       maxBuffer: 64 * 1024 * 1024,
       stdio: ["ignore", "pipe", "ignore"],
-    }).toString()
+    })
+    if (r.error || r.status !== 0) return []
+    out = r.stdout.toString()
   } catch {
     return []
   }

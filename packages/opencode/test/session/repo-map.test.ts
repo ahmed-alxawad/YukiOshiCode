@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { execFileSync } from "child_process"
+import { spawnSync } from "child_process"
 import fs from "fs"
 import os from "os"
 import path from "path"
@@ -13,7 +13,7 @@ function repo() {
     fs.mkdirSync(path.dirname(path.join(dir, f)), { recursive: true })
     fs.writeFileSync(path.join(dir, f), t)
   }
-  execFileSync("git", ["init", "-q"], { cwd: dir })
+  spawnSync("git", ["init", "-q"], { cwd: dir })
   w(".gitignore", "ignored/\n")
   w("core.ts", "export function coreHelper() {}\nexport class CoreThing {}\n")
   w("a.ts", "import { coreHelper } from './core'\nexport function alphaRun() { coreHelper() }\n")

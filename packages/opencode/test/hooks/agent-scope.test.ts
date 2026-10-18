@@ -14,8 +14,8 @@ describe("Hooks.withAgent", () => {
     Effect.gen(function* () {
       const cwd = yield* tmpdirScoped()
       const hooks = yield* Hooks.Service
-      const global: ConfigHooksV1.Info = { preToolUse: [{ command: "echo global >&2; exit 0" }] }
-      const agent = { preToolUse: [{ command: "echo agent >&2; exit 2" }], stop: [{ command: "exit 0" }] }
+      const global: ConfigHooksV1.Info = { preToolUse: [{ command: `bun -e "await Bun.stdin.text();console.error('global')"` }] }
+      const agent = { preToolUse: [{ command: `bun -e "await Bun.stdin.text();console.error('agent');process.exit(2)"` }], stop: [{ command: `bun -e "await Bun.stdin.text()"` }] }
       const run = (merged: ConfigHooksV1.Info | undefined) =>
         hooks.run({ hooks: merged, event: "PreToolUse", payload: {}, cwd, toolName: "bash" })
 

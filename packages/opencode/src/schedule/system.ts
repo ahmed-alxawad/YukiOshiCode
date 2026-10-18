@@ -6,7 +6,8 @@ import os from "os"
 import fs from "fs/promises"
 import { existsSync } from "fs"
 import type { ScheduleJob } from "./store"
-import { cronToTaskXml, schtasksDeleteArgs } from "./windows"
+import { Global } from "@yukioshi/core/global"
+import { cronToTaskXml, launcherScript, schtasksDeleteArgs } from "./windows"
 import { syncLaunchdSchedule, type LaunchctlRunner } from "./launchd"
 
 export const CRON_BLOCK_START = "# BEGIN yukioshi schedule"
@@ -259,7 +260,13 @@ export async function syncSystemSchedule(jobs: ScheduleJob[], options: SystemSch
     const binary = getYukioshiBinary()
     for (const job of jobs) {
       if (job.enabled) {
-        const xml = cronToTaskXml(job.id, job.cron, binary, carriedEnv())
+        // The long command (binary plus carried settings) lives in a launcher script, so the registered task
+        // command stays short; Task Scheduler rejects commands over 261 characters.
+        const env = carriedEnv()
+        const launcher = path.join(Global.Path.state, "schedule", job.id, "run.cmd")
+        const xml = cronToTaskXml(job.id, job.cron, binary, env, launcher)
+        await fs.mkdir(path.dirname(launcher), { recursive: true })
+        await fs.writeFile(launcher, launcherScript(job.id, binary, env))
         const file = path.join(os.tmpdir(), `yukioshi-task-${process.pid}-${job.id}.xml`)
         // Task Scheduler reads UTF-16 with a byte order mark.
         await fs.writeFile(file, Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(xml, "utf16le")]))
