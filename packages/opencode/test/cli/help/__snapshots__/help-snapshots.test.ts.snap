@@ -147,6 +147,8 @@ Commands:
   yukioshi debug config        show resolved configuration
   yukioshi debug lsp           LSP debugging utilities
   yukioshi debug rg            ripgrep debugging utilities
+  yukioshi debug repo-map      print the repo map (ranked files and definitions) that
+                               repo_map.enabled adds to the system context
   yukioshi debug file          file system debugging utilities
   yukioshi debug scrap         list all known projects
   yukioshi debug sandbox       show whether the OS sandbox can run on this machine, and what that

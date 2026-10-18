@@ -716,6 +716,16 @@ With `learning.nudges` on (off by default, global config only), a turn that used
 
 Use `/learning on`, `/learning off` or `/learning status` to change it; the choice is saved in your global config. A project configuration cannot enable it.
 
+## Repo map
+
+With `repo_map.enabled` on (off by default, global config only), the system context gets a compact map of the repository's key files and their definitions, most referenced first, in the spirit of Aider's repo map. Files come from `git ls-files` (so `.gitignore` is respected, at most 2000 files, 200 KB each). Definitions are found by per-language patterns (TypeScript/JavaScript, Python, Go, Rust, Java/Kotlin). Files are ranked by a deterministic PageRank over "this file mentions a symbol defined in that file". The map stops at `repo_map.tokens` (default 1024, estimated at 4 characters per token) and is rebuilt when a file's size or modification time changes. Everything is local: no network and no model calls. The map is a hint; re-read files before editing.
+
+```json
+{ "repo_map": { "enabled": true, "tokens": 1024 } }
+```
+
+Run `yukioshi debug repo-map [--tokens N]` to print the map.
+
 ## Installing many skills at once
 
 `yukioshi skill add` takes any number of sources in one command: git URLs, local

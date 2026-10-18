@@ -11,6 +11,7 @@ import { Agent } from "../agent/agent"
 import * as Mode from "../agent/mode"
 import { SessionGoal } from "./goal"
 import { SessionLearning } from "./learning"
+import { SessionRepoMap } from "./repo-map"
 import { LearnedSkills } from "../skill/learned"
 import { SessionRepeat } from "./repeat"
 import { TuiEvent } from "@/server/tui-event"
@@ -1665,7 +1666,9 @@ const layer = Layer.effect(
               sys.memory(),
               MessageV2.toModelMessagesEffect(msgs, model),
             ])
-            const redactCfg = (yield* config.get()).redact
+            const fullCfg = yield* config.get()
+            const redactCfg = fullCfg.redact
+            const repoMap = SessionRepoMap.systemText(ctx.worktree === "/" ? ctx.directory : ctx.worktree, fullCfg.repo_map)
             let promptRedacted = false
             const modelMsgs = rawModelMsgs.map((rawMsg) => {
               const msg = maskToolTraffic(rawMsg, redactCfg)
@@ -1707,6 +1710,7 @@ const layer = Layer.effect(
               ...env,
               ...instructions,
               ...(memory ? [memory] : []),
+              ...(repoMap ? [repoMap] : []),
               ...(mcpInstructions ? [mcpInstructions] : []),
               ...(skills ? [skills] : []),
               ...(preloaded ? [preloaded] : []),

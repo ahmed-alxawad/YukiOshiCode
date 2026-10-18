@@ -135,6 +135,7 @@ Normal `{env:…}` substitution applies to both aliases. If a local MCP server s
 | `lsp_tool`             | the `lsp` code navigation tool when language servers are on (off by default) | [Features](features.md#code-navigation) |
 | `web_search`           | the `websearch` tool: `enabled` (off by default), `provider` (`exa` or `parallel`) | [Features](features.md#web-search) |
 | `learning`             | learning nudges: `nudges` (off by default; global only), `min_tool_calls` (8), `every_turns` (20) | [Learning nudges](features.md#learning-nudges) |
+| `repo_map`             | repo map in the system context: `enabled` (off by default; global only), `tokens` (1024) | [Repo map](features.md#repo-map) |
 | `webfetch`             | webfetch options: `allow_private` (off by default; global only) | [Permissions and safety](permissions-and-safety.md#webfetch-and-private-network-protection) |
 | `compaction`           | how long conversations are summarised to stay within context        |                                             |
 | `goal`                 | `/goal`: `enabled` and `max_rounds` (default 20)                    | [Features](features.md)                     |

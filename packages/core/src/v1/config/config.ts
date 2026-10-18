@@ -39,6 +39,7 @@ import { ConfigTriggersV1 } from "./triggers"
 import { ConfigWebSearchV1 } from "./web-search"
 import { ConfigWebFetchV1 } from "./webfetch"
 import { ConfigLearningV1 } from "./learning"
+import { ConfigRepoMapV1 } from "./repo-map"
 import { ConfigBrowserV1 } from "./browser"
 import { ConfigBackgroundShellV1 } from "./background-shell"
 import { Info as ConfigShellV1 } from "./shell"
@@ -238,6 +239,9 @@ export const Info = Schema.Struct({
   }),
   learning: Schema.optional(ConfigLearningV1.Info).annotate({
     description: "Learning nudges (global config only; off by default)",
+  }),
+  repo_map: Schema.optional(ConfigRepoMapV1.Info).annotate({
+    description: "Repo map in the system context (global config only; off by default)",
   }),
   webfetch: Schema.optional(ConfigWebFetchV1.Info).annotate({
     description: "The webfetch tool (allow_private is read from global config only)",

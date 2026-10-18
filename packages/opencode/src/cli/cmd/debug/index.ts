@@ -9,6 +9,7 @@ import { cmd } from "../cmd"
 import { ConfigCommand } from "./config"
 import { FileCommand } from "./file"
 import { LSPCommand } from "./lsp"
+import { RepoMapCommand } from "./repo-map"
 import { RipgrepCommand } from "./ripgrep"
 import { ScrapCommand } from "./scrap"
 import { SandboxCommand } from "./sandbox"
@@ -26,6 +27,7 @@ export const DebugCommand = cmd({
       .command(ConfigCommand)
       .command(LSPCommand)
       .command(RipgrepCommand)
+      .command(RepoMapCommand)
       .command(FileCommand)
       .command(ScrapCommand)
       .command(SandboxCommand)

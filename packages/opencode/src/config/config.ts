@@ -537,6 +537,8 @@ const layer = Layer.effect(
           }
           // learning.nudges adds hidden reminders to turns, so only the user's own config may turn it on.
           delete next.learning
+          // repo_map adds file and symbol names to every prompt, so only the user's own config may turn it on.
+          delete next.repo_map
           for (const item of next.skills?.paths ?? []) projectSkillPaths.add(item)
           if (projectTrusted) {
             for (const item of next.skills?.urls ?? []) projectSkillUrls.add(item)
