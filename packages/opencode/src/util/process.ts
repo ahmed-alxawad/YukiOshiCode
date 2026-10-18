@@ -4,7 +4,6 @@ import launch from "cross-spawn"
 import { buffer } from "node:stream/consumers"
 import { errorMessage } from "./error"
 import { ChildRegistry } from "@yukioshi/core/child-registry"
-import { attachWatchdog, type WatchdogHandle } from "./watchdog"
 
 export type Stdio = "inherit" | "pipe" | "ignore" | number | Stream
 export type Shell = boolean | string
@@ -19,7 +18,6 @@ export interface Options {
   abort?: AbortSignal
   kill?: NodeJS.Signals | number
   timeout?: number
-  watchdog?: boolean
 }
 
 export interface RunOptions extends Omit<Options, "stdout" | "stderr"> {
@@ -57,7 +55,7 @@ export class RunFailedError extends Error {
   }
 }
 
-export type Child = ChildProcess & { exited: Promise<number>; watchdog?: WatchdogHandle }
+export type Child = ChildProcess & { exited: Promise<number> }
 
 export function spawn(cmd: string[], opts: Options = {}): Child {
   if (cmd.length === 0) throw new Error("Command is required")
@@ -72,9 +70,6 @@ export function spawn(cmd: string[], opts: Options = {}): Child {
   })
 
   ChildRegistry.track(proc, false)
-
-  const enableWatchdog = opts.watchdog !== false && process.platform !== "win32"
-  const watchdog = enableWatchdog ? attachWatchdog(proc, { group: false }) : undefined
 
   let closed = false
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -95,7 +90,6 @@ export function spawn(cmd: string[], opts: Options = {}): Child {
     const done = () => {
       opts.abort?.removeEventListener("abort", abort)
       if (timer) clearTimeout(timer)
-      watchdog?.cleanup()
     }
 
     proc.once("exit", (code, signal) => {
@@ -117,11 +111,8 @@ export function spawn(cmd: string[], opts: Options = {}): Child {
 
   const child = proc as Child
   child.exited = exited
-  child.watchdog = watchdog
   return child
 }
-
-export const spawnProcess = spawn
 
 export async function run(cmd: string[], opts: RunOptions = {}): Promise<Result> {
   const proc = spawn(cmd, {
