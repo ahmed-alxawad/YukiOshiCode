@@ -11,5 +11,9 @@ export const Info = Schema.Struct({
     description:
       "Give the agent the task_parallel tool, which runs up to 8 subagents at once, each optionally in its own git worktree. Off by default.",
   }),
+  fork: Schema.optional(Schema.Boolean).annotate({
+    description:
+      "Let the task tool start a subagent that inherits a copy of the parent conversation (task with fork: true). Fork children cannot start subagents. Off by default.",
+  }),
 })
 export type Info = Schema.Schema.Type<typeof Info>

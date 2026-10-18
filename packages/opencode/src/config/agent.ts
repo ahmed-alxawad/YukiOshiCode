@@ -105,7 +105,7 @@ export async function loadMode(dir: string) {
  */
 export function dropUntrustedFields(label: string, agent: Record<string, unknown>) {
   const dropped: string[] = []
-  for (const key of ["background", "isolation"]) {
+  for (const key of ["background", "fork", "isolation"]) {
     if (agent[key] === undefined) continue
     delete agent[key]
     dropped.push(key)

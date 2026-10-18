@@ -41,6 +41,9 @@ const AgentSchema = Schema.StructWithRest(
     background: Schema.optional(Schema.Boolean).annotate({
       description: "Start this agent in the background when the task tool uses it (needs subagents.background)",
     }),
+    fork: Schema.optional(Schema.Boolean).annotate({
+      description: "Start this agent with a copy of the parent conversation when the task tool uses it (needs subagents.fork)",
+    }),
     isolation: Schema.optional(Schema.Literal("worktree")).annotate({
       description: "Run this agent in its own git worktree when the task tool uses it (needs subagents.parallel)",
     }),
@@ -94,6 +97,7 @@ export const KNOWN_KEYS: ReadonlySet<string> = new Set([
   "permissionMode",
   "skills",
   "background",
+  "fork",
   "isolation",
   "effort",
   "initialPrompt",

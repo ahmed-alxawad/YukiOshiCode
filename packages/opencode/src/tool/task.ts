@@ -14,6 +14,7 @@ import { Effect, Exit, Schema, Scope } from "effect"
 import { EffectBridge } from "@/effect/bridge"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Database } from "@yukioshi/core/database/database"
+import { copyForkHistory, forkSubagents } from "./task-fork"
 import { backgroundSubagents, markSubagentReport, parallelSubagents } from "./subagents"
 import { InstanceStore } from "@/project/instance-store"
 import { Worktree } from "../worktree"
@@ -56,18 +57,33 @@ const BaseParameterFields = {
     description:
       "This should only be set if you mean to resume a previous task (you can pass a prior task_id and the task will continue the same subagent session as before instead of creating a fresh one)",
   }),
+  fork: Schema.optional(Schema.Boolean).annotate({
+    description:
+      "Start the subagent with a copy of this conversation so far instead of a blank context. It cannot start subagents itself",
+  }),
   command: Schema.optional(Schema.String).annotate({ description: "The command that triggered this task" }),
 }
 
-const BaseParameters = Schema.Struct(BaseParameterFields)
-
-export const Parameters = Schema.Struct({
-  ...BaseParameterFields,
+const { fork: ForkField, ...NoForkFields } = BaseParameterFields
+const FORK_DESCRIPTION =
+  "Fork mode: fork=true starts the subagent with a copy of this conversation so far (same system prompt and tools), then your prompt. A fork cannot start subagents. Use it when the task needs the context you already hold."
+const BackgroundField = {
   background: Schema.optional(Schema.Boolean).annotate({
     description:
       "Run the agent in the background. You will be notified when it completes. DO NOT sleep, poll, or proactively check on its progress",
   }),
-})
+}
+
+export const Parameters = Schema.Struct({ ...BaseParameterFields, ...BackgroundField })
+
+// The model is only offered the optional parameters whose feature is on.
+function offered(background: boolean, fork: boolean) {
+  return Schema.Struct({
+    ...NoForkFields,
+    ...(fork ? { fork: ForkField } : {}),
+    ...(background ? BackgroundField : {}),
+  })
+}
 
 function renderOutput(input: {
   sessionID: SessionID
@@ -112,6 +128,14 @@ export const TaskTool = Tool.define(
         )
       }
 
+      const wantsFork = params.fork === true || (yield* agent.get(params.subagent_type))?.fork === true
+      if (params.fork === true && !forkSubagents(cfg)) {
+        return yield* Effect.fail(
+          new Error('Fork mode is off. Turn it on with "subagents": { "fork": true } in the config.'),
+        )
+      }
+      const fork = wantsFork && forkSubagents(cfg) && !params.task_id
+
       const parent = yield* sessions.get(ctx.sessionID)
       let current = parent
       let depth = 0
@@ -139,10 +163,12 @@ export const TaskTool = Tool.define(
         })
       }
 
-      const next = yield* agent.get(params.subagent_type)
-      if (!next) {
+      const requested = yield* agent.get(params.subagent_type)
+      if (!requested) {
         return yield* Effect.fail(new Error(`Unknown agent type: ${params.subagent_type} is not a valid agent type`))
       }
+      // A fork child runs as the parent's agent, so it keeps the parent's system prompt and tools.
+      const next = fork ? ((yield* agent.get(ctx.agent)) ?? requested) : requested
 
       // An agent with background: true starts in the background, but only when background subagents are on.
       const runInBackground = params.background === true || (next.background === true && backgroundSubagents(flags, cfg))
@@ -166,10 +192,17 @@ export const TaskTool = Tool.define(
         subagent: next,
       })
       const childToolDenies = [
+        ...(fork
+          ? ["task", "task_parallel"].map((permission) => ({
+              permission,
+              pattern: "*" as const,
+              action: "deny" as const,
+            }))
+          : []),
         ...(next.permission.some((rule) => rule.permission === "todowrite")
           ? []
           : [{ permission: "todowrite" as const, pattern: "*" as const, action: "deny" as const }]),
-        ...(next.permission.some((rule) => rule.permission === id)
+        ...(!fork && next.permission.some((rule) => rule.permission === id)
           ? []
           : [{ permission: id, pattern: "*" as const, action: "deny" as const }]),
         ...(cfg.experimental?.primary_tools?.map((permission) => ({
@@ -195,6 +228,9 @@ export const TaskTool = Tool.define(
             ),
           ],
         }))
+
+      if (fork && !session)
+        yield* copyForkHistory(sessions, { from: ctx.sessionID, to: nextSession.id, until: ctx.messageID })
 
       const msg = yield* MessageV2.get({ sessionID: ctx.sessionID, messageID: ctx.messageID }).pipe(
         Effect.provideService(Database.Service, database),
@@ -413,11 +449,15 @@ export const TaskTool = Tool.define(
     return () =>
       Effect.gen(function* () {
         // The background parameter is only offered when background subagents are on.
-        const background = backgroundSubagents(flags, yield* config.get())
+        const settings = yield* config.get()
+        const background = backgroundSubagents(flags, settings)
+        const fork = forkSubagents(settings)
         return {
-          description: background ? [DESCRIPTION, BACKGROUND_DESCRIPTION].join("\n\n") : DESCRIPTION,
+          description: [DESCRIPTION, ...(background ? [BACKGROUND_DESCRIPTION] : []), ...(fork ? [FORK_DESCRIPTION] : [])].join(
+            "\n\n",
+          ),
           parameters: Parameters,
-          jsonSchema: background ? undefined : ToolJsonSchema.fromSchema(BaseParameters),
+          jsonSchema: background && fork ? undefined : ToolJsonSchema.fromSchema(offered(background, fork)),
           execute: (params: Schema.Schema.Type<typeof Parameters>, ctx: Tool.Context) =>
             run(params, ctx).pipe(Effect.orDie),
         }

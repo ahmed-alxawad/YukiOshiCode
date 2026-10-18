@@ -58,6 +58,7 @@ export const Info = Schema.Struct({
   steps: Schema.optional(Schema.Finite),
   skills: Schema.optional(Schema.Array(Schema.String)),
   background: Schema.optional(Schema.Boolean),
+  fork: Schema.optional(Schema.Boolean),
   isolation: Schema.optional(Schema.Literal("worktree")),
   initialPrompt: Schema.optional(Schema.String),
 }).annotate({ identifier: "Agent" })
@@ -409,6 +410,7 @@ const layer = Layer.effect(
           item.variant = value.variant ?? value.effort ?? item.variant
           item.skills = value.skills ?? item.skills
           item.background = value.background ?? item.background
+          item.fork = value.fork ?? item.fork
           item.isolation = value.isolation ?? item.isolation
           item.initialPrompt = value.initialPrompt ?? item.initialPrompt
           item.prompt = value.prompt ?? item.prompt
