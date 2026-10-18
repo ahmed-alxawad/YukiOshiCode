@@ -53,6 +53,24 @@ The pre-push hook runs the typecheck, so keep `~/.bun/bin` on your `PATH`.
 Pull requests and pushes to `main` run typecheck, build, and the test suites
 in CI.
 
+## CLI benchmark
+
+The CLI benchmark uses a local fake instant model, so its measurements cover
+CLI and process work without network or model latency. It reports `--version`,
+`run --help`, start-to-first-request, and a complete scripted turn. The default
+is 10 samples; use `--runs N` to change it. To benchmark a built binary, pass
+`--binary PATH`.
+
+```bash
+cd packages/opencode
+bun run script/bench.ts
+bun run script/bench.ts --runs 20 --binary ./dist/yukioshi-linux-x64/bin/yukioshi
+```
+
+The header names Linux/macOS/Windows as supported platforms and states that no
+comparison with other tools is claimed. These numbers are diagnostic only and
+make no AI speed claims.
+
 ## Building
 
 ```bash
