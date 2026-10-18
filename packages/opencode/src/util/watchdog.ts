@@ -102,9 +102,13 @@ kill -KILL $1 2>/dev/null
       } catch {
         // already gone
       }
-      // Do not end/destroy the fd 3 stream by hand: the runtime closes it when the killed
-      // watchdog exits, and a manual close races with that and can hit a reused descriptor
-      // (EBADF in epoll_ctl, ENOENT on connect) in later spawns.
+      try {
+        const pipeStream = watchdogProc.stdio[3] as Writable | undefined
+        pipeStream?.end()
+        pipeStream?.destroy()
+      } catch {
+        // already closed
+      }
     }
   }
 
