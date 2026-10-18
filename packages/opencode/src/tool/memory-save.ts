@@ -4,6 +4,7 @@ import { Memory } from "../memory"
 import { MemoryStore } from "../memory/store"
 import { Config } from "@/config/config"
 import { Redact } from "@yukioshi/core/redact"
+import { Agent } from "@/agent/agent"
 import * as Tool from "./tool"
 
 const DESCRIPTION =
@@ -29,6 +30,7 @@ export const MemorySaveTool = Tool.define(
   Effect.gen(function* () {
     const memory = yield* Memory.Service
     const config = yield* Config.Service
+    const agents = yield* Agent.Service
 
     return {
       description: DESCRIPTION,
@@ -36,7 +38,11 @@ export const MemorySaveTool = Tool.define(
       execute: (params: Schema.Schema.Type<typeof Parameters>, ctx: Tool.Context) =>
         Effect.gen(function* () {
           const instance = yield* InstanceState.context
-          const root = yield* memory.root(instance)
+          // An agent with its own memory (frontmatter `memory`) writes only to that agent's directory.
+          const agentInfo = yield* agents.get(ctx.agent)
+          const root = agentInfo?.memory
+            ? yield* memory.agentRoot(instance, agentInfo.memory, agentInfo.name)
+            : yield* memory.root(instance)
 
           if (params.action === "forget") {
             const query = (params.query ?? params.text ?? "").trim()

@@ -146,7 +146,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
               { args },
             )
             const instance = yield* InstanceState.context
-            const hooksCfg = (yield* config.get()).hooks
+            const hooksCfg = Hooks.withAgent((yield* config.get()).hooks, input.agent.hooks)
             const hooksCwd = instance.worktree === "/" ? instance.directory : instance.worktree
             const pre = yield* hooks.run({
               hooks: hooksCfg,
@@ -476,7 +476,19 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
 
   if (flags.experimentalCodeMode) return tools
 
-  const mcpTools = yield* mcp.tools()
+  // An agent's inline MCP servers start with its session (and stop when the run ends); a string entry
+  // names a server from the shared config, which is already available.
+  const scoped = Object.entries(input.agent.mcpServers ?? {})
+  const sharedConfig = (yield* config.get()).mcp ?? {}
+  for (const [server, value] of scoped) {
+    if (typeof value === "string" && sharedConfig[value] === undefined)
+      yield* Effect.logWarning("agent mcpServers entry names a server that is not configured", { agent: input.agent.name, server, ref: value })
+  }
+  const inline = Object.fromEntries(
+    scoped.filter((entry): entry is [string, Exclude<(typeof entry)[1], string>] => typeof entry[1] !== "string").slice(0, 8),
+  )
+  if (Object.keys(inline).length > 0) yield* mcp.attach(input.session.id, input.agent.name, inline)
+  const mcpTools = yield* mcp.tools(input.session.id)
   const searchConfig = (yield* config.get()).tool_search
   const mcpDefsSize = calculateMcpDefinitionsSize(mcpTools)
   const searchMode = isSearchMode(searchConfig, mcpDefsSize)

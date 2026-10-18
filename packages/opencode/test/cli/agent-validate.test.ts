@@ -380,3 +380,12 @@ describe("yukioshi agent validate --agents", () => {
     90_000,
   )
 })
+
+describe("agent validate: untrusted project fields", () => {
+  test("hooks, memory and inline mcpServers are flagged only for untrusted files", () => {
+    const data = { hooks: { stop: [] }, memory: "user", mcpServers: { a: "shared", b: { type: "local" } } }
+    const problems = runtimeFieldProblems("x", data, { untrustedFile: () => true }, "/p/.yukioshi/agent/x.md")
+    expect(problems.filter((item) => item.includes("not trusted"))).toHaveLength(3)
+    expect(runtimeFieldProblems("x", data, { untrustedFile: () => false }, "/g/x.md")).toEqual([])
+  })
+})

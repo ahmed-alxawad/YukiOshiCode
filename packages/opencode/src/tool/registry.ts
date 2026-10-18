@@ -264,9 +264,10 @@ const layer = Layer.effect(
           sessionSearch: Tool.init(sessionSearchTool),
           skill: Tool.init(skilltool),
           patch: Tool.init(patchtool),
-          ...(memoryEnabled
-            ? { memoryRecall: Tool.init(memoryRecallTool), memorySave: Tool.init(memorySaveTool) }
-            : {}),
+          // memory_save is always built: an agent with its own memory (frontmatter `memory`) gets it even
+          // when project memory is off; tools() hides it from everyone else.
+          memorySave: Tool.init(memorySaveTool),
+          ...(memoryEnabled ? { memoryRecall: Tool.init(memoryRecallTool) } : {}),
           ...(cfg.loop?.enabled !== false ? { loopWait: Tool.init(loopWaitTool) } : {}),
           ...(backgroundSubagents(flags, cfg) ? { taskMessage: Tool.init(taskMessageTool) } : {}),
           ...(parallelTasksEnabled ? { taskParallel: Tool.init(taskParallelTool) } : {}),
@@ -357,7 +358,8 @@ const layer = Layer.effect(
     })
 
     const tools: Interface["tools"] = Effect.fn("ToolRegistry.tools")(function* (input) {
-      const searchConfigured = (yield* config.get()).web_search?.enabled === true
+      const cfg = yield* config.get()
+      const searchConfigured = cfg.web_search?.enabled === true
       const filtered = (yield* all()).filter((tool) => {
         if (tool.id === WebSearchTool.id) {
           return webSearchEnabled({
@@ -366,6 +368,8 @@ const layer = Layer.effect(
             parallel: flags.enableParallel,
           })
         }
+
+        if (tool.id === MemorySaveTool.id) return (cfg.memory?.enabled ?? false) || Boolean(input.agent.memory)
 
         const usePatch =
           input.modelID.includes("gpt-") && !input.modelID.includes("oss") && !input.modelID.includes("gpt-4")

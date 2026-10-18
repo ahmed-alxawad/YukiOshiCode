@@ -68,6 +68,8 @@ export interface Interface {
   readonly preloadedSkills: (agent: Agent.Info) => Effect.Effect<string | undefined>
   readonly mcp: (agent: Agent.Info, permission?: PermissionV1.Ruleset) => Effect.Effect<string | undefined>
   /** The project's saved memory (memory.enabled), kept small by memory.max_chars. */
+  /** The agent's own memory file (agent frontmatter `memory`), capped like project memory. */
+  readonly agentMemory: (agent: Agent.Info) => Effect.Effect<string | undefined>
   readonly memory: () => Effect.Effect<string | undefined>
 }
 
@@ -154,6 +156,14 @@ const layer = Layer.effect(
         return found
           .map((item) => `<preloaded_skill name=${JSON.stringify(item.name)}>\n${item.content.trim()}\n</preloaded_skill>`)
           .join("\n")
+      }),
+
+      agentMemory: Effect.fn("SystemPrompt.agentMemory")(function* (agent: Agent.Info) {
+        if (!agent.memory) return
+        const cfg = (yield* config.get()).memory
+        const root = yield* memoryStore.agentRoot(yield* InstanceState.context, agent.memory, agent.name)
+        const text = yield* memoryStore.prompt({ root, maxChars: cfg?.max_chars })
+        return text?.replace(/project_memory/g, "agent_memory").replace("about this project", `as the ${agent.name} agent`)
       }),
 
       memory: Effect.fn("SystemPrompt.memory")(function* () {

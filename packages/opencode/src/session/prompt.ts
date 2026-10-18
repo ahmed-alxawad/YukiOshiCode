@@ -1320,7 +1320,7 @@ const layer = Layer.effect(
       throw new Error("Impossible")
     })
 
-    const runLoop: (sessionID: SessionID) => Effect.Effect<SessionV1.WithParts> = Effect.fn("SessionPrompt.run")(
+    const runLoopBody: (sessionID: SessionID) => Effect.Effect<SessionV1.WithParts> = Effect.fn("SessionPrompt.run")(
       function* (sessionID: SessionID) {
         const ctx = yield* InstanceState.context
         let structured: unknown
@@ -1657,13 +1657,14 @@ const layer = Layer.effect(
 
             yield* plugin.trigger("experimental.chat.messages.transform", {}, { messages: msgs })
 
-            const [skills, preloaded, env, instructions, mcpInstructions, memory, rawModelMsgs] = yield* Effect.all([
+            const [skills, preloaded, env, instructions, mcpInstructions, memory, agentMemory, rawModelMsgs] = yield* Effect.all([
               sys.skills(agent),
               sys.preloadedSkills(agent),
               sys.environment(model),
               instruction.system().pipe(Effect.orDie),
               sys.mcp(agent, session.permission),
               sys.memory(),
+              sys.agentMemory(agent),
               MessageV2.toModelMessagesEffect(msgs, model),
             ])
             const fullCfg = yield* config.get()
@@ -1710,6 +1711,7 @@ const layer = Layer.effect(
               ...env,
               ...instructions,
               ...(memory ? [memory] : []),
+              ...(agentMemory ? [agentMemory] : []),
               ...(repoMap ? [repoMap] : []),
               ...(mcpInstructions ? [mcpInstructions] : []),
               ...(skills ? [skills] : []),
@@ -1822,8 +1824,13 @@ const layer = Layer.effect(
         const stopCfg = yield* config.get()
         // A subagent finishing is SubagentStop, as in Claude Code; Stop is for the session the person started.
         const stopping = yield* sessions.get(sessionID).pipe(Effect.orDie)
+        const stopUser = (yield* MessageV2.filterCompactedEffect(sessionID).pipe(Effect.provideService(Database.Service, database))).findLast(
+          (message) => message.info.role === "user",
+        )
+        const stopAgentName = stopping.agent ?? (stopUser?.info.role === "user" ? stopUser.info.agent : undefined)
+        const stopAgent = stopAgentName ? yield* agents.get(stopAgentName) : undefined
         const stopResult = yield* hooks.run({
-          hooks: stopCfg.hooks,
+          hooks: Hooks.withAgent(stopCfg.hooks, stopAgent?.hooks, Boolean(stopping.parentID)),
           event: stopping.parentID ? "SubagentStop" : "Stop",
           payload: stopping.parentID
             ? { session_id: sessionID, parent_session_id: stopping.parentID }
@@ -1844,6 +1851,9 @@ const layer = Layer.effect(
         return yield* lastAssistant(sessionID)
       },
     )
+
+    // An agent's inline MCP servers live as long as the run that started them.
+    const runLoop = (sessionID: SessionID) => runLoopBody(sessionID).pipe(Effect.ensuring(mcp.detach(sessionID)))
 
     // ---- Standing goals (/goal) ------------------------------------------------------------------------
 

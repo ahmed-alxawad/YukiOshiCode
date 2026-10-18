@@ -3,11 +3,19 @@ export * as ConfigAgentV1 from "./agent"
 import { Schema, SchemaGetter } from "effect"
 import { PositiveInt } from "../../schema"
 import { ConfigPermissionV1 } from "./permission"
+import { ConfigHooksV1 } from "./hooks"
+import { ConfigMCPV1 } from "./mcp"
 
 const Color = Schema.Union([
   Schema.String.check(Schema.isPattern(/^#[0-9a-fA-F]{6}$/)),
   Schema.Literals(["primary", "secondary", "accent", "success", "warning", "error", "info"]),
 ])
+
+export const AgentHooks = Schema.Struct({
+  preToolUse: ConfigHooksV1.Info.fields.preToolUse,
+  postToolUse: ConfigHooksV1.Info.fields.postToolUse,
+  stop: ConfigHooksV1.Info.fields.stop,
+}).annotate({ identifier: "AgentHooksConfig" })
 
 const AgentSchema = Schema.StructWithRest(
   Schema.Struct({
@@ -52,6 +60,20 @@ const AgentSchema = Schema.StructWithRest(
     }),
     initialPrompt: Schema.optional(Schema.String).annotate({
       description: "Text added before the first user message of this agent when it runs as a subagent",
+    }),
+    hooks: Schema.optional(AgentHooks).annotate({
+      description:
+        "Hooks (preToolUse, postToolUse, stop) that run only in this agent's sessions, after the global hooks. Honored only for agents from trusted sources.",
+    }),
+    mcpServers: Schema.optional(
+      Schema.Record(Schema.String, Schema.Union([Schema.String, ConfigMCPV1.Info])),
+    ).annotate({
+      description:
+        "MCP servers for this agent: a name of an already configured server, or an inline server definition started for this agent's session only. Inline servers are honored only for agents from trusted sources.",
+    }),
+    memory: Schema.optional(Schema.Literals(["user", "project"])).annotate({
+      description:
+        "Give this agent its own memory file: 'user' (your data directory) or 'project' (.yukioshi/agent-memory, trusted projects only)",
     }),
     disable: Schema.optional(Schema.Boolean),
     description: Schema.optional(Schema.String).annotate({ description: "Description of when to use the agent" }),
@@ -101,6 +123,9 @@ export const KNOWN_KEYS: ReadonlySet<string> = new Set([
   "isolation",
   "effort",
   "initialPrompt",
+  "hooks",
+  "mcpServers",
+  "memory",
 ])
 
 // Most skills one agent can preload into its system prompt.

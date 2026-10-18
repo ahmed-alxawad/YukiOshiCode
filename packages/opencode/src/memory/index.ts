@@ -8,6 +8,8 @@ import { MemoryStore } from "./store"
 
 export interface Interface {
   readonly root: (ctx: InstanceContext) => Effect.Effect<string>
+  /** The directory of one agent's own memory (agent frontmatter `memory`). */
+  readonly agentRoot: (ctx: InstanceContext, scope: "user" | "project", agent: string) => Effect.Effect<string>
   readonly remember: (input: SaveInput) => Effect.Effect<MemoryStore.Saved>
   readonly correct: (input: SaveInput) => Effect.Effect<MemoryStore.Saved>
   /** The project's memory for the system prompt, or undefined when there is none. */
@@ -35,7 +37,7 @@ const PROMPT_TITLE = { "corrections.md": "Corrections", "environment.md": "Envir
 
 // An entry must not be able to close the <project_memory> block and pose as the system's own text.
 function neutral(line: string) {
-  return line.replace(/<\s*(\/?)\s*(project_memory|system-reminder)[^>]*>/gi, "‹$1$2›")
+  return line.replace(/<\s*(\/?)\s*(project_memory|agent_memory|system-reminder)[^>]*>/gi, "‹$1$2›")
 }
 
 /** Formats memory entries for the system prompt, cut at `maxChars` if files were edited past the limit. */
@@ -78,6 +80,14 @@ const layer = Layer.effect(
       return MemoryPaths.root({ directory: ctx.directory, worktree: ctx.worktree }, global.data)
     })
 
+    const agentRoot = Effect.fn("Memory.agentRoot")(function* (
+      ctx: InstanceContext,
+      scope: "user" | "project",
+      agent: string,
+    ) {
+      return MemoryPaths.agentRoot({ directory: ctx.directory, worktree: ctx.worktree }, scope, agent, global.data)
+    })
+
     const remember = Effect.fn("Memory.remember")(function* (input: SaveInput) {
       return yield* Effect.promise(() => MemoryStore.remember({ ...input, file: "project.md" }))
     })
@@ -103,7 +113,7 @@ const layer = Layer.effect(
       return promptText(bySource, input.maxChars ?? MemoryStore.DEFAULT_MAX_CHARS)
     })
 
-    return Service.of({ root, remember, correct, forget, search, catalog, prompt })
+    return Service.of({ root, agentRoot, remember, correct, forget, search, catalog, prompt })
   }),
 )
 

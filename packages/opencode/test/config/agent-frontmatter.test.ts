@@ -374,3 +374,48 @@ Body`
     }),
   )
 })
+
+describe("agent fields hooks/mcpServers/memory", () => {
+  const markdown = `---
+hooks:
+  preToolUse:
+    - command: echo pre
+mcpServers:
+  shared: configured
+  inline:
+    type: local
+    command: [node, server.js]
+memory: project
+---
+Body`
+
+  it.effect("a trusted project keeps every field", () =>
+    Effect.gen(function* () {
+      const { config } = yield* resolve({ agents: { scoped: markdown }, trusted: true })
+      const agent = config.agent?.["scoped"]
+      expect(agent?.hooks?.preToolUse).toHaveLength(1)
+      expect(Object.keys(agent?.mcpServers ?? {})).toEqual(["shared", "inline"])
+      expect(agent?.memory).toBe("project")
+      expect(agent?.options).toEqual({})
+    }),
+  )
+
+  it.effect("an untrusted project loses hooks, inline servers and memory, with a warning", () =>
+    Effect.gen(function* () {
+      const warn = spyOn(console, "warn").mockImplementation(() => {})
+      try {
+        const { config } = yield* resolve({ agents: { scoped: markdown } })
+        const agent = config.agent?.["scoped"]
+        expect(agent?.hooks).toBeUndefined()
+        expect(agent?.memory).toBeUndefined()
+        expect(agent?.mcpServers).toEqual({ shared: "configured" })
+        const text = warn.mock.calls.map((call) => String(call[0])).join("\n")
+        expect(text).toContain("hooks")
+        expect(text).toContain("memory")
+        expect(text).toContain("mcpServers (inline servers)")
+      } finally {
+        warn.mockRestore()
+      }
+    }),
+  )
+})

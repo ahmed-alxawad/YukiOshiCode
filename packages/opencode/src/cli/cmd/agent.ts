@@ -117,17 +117,48 @@ export function toolProblems(field: "tools" | "disallowedTools", value: unknown)
   return []
 }
 
+/** Whether an agent file lies in the current project while that project is not trusted. */
+const untrustedFileCheck = Effect.fn("Cli.agent.untrusted")(function* () {
+  const { InstanceState } = yield* Effect.promise(() => import("@/effect/instance-state"))
+  const { ProjectTrust } = yield* Effect.promise(() => import("@/project/trust"))
+  const ctx = yield* InstanceState.context
+  const root = ProjectTrust.root(ctx)
+  const trusted = yield* Effect.promise(() => ProjectTrust.isTrusted(root).catch(() => false))
+  return (file: string) => !trusted && path.resolve(file).startsWith(root + path.sep) && !path.resolve(file).startsWith(Global.Path.config + path.sep)
+})
+
 /** What validate knows about the runtime: skill names that exist, and whether background/parallel subagents are on. */
 export interface RuntimeKnowledge {
   /** Returns "unknown" or "disabled" for a skill name that will be skipped, undefined for a usable one. */
   skillStatus?: (name: string, agentName: string) => "unknown" | "disabled" | undefined
   background?: boolean
   parallel?: boolean
+  /** True for an agent file inside a project that is not trusted (its hooks, inline MCP servers and memory are dropped). */
+  untrustedFile?: (file: string) => boolean
+}
+
+/** Flags `hooks`, `mcpServers` and `memory` that an untrusted project's agent file loses at runtime. */
+export function untrustedFieldProblems(data: Record<string, unknown>): string[] {
+  const problems: string[] = []
+  const ignored = (key: string) =>
+    problems.push(`${key} is ignored: this agent file is in a project that is not trusted (run \`yukioshi trust\`)`)
+  if (data.hooks !== undefined) ignored("hooks")
+  if (data.memory !== undefined) ignored("memory")
+  const servers = data.mcpServers
+  if (servers && typeof servers === "object" && Object.values(servers).some((value) => typeof value !== "string"))
+    ignored("mcpServers (inline servers)")
+  return problems
 }
 
 /** Flags `skills`, `background` and `isolation` values that will be skipped or ignored at runtime. */
-export function runtimeFieldProblems(name: string, data: Record<string, unknown>, runtime: RuntimeKnowledge): string[] {
+export function runtimeFieldProblems(
+  name: string,
+  data: Record<string, unknown>,
+  runtime: RuntimeKnowledge,
+  file?: string,
+): string[] {
   const problems: string[] = []
+  if (file && runtime.untrustedFile?.(file)) problems.push(...untrustedFieldProblems(data))
   if (Array.isArray(data.skills)) {
     const names = data.skills.filter((name): name is string => typeof name === "string")
     if (names.length > ConfigAgentV1.MAX_PRELOAD_SKILLS) {
@@ -221,7 +252,7 @@ export async function scanAgentFiles(
         const model = modelProblem(data.model, opts.knownModel)
         if (model) problems.push(model)
       }
-      problems.push(...runtimeFieldProblems(name, data, opts.runtime ?? {}))
+      problems.push(...runtimeFieldProblems(name, data, opts.runtime ?? {}, file))
       problems.push(...schemaProblems(file, name, data, md.content.trim()))
       reports.push({ file, name, problems })
     }
@@ -539,6 +570,7 @@ const AgentValidateCommand = effectCmd({
     const agents = yield* Effect.promise(() => import("../../agent/agent")).pipe(
       Effect.flatMap(({ Agent }) => Agent.Service.use((svc) => svc.list())),
     )
+    const untrusted = yield* untrustedFileCheck()
     const report = yield* Effect.promise(() =>
       validateAgentFiles(dirs, {
         knownModel: knownModelLookup(catalog, cfg.provider),
@@ -552,6 +584,7 @@ const AgentValidateCommand = effectCmd({
           },
           background: backgroundSubagents(flags, cfg),
           parallel: parallelSubagents(flags, cfg),
+          untrustedFile: untrusted,
         },
       }),
     )
@@ -613,6 +646,8 @@ const AgentShowCommand = effectCmd({
     )
     const files = yield* Effect.promise(() => scanAgentFiles(dirs))
     const source = files.findLast((file) => file.name === agent.name)?.file ?? null
+    const untrusted = yield* untrustedFileCheck()
+    const warnings = source && untrusted(source) ? untrustedFieldProblems((yield* Effect.promise(() => ConfigMarkdown.parse(source).catch(() => undefined)))?.data ?? {}) : []
 
     process.stdout.write(
       JSON.stringify(
@@ -628,6 +663,10 @@ const AgentShowCommand = effectCmd({
           background: agent.background ?? false,
           isolation: agent.isolation ?? null,
           initialPrompt: agent.initialPrompt ?? null,
+          hooks: agent.hooks ?? null,
+          mcpServers: agent.mcpServers ?? null,
+          memory: agent.memory ?? null,
+          warnings,
           permission: agent.permission,
         },
         null,

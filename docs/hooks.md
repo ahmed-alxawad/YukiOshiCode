@@ -143,5 +143,9 @@ secret-masked, as for command hooks.
 Hooks defined by a repository (in its `yukioshi.json` or `.yukioshi/`) run only
 after you trust the repository with `yukioshi trust .`, and stop again if they
 change. This includes HTTP hooks: an untrusted repository cannot add one.
-Hooks in your global config always run. See
+Hooks in your global config always run. An agent can also carry its own
+`preToolUse`, `postToolUse` and `stop` hooks in its frontmatter (see
+[Subagents](features.md)); they run only in that agent's sessions, after the
+global ones, and are ignored for agents from an untrusted repository or a
+Claude plugin. See
 [Permissions and safety](permissions-and-safety.md#repository-trust).

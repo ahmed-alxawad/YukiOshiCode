@@ -154,6 +154,8 @@ interface State {
   clients: Record<string, MCPClient>
   defs: Record<string, MCPToolDef[]>
   instructions: Record<string, string>
+  /** Servers started for an agent's sessions: client name -> the sessions using it. Hidden from everyone else. */
+  owners: Record<string, Set<string>>
 }
 
 export interface ServerInstructions {
@@ -174,7 +176,12 @@ export interface Interface {
   readonly status: () => Effect.Effect<Record<string, Status>>
   readonly clients: () => Effect.Effect<Record<string, MCPClient>>
   readonly instructions: () => Effect.Effect<ServerInstructions[]>
-  readonly tools: () => Effect.Effect<Record<string, McpTool>>
+  /** Tools of the shared servers, plus those of the agent-scoped servers started for `sessionID`. */
+  readonly tools: (sessionID?: string) => Effect.Effect<Record<string, McpTool>>
+  /** Starts an agent's inline servers for one session (config order); returns the client names. */
+  readonly attach: (sessionID: string, agent: string, servers: Record<string, McpConfig>) => Effect.Effect<string[]>
+  /** Ends a session's use of agent-scoped servers; a server nobody uses any more is stopped. */
+  readonly detach: (sessionID: string) => Effect.Effect<void>
   readonly prompts: () => Effect.Effect<Record<string, PromptInfo & { client: string }>>
   readonly resources: (clientName?: string) => Effect.Effect<Record<string, ResourceInfo & { client: string }>>
   readonly resourceTemplates: (
@@ -575,6 +582,7 @@ const layer = Layer.effect(
           clients: {},
           defs: {},
           instructions: {},
+          owners: {},
         }
 
         yield* Effect.forEach(
@@ -691,7 +699,7 @@ const layer = Layer.effect(
     const instructions = Effect.fn("MCP.instructions")(function* () {
       const s = yield* InstanceState.get(state)
       return Object.entries(s.instructions)
-        .filter(([name]) => s.status[name]?.status === "connected")
+        .filter(([name]) => s.status[name]?.status === "connected" && !s.owners[name])
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([name, item]) => ({
           name,
@@ -739,7 +747,33 @@ const layer = Layer.effect(
       return s.config[name]?.timeout ?? staticTimeout ?? fallback
     }
 
-    const tools = Effect.fn("MCP.tools")(function* () {
+    const attach = Effect.fn("MCP.attach")(function* (sessionID: string, agent: string, servers: Record<string, McpConfig>) {
+      const s = yield* InstanceState.get(state)
+      const names: string[] = []
+      for (const [server, mcp] of Object.entries(servers)) {
+        const name = `${agent}-${server}`.replace(/[^a-zA-Z0-9_-]/g, "_")
+        const owners = (s.owners[name] ??= new Set())
+        owners.add(sessionID)
+        names.push(name)
+        if (s.status[name]?.status === "connected") continue
+        s.config[name] = mcp
+        yield* createAndStore(name, mcp)
+      }
+      return names
+    })
+
+    const detach = Effect.fn("MCP.detach")(function* (sessionID: string) {
+      const s = yield* InstanceState.get(state)
+      for (const [name, owners] of Object.entries(s.owners)) {
+        if (!owners.delete(sessionID) || owners.size > 0) continue
+        delete s.owners[name]
+        yield* closeClient(s, name)
+        delete s.status[name]
+        delete s.config[name]
+      }
+    })
+
+    const tools = Effect.fn("MCP.tools")(function* (sessionID?: string) {
       const result: Record<string, McpTool> = {}
       const s = yield* InstanceState.get(state)
 
@@ -749,6 +783,8 @@ const layer = Layer.effect(
 
       for (const [clientName, client] of Object.entries(s.clients).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
         if (s.status[clientName]?.status !== "connected") continue
+        const owners = s.owners[clientName]
+        if (owners && !(sessionID !== undefined && owners.has(sessionID))) continue
         const mcpConfig = config[clientName]
         const listed = s.defs[clientName]
         if (!listed) {
@@ -781,7 +817,7 @@ const layer = Layer.effect(
         const cfg = yield* cfgSvc.get()
         return yield* Effect.forEach(
           Object.entries(s.clients).filter(
-            ([name]) => s.status[name]?.status === "connected" && (!targetClientName || name === targetClientName),
+            ([name]) => s.status[name]?.status === "connected" && !s.owners[name] && (!targetClientName || name === targetClientName),
           ),
           ([clientName, client]) =>
             McpCatalog.fetch(
@@ -1062,6 +1098,8 @@ const layer = Layer.effect(
       resources,
       resourceTemplates,
       add,
+      attach,
+      detach,
       connect,
       disconnect,
       getPrompt,

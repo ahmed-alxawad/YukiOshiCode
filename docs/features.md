@@ -422,9 +422,28 @@ Optional per-agent frontmatter, all off unless you set them:
 - `effort` is an alias for `variant`, and `initialPrompt` is text placed before
   the first message the subagent receives.
 
+- `hooks` takes `preToolUse`, `postToolUse` and `stop` hooks (same shape,
+  timeouts and secret masking as [global hooks](hooks.md)). They run only in
+  this agent's sessions and tool calls, after the global hooks. `stop` is the
+  subagent-stop hook when the agent runs as a subagent.
+- `mcpServers` maps a name to either the name of a server from your config, or
+  an inline server (`type: local` with a `command`, or `type: remote` with a
+  `url`). An inline server starts with the agent's session and stops when the
+  run ends; local ones get the usual MCP environment isolation. Its tools are
+  named `<agent>-<server>_<tool>` and no other agent sees them. At most 8
+  inline servers.
+- `memory: user | project` gives the agent its own memory, separate from
+  project memory: `<data dir>/agent-memory/<agent>/` for `user`,
+  `.yukioshi/agent-memory/<agent>/` for `project`. It is added to the agent's
+  system prompt (capped by `memory.max_chars`) and the agent writes it only
+  with `memory_save`, which then saves to that file.
+
 An agent file from a project you have not trusted cannot use `background` or
-`isolation`, cannot preload that project's own skills (`project:` names), and
-still loses any `allow` permission rules.
+`isolation`, cannot preload that project's own skills (`project:` names), loses
+`hooks`, `memory` and inline `mcpServers` (naming a configured server still
+works), and still loses any `allow` permission rules. `agent validate` and
+`agent show` warn about each ignored field. Agents imported from Claude plugins
+never keep `hooks`, `mcpServers` or `memory`.
 
 ### Session agents and Claude agent folders
 

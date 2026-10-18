@@ -35,6 +35,8 @@ import { LocationServiceMap, locationServiceMapLayer } from "@yukioshi/core/loca
 import { Reference } from "@yukioshi/core/reference"
 import { Location } from "@yukioshi/core/location"
 import { PluginV2 } from "@yukioshi/core/plugin"
+import { ConfigAgentV1 } from "@yukioshi/core/v1/config/agent"
+import { ConfigMCPV1 } from "@yukioshi/core/v1/config/mcp"
 
 export const Info = Schema.Struct({
   name: Schema.String,
@@ -61,6 +63,9 @@ export const Info = Schema.Struct({
   fork: Schema.optional(Schema.Boolean),
   isolation: Schema.optional(Schema.Literal("worktree")),
   initialPrompt: Schema.optional(Schema.String),
+  hooks: Schema.optional(ConfigAgentV1.AgentHooks),
+  mcpServers: Schema.optional(Schema.Record(Schema.String, Schema.Union([Schema.String, ConfigMCPV1.Info]))),
+  memory: Schema.optional(Schema.Literals(["user", "project"])),
 }).annotate({ identifier: "Agent" })
 export type Info = DeepMutable<Schema.Schema.Type<typeof Info>>
 
@@ -413,6 +418,9 @@ const layer = Layer.effect(
           item.fork = value.fork ?? item.fork
           item.isolation = value.isolation ?? item.isolation
           item.initialPrompt = value.initialPrompt ?? item.initialPrompt
+          item.hooks = (value.hooks as Info["hooks"]) ?? item.hooks
+          item.mcpServers = (value.mcpServers as Info["mcpServers"]) ?? item.mcpServers
+          item.memory = value.memory ?? item.memory
           item.prompt = value.prompt ?? item.prompt
           item.description = value.description ?? item.description
           item.temperature = value.temperature ?? item.temperature

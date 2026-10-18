@@ -84,6 +84,17 @@ export namespace MemoryPaths {
     return path.join(dataDir, "memory", identity(ctx))
   }
 
+  /**
+   * Directory holding one agent's own memory. "user" lives in the data directory (all projects);
+   * "project" lives in the project's .yukioshi directory.
+   */
+  export function agentRoot(ctx: Ctx, scope: "user" | "project", agent: string, dataDir: string) {
+    const name = MemorySlug.safe(agent, { max: MemorySlug.max.label, fallback: "agent", lower: true })
+    return scope === "user"
+      ? path.join(dataDir, "agent-memory", name)
+      : path.join(base(ctx), ".yukioshi", "agent-memory", name)
+  }
+
   export function files(root: string): Files {
     return {
       root,

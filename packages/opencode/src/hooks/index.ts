@@ -48,6 +48,28 @@ const MAX_OUTPUT = 16_000
 const HIDDEN_ENV_PATTERN =
   /(_API_KEY|_TOKEN|_SECRET|_SECRET_KEY|_SECRET_ACCESS_KEY|_ACCESS_KEY|_PRIVATE_KEY|_PASSWORD|_PASSWD)$|^(PASSWORD|PASSWD|DATABASE_URL)$/i
 
+/**
+ * The global hooks followed by one agent's own hooks (preToolUse, postToolUse, stop). The agent's hooks
+ * apply only where this is used, i.e. in that agent's session. In a subagent session `stop` is the
+ * SubagentStop hook, as with the global Stop hooks.
+ */
+export function withAgent(
+  global: ConfigHooksV1.Info | undefined,
+  agent: { readonly preToolUse?: readonly ConfigHooksV1.Hook[]; readonly postToolUse?: readonly ConfigHooksV1.Hook[]; readonly stop?: readonly ConfigHooksV1.Hook[] } | undefined,
+  subagent = false,
+): ConfigHooksV1.Info | undefined {
+  if (!agent) return global
+  const join = (a: readonly ConfigHooksV1.Hook[] | undefined, b: readonly ConfigHooksV1.Hook[] | undefined) =>
+    b?.length ? [...(a ?? []), ...b] : a
+  const stopKey = subagent ? "subagentStop" : "stop"
+  return {
+    ...global,
+    preToolUse: join(global?.preToolUse, agent.preToolUse),
+    postToolUse: join(global?.postToolUse, agent.postToolUse),
+    [stopKey]: join(global?.[stopKey], agent.stop),
+  }
+}
+
 export interface RunInput {
   readonly hooks: ConfigHooksV1.Info | undefined
   readonly event: EventName

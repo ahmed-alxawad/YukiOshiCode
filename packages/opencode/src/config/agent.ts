@@ -110,6 +110,21 @@ export function dropUntrustedFields(label: string, agent: Record<string, unknown
     delete agent[key]
     dropped.push(key)
   }
+  // Hooks, inline MCP servers (a command or URL) and project memory run or read things on behalf
+  // of the repository, so they wait for trust. A string reference to a configured server is harmless.
+  for (const key of ["hooks", "memory"]) {
+    if (agent[key] === undefined) continue
+    delete agent[key]
+    dropped.push(key)
+  }
+  if (agent.mcpServers !== null && typeof agent.mcpServers === "object" && !Array.isArray(agent.mcpServers)) {
+    const servers = agent.mcpServers as Record<string, unknown>
+    const kept = Object.fromEntries(Object.entries(servers).filter(([, value]) => typeof value === "string"))
+    if (Object.keys(kept).length !== Object.keys(servers).length) {
+      agent.mcpServers = kept
+      dropped.push("mcpServers (inline servers)")
+    }
+  }
   if (Array.isArray(agent.skills)) {
     const kept = agent.skills.filter((name) => !(typeof name === "string" && name.trim().startsWith("project:")))
     if (kept.length !== agent.skills.length) {
