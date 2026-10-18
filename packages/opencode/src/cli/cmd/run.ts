@@ -34,6 +34,7 @@ import { EXIT, dollars, goalExitCode, readOutputSchema, unknownCommandMessage } 
 import { schemaViolation } from "./run/schema"
 import { combineFileChanges, formatFileChanges, type FileChange } from "@yukioshi/core/files-changed-summary"
 import { ChildRegistry } from "@yukioshi/core/child-registry"
+import { parseSessionAgents } from "@/config/session-agents"
 
 type ModelInput = Parameters<OpencodeClient["session"]["prompt"]>[0]["model"]
 
@@ -325,7 +326,6 @@ export const RunCommand = effectCmd({
       }),
   handler: Effect.fn("Cli.run")(function* (args) {
     if (args.agents !== undefined) {
-      const { parseSessionAgents } = yield* Effect.promise(() => import("@/config/session-agents"))
       try {
         process.env.YUKIOSHI_SESSION_AGENTS = parseSessionAgents(args.agents)
       } catch (error) {

@@ -91,6 +91,8 @@ Options:
   -m, --model          model to use in the format of provider/model                         [string]
       --agent          mode or agent: build, plan, goal, reasoning, research, auto, or a custom
                        agent                                                                [string]
+      --agents         session-only subagents as a JSON object or a path to a JSON file: {name:
+                       {description, prompt, tools, model}}                                 [string]
       --format         format: default (formatted) or json (raw JSON events)
                                           [string] [choices: "default", "json"] [default: "default"]
   -f, --file           file(s) to attach to message                                          [array]
