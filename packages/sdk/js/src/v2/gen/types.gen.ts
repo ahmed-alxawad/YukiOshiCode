@@ -1731,6 +1731,61 @@ export type HooksConfig = {
   notification?: Array<HookHttp | HookCommand>
 }
 
+export type AgentHooksConfig = {
+  preToolUse?: Array<HookHttp | HookCommand>
+  postToolUse?: Array<HookHttp | HookCommand>
+  stop?: Array<HookHttp | HookCommand>
+}
+
+export type McpLocalConfig = {
+  /**
+   * Type of MCP server connection
+   */
+  type: "local"
+  /**
+   * Command and arguments to run the MCP server
+   */
+  command: Array<string>
+  cwd?: string
+  environment?: {
+    [key: string]: string
+  }
+  env?: {
+    [key: string]: string
+  }
+  inherit_env?: boolean
+  enabled?: boolean
+  timeout?: number
+}
+
+export type McpOAuthConfig = {
+  clientId?: string
+  clientSecret?: string
+  scope?: string
+  callbackPort?: number
+  redirectUri?: string
+}
+
+export type McpRemoteConfig = {
+  /**
+   * Type of MCP server connection
+   */
+  type: "remote"
+  /**
+   * URL of the remote MCP server
+   */
+  url: string
+  enabled?: boolean
+  headers?: {
+    [key: string]: string
+  }
+  /**
+   * OAuth authentication configuration for the MCP server. Set to false to disable OAuth auto-detection.
+   */
+  oauth?: McpOAuthConfig | false
+  timeout?: number
+}
+
 export type PermissionActionConfig = "ask" | "allow" | "deny"
 
 export type PermissionObjectConfig = {
@@ -1766,9 +1821,32 @@ export type AgentConfig = {
   temperature?: number
   top_p?: number
   prompt?: string
-  tools?: {
-    [key: string]: boolean
+  /**
+   * @deprecated Use 'permission' field instead. A record maps tool names to on/off; a comma-separated string or string list is an allowlist of Claude/Qwen-style tool names.
+   */
+  tools?:
+    | {
+        [key: string]: boolean
+      }
+    | string
+    | Array<string>
+  /**
+   * Claude-style list of tools to deny, applied after 'tools' and 'permission' (last match wins)
+   */
+  disallowedTools?: string | Array<string>
+  maxTurns?: number
+  permissionMode?: string
+  skills?: Array<string>
+  background?: boolean
+  fork?: boolean
+  isolation?: "worktree"
+  effort?: string
+  initialPrompt?: string
+  hooks?: AgentHooksConfig
+  mcpServers?: {
+    [key: string]: string | McpLocalConfig | McpRemoteConfig
   }
+  memory?: "user" | "project"
   disable?: boolean
   description?: string
   mode?: "subagent" | "primary" | "all"
@@ -1790,7 +1868,20 @@ export type AgentConfig = {
     | {
         [key: string]: boolean
       }
+    | string
+    | Array<string>
+    | string
+    | Array<string>
+    | number
+    | Array<string>
     | boolean
+    | "worktree"
+    | AgentHooksConfig
+    | {
+        [key: string]: string | McpLocalConfig | McpRemoteConfig
+      }
+    | "user"
+    | "project"
     | "subagent"
     | "primary"
     | "all"
@@ -1805,7 +1896,6 @@ export type AgentConfig = {
     | "warning"
     | "error"
     | "info"
-    | number
     | PermissionConfig
     | undefined
 }
@@ -1902,55 +1992,6 @@ export type ProviderConfig = {
   }
 }
 
-export type McpLocalConfig = {
-  /**
-   * Type of MCP server connection
-   */
-  type: "local"
-  /**
-   * Command and arguments to run the MCP server
-   */
-  command: Array<string>
-  cwd?: string
-  environment?: {
-    [key: string]: string
-  }
-  env?: {
-    [key: string]: string
-  }
-  inherit_env?: boolean
-  enabled?: boolean
-  timeout?: number
-}
-
-export type McpOAuthConfig = {
-  clientId?: string
-  clientSecret?: string
-  scope?: string
-  callbackPort?: number
-  redirectUri?: string
-}
-
-export type McpRemoteConfig = {
-  /**
-   * Type of MCP server connection
-   */
-  type: "remote"
-  /**
-   * URL of the remote MCP server
-   */
-  url: string
-  enabled?: boolean
-  headers?: {
-    [key: string]: string
-  }
-  /**
-   * OAuth authentication configuration for the MCP server. Set to false to disable OAuth auto-detection.
-   */
-  oauth?: McpOAuthConfig | false
-  timeout?: number
-}
-
 /**
  * @deprecated Always uses stretch layout.
  */
@@ -1969,7 +2010,7 @@ export type AttachmentConfig = {
 
 export type Config = {
   $schema?: string
-  shell?: string
+  shell?: string | ConfigShellV1Info
   logLevel?: LogLevel
   server?: ServerConfig
   command?: {
@@ -2037,6 +2078,7 @@ export type Config = {
           [key: string]: string
         }
         timeout?: number
+        handshakeTimeout?: unknown
       }
     }
   }
@@ -2089,6 +2131,9 @@ export type Config = {
   checkpoints?: {
     enabled?: boolean
   }
+  git?: {
+    auto_commit?: boolean
+  }
   redact?: {
     enabled?: boolean
     patterns?: Array<string>
@@ -2120,6 +2165,7 @@ export type Config = {
     ignore?: Array<string>
   }
   snapshot?: boolean
+  steer?: boolean
   plugin?: Array<
     | string
     | [
@@ -2135,6 +2181,7 @@ export type Config = {
    * Automatically update to the latest version. Set to true to auto-update, false to disable, or 'notify' to show update notifications
    */
   autoupdate?: boolean | "notify"
+  agent_sources?: Array<"claude">
   disabled_providers?: Array<string>
   enabled_providers?: Array<string>
   model?: string
@@ -2144,6 +2191,12 @@ export type Config = {
   subagents?: {
     background?: boolean
     parallel?: boolean
+    fork?: boolean
+  }
+  architect?: {
+    enabled?: boolean
+    planner_model?: string
+    editor_model?: string
   }
   username?: string
   mode?: {
@@ -2213,6 +2266,27 @@ export type Config = {
   web_search?: {
     enabled?: boolean
     provider?: "exa" | "parallel"
+  }
+  learning?: {
+    nudges?: boolean
+    /**
+     * Tool calls in one turn that count as a long turn (default 8)
+     */
+    min_tool_calls?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    /**
+     * At most one nudge per this many turns (default 20)
+     */
+    every_turns?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+  repo_map?: {
+    enabled?: boolean
+    /**
+     * Token budget for the map (default 1024)
+     */
+    tokens?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  }
+  webfetch?: {
+    allow_private?: boolean
   }
   instructions?: Array<string>
   layout?: LayoutConfig
@@ -2584,6 +2658,16 @@ export type Agent = {
     [key: string]: unknown
   }
   steps?: number
+  skills?: Array<string>
+  background?: boolean
+  fork?: boolean
+  isolation?: "worktree"
+  initialPrompt?: string
+  hooks?: AgentHooksConfig
+  mcpServers?: {
+    [key: string]: string | McpLocalConfig | McpRemoteConfig
+  }
+  memory?: "user" | "project"
 }
 
 export type LspStatus = {
@@ -4040,6 +4124,25 @@ export type SyncEventSessionNextRevertCommitted = {
       sessionID: string
       messageID: string
     }
+  }
+}
+
+export type ConfigShellV1Info = {
+  kill_on_exit?: boolean
+  backend?: "local" | "docker" | "ssh"
+  docker?: {
+    /**
+     * Image every command runs in
+     */
+    image: string
+    network?: string
+    mount?: "project"
+  }
+  ssh?: {
+    host: string
+    user?: string
+    port?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+    identity_file?: string
   }
 }
 
