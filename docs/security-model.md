@@ -31,8 +31,9 @@ protections stop. The details of each control are in
 
 `auto` and `auto-all` only change how prompts are answered; they do not change
 actions your rules already allow. A `deny` rule always wins. Triggers
-(`POST /trigger`) accept only `review` and `plan`; unattended `auto-all` is
-refused. The review model can be wrong or be misled by what it reads.
+(`POST /trigger`) accept only `review` and `plan`. A schedule is different: a
+scheduled job with `auto` set runs in `auto-all`, so set `review` on
+unattended jobs. The review model can be wrong or be misled by what it reads.
 
 ## Hard blocks
 
@@ -48,10 +49,15 @@ refuse, such as `cat .env`.
 
 Until you run `yukioshi trust .`, a repository cannot add hooks (including HTTP
 hooks), plugins, local MCP servers, LSP or formatter commands, webhooks, or
-custom endpoints and headers for existing providers. Its settings can only make
-YukiOshi stricter: its `allow` rules, a higher spending limit, turning off
-redaction, or turning off or widening the sandbox are ignored. Trust is tied to
-a fingerprint of the executable configuration, so a `git pull` that changes
+custom endpoints and headers for existing providers. Triggers, `audit` and `webfetch` settings in a repository are always ignored.
+Other settings can only make YukiOshi stricter: its `allow` rules, a higher
+spending limit, turning off redaction, or turning off or widening the sandbox
+are ignored. Also dropped until trusted: the `shell` setting, delegate agents,
+browser, remote skills and instructions, instructions pointing outside the
+project, commands that run shell snippets or attach outside files, unknown
+providers, and provider `baseURL`, keys and npm packages. Trust is tied to
+a SHA-256 fingerprint of the `hooks`, `plugin`, `mcp`, `lsp` and `formatter`
+configuration, so a `git pull` that changes
 it makes the repository untrusted again. Skills from a repository are
 prefixed `project:`.
 
@@ -59,8 +65,10 @@ prefixed `project:`.
 
 Off by default. When `sandbox.enabled` is true, shell commands run in
 bubblewrap (Linux) or `sandbox-exec` (macOS) with writes limited to the
-project, YukiOshi's folders and `writablePaths`, and `.git` read-only.
-`"network": "deny"` cuts the network. If the backend is missing, shell commands
+project, YukiOshi's data, cache, temp and log folders and `writablePaths`;
+`.git` is read-only, and YukiOshi's config, state and bin folders and its
+credential and approval files stay read-only unless listed in `writablePaths`.
+`"network": "deny"` cuts the network (default `allow`). If the backend is missing, shell commands
 are refused rather than run unconfined. Windows has no backend, so with
 `sandbox.enabled` every shell command is refused there.
 
@@ -93,8 +101,10 @@ sent JSON is secret-masked and warnings show only scheme and host.
 On by default (`redact.enabled`). Known token formats (AWS, GitHub, OpenAI,
 Anthropic, Google, Slack, Stripe live keys, private keys, JWTs, and
 `password=`/`secret=`/`token=` assignments) plus your configured provider
-keys and long `Bearer` tokens are masked in tool results, prompts, memory and
-skills, logs, stored errors, audit entries and webhook details. Redaction is
+keys and long `Bearer` tokens are masked in tool results and logs. Also masked: URL passwords, `--token`-style
+CLI flags, AWS secret keys. Not verified here for every place listed in the
+[permissions page](permissions-and-safety.md#secret-redaction): prompts,
+memory, skills, stored errors, audit entries and webhook details. Redaction is
 pattern based: a secret in an unusual format is not recognised. Add your own
 with `redact.patterns`. Implementation: `packages/core/src/redact.ts`.
 
@@ -108,8 +118,9 @@ names that collide with built-in tools are skipped.
 
 ## The automatic updater
 
-At most once a day, the terminal UI and `yukioshi run` check GitHub releases
-for a newer version. For script installs, newer minor and patch releases are
+At most once a day, compiled release builds check for a newer version (GitHub
+for script installs, the npm registry or `brew` for those installs; package
+manager installs are only told, not updated). For script installs, newer minor and patch releases are
 downloaded in the background, checked against the release's `SHA256SUMS`,
 test-started with `--version`, and swapped in, keeping `yukioshi.old`. Major
 releases are never installed automatically. It can be turned off with
@@ -133,8 +144,9 @@ release host or repository account. There is no signature check yet.
 - **Trusted repositories** run their hooks, plugins and MCP servers with your
   privileges, and are outside the sandbox.
 - **Redaction misses** secrets in formats it does not know.
-- **Child processes after SIGKILL.** YukiOshi terminates children on
-  SIGINT, SIGTERM and SIGHUP, but a process killed with SIGKILL, a crash or a
+- **Child processes after SIGKILL.** YukiOshi stops registered children on
+  SIGTERM and SIGHUP (and on SIGINT when no interactive screen handles it),
+  and sends SIGKILL to any still alive at exit, but a process killed with SIGKILL, a crash or a
   power loss cannot run that cleanup, so children may be left running.
 - **Review mode** relies on a model's judgment, which can be wrong.
 - **A server with no password** on a shared machine: set

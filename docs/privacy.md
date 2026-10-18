@@ -16,19 +16,46 @@ What leaves your machine, and what stays on it. For protections, see the
   ([Configuration](configuration.md#webhooks)).
 - **HTTP hooks**, only if you add them, receive the same JSON a command hook
   gets, secret-masked ([Hooks](hooks.md#http-hooks)).
-- **Update check**: at most once a day, a request to GitHub releases, unless
-  you turn it off ([Installation](installation.md#automatic-updates)).
-- **Model catalog**: a fetch from `https://models.dev/api.json`. Turn it off
-  with `YUKIOSHI_DISABLE_MODELS_FETCH`, or point it elsewhere with
-  `YUKIOSHI_MODELS_URL`; each release carries an offline snapshot.
+- **Update check**: at most once a day, only from a compiled release build, and
+  not when `CI` is set. Where it goes depends on how YukiOshi was installed:
+  GitHub (`github.com` releases feed, then `api.github.com`) for script
+  installs, the npm registry for npm, yarn, pnpm and bun installs, and the
+  `brew` command for Homebrew. Turn it off with `"autoupdate": false` or
+  `YUKIOSHI_DISABLE_AUTOUPDATE=1` ([Installation](installation.md#automatic-updates)).
+  A script-install update downloads the release archive and `SHA256SUMS` from
+  GitHub.
+- **Model catalog**: a fetch from `https://models.dev/api.json` (cached for 5
+  minutes, 10-second timeout). Turn it off with `YUKIOSHI_DISABLE_MODELS_FETCH`,
+  or point it elsewhere with `YUKIOSHI_MODELS_URL`; each release carries an
+  offline snapshot.
+- **Downloads on first use**: ripgrep (from `github.com`, only when no `rg` is
+  installed), and some language servers from GitHub or `download-cdn.jetbrains.com`
+  (turn off with `YUKIOSHI_DISABLE_LSP_DOWNLOAD`). Provider and plugin npm
+  packages come from the npm registry configured on your machine.
+- **Telemetry export**: only if you set `OTEL_EXPORTER_OTLP_ENDPOINT`, logs and
+  traces go to that endpoint. Not set by default.
+- **Code indexing**: if you enable it with a remote embedder (OpenAI-compatible,
+  Voyage), chunks of your code go to that service; Ollama goes to its configured
+  URL. Not verified: whether indexing is on by default; check your config.
+- **Provider login**: `yukioshi providers login <url>` requests
+  `<url>/.well-known/opencode` from the server you name. Some provider logins
+  (GitHub Copilot, OpenAI device login) contact those providers' auth endpoints.
 - **Tools you use**: `webfetch`, MCP servers, browser automation and commands
   the agent runs contact whatever they are pointed at.
-- **Nothing is sent to opencode servers.** Sharing works only with a share
-  server you configure, and YukiOshi has no public share service
-  ([Features](features.md)).
+- **Nothing is sent to opencode servers.** The code removes the opencode
+  providers (Zen, Go) and refuses requests to `opencode.ai` and `opncd.ai`
+  hosts (`packages/core/src/opencode-guard.ts`). Sharing (`/share`,
+  `run --share`) and `yukioshi import <share URL>` work only with a share
+  server you configure under `"enterprise"`; YukiOshi has no public share
+  service ([Features](features.md)). Importing a share URL requests data from
+  that URL's server; credentials are attached only when it is the configured
+  server. Importing a local file contacts nothing.
 
-The docs describe no telemetry or analytics; the list
-above is what the docs describe.
+No telemetry or analytics service appears in the code: a search of
+`packages/*/src` found no analytics, crash-reporting or usage-tracking
+destination. The destinations above are the ones found; requests made by
+third-party libraries or provider SDKs to the provider you chose are not
+audited here.
 
 ## What is stored locally
 
