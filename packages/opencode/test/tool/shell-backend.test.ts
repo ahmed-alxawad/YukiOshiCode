@@ -85,7 +85,8 @@ script("docker", `[ "$1" = kill ] && exit 0\nfor last; do :; done\ncase "$last" 
 script("ssh", `while [ "$1" != "--" ]; do shift; done; shift\ncase "$*" in *__SLEEP__*) exec sleep 30;; esac\nexec sh -c "$*"`)
 const records = (name: string) =>
   readdirSync(REC)
-    .filter((f) => f.startsWith(name + "-") && f.endsWith(".argv"))
+    // .pid is written last by the fake script: skip records that are still being written
+    .filter((f) => f.startsWith(name + "-") && f.endsWith(".argv") && existsSync(path.join(REC, f.replace(".argv", ".pid"))))
     .map((f) => ({
       argv: readFileSync(path.join(REC, f), "utf8").split("\0").slice(0, -1),
       env: readFileSync(path.join(REC, f.replace(".argv", ".env")), "utf8"),
