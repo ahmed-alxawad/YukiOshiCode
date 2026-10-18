@@ -32,6 +32,7 @@ import { TrustCommand } from "./cli/cmd/trust"
 import { CheckpointCommand } from "./cli/cmd/checkpoint"
 import { UndoCommand } from "./cli/cmd/undo"
 import { ScheduleCommand } from "./cli/cmd/schedule"
+import { WatchCommand } from "./cli/cmd/watch"
 import { SkillCommand } from "./cli/cmd/skill"
 import { WorktreeCommand } from "./cli/cmd/worktree"
 import { ChildRegistry } from "@yukioshi/core/child-registry"
@@ -112,6 +113,7 @@ const cli = yargs(args)
   .command(CheckpointCommand)
   .command(UndoCommand)
   .command(ScheduleCommand)
+  .command(WatchCommand)
   .command(SkillCommand)
   .command(WorktreeCommand)
   .command(DbCommand)

@@ -123,6 +123,10 @@ Manage recurring prompts run by your operating system's background scheduler (cr
 | `yukioshi schedule disable <id>` | disable a scheduled job |
 | `yukioshi schedule remove <id>` | remove a scheduled job and clean up its entry from the system scheduler |
 
+### `yukioshi watch`
+
+`yukioshi watch [dir] [--mode review|plan|auto] [--model provider/model] [--dry-run] [--once]` watches the git repository for comment lines ending in `AI!` or `AI?` and starts a run for each one. Nothing runs unless you start it. See [Watch mode](features.md#watch-mode).
+
 ## Sessions and data
 
 | Command                         | Does                                                   |

@@ -186,6 +186,18 @@ yukioshi schedule enable <id>
 yukioshi schedule remove <id>
 ```
 
+## Watch mode
+
+`yukioshi watch [dir]` watches the files of the current git repository (only inside the repository root, skipping `.git`, `node_modules` and anything in `.gitignore`). A comment line ending in `AI!` asks the agent to make the change; one ending in `AI?` asks a question. Supported comment styles are `//`, `#`, `--`, `/* */` and `<!-- -->`, on lines that hold only the comment.
+
+On a change (debounced), the agent runs once per comment with the file, line and comment text as the prompt. Runs go one at a time; the rest wait in a queue. When a run succeeds the marker is removed from the comment, and for `AI?` the answer is written as comment lines right below the question. If the run fails the comment is left alone.
+
+- `--mode review|plan|auto` sets the permission mode (default `review`); `auto-all` is refused.
+- `--model provider/model` picks the model.
+- `--dry-run` prints what would run and runs nothing.
+- `--once` exits after the first comment has been handled.
+- The repository must be trusted (`yukioshi trust`), otherwise watch refuses to start.
+
 ## Usage
 
 `/usage` (or `/cost`) shows the current session's model, context use, tokens,
