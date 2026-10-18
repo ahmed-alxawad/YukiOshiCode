@@ -10,6 +10,8 @@ import { Session } from "./session"
 import { Agent } from "../agent/agent"
 import * as Mode from "../agent/mode"
 import { SessionGoal } from "./goal"
+import { SessionLearning } from "./learning"
+import { LearnedSkills } from "../skill/learned"
 import { SessionRepeat } from "./repeat"
 import { TuiEvent } from "@/server/tui-event"
 import { SessionFallback } from "./fallback"
@@ -1556,6 +1558,30 @@ const layer = Layer.effect(
             Effect.provideService(FSUtil.Service, fsys),
             Effect.provideService(Session.Service, sessions),
           )
+          {
+            const cfg = yield* config.get()
+            const user = msgs.findLast((m) => m.info.role === "user")
+            const text =
+              user
+                ? SessionLearning.nudge({
+                    sessionID,
+                    messages: msgs,
+                    enabled: cfg.learning?.nudges,
+                    tools: Boolean(cfg.memory?.enabled || LearnedSkills.settings(cfg.skills?.learn).enabled),
+                    minToolCalls: cfg.learning?.min_tool_calls,
+                    everyTurns: cfg.learning?.every_turns,
+                  })
+                : undefined
+            if (user && text)
+              user.parts.push({
+                id: PartID.ascending(),
+                messageID: user.info.id,
+                sessionID: user.info.sessionID,
+                type: "text",
+                text,
+                synthetic: true,
+              })
+          }
 
           const msg: SessionV1.Assistant = {
             id: MessageID.ascending(),
@@ -2056,6 +2082,17 @@ const layer = Layer.effect(
       return { info: reply, parts: [part] } satisfies SessionV1.WithParts
     })
 
+    const learningCommand = Effect.fn("SessionPrompt.learningCommand")(function* (input: CommandInput) {
+      const sub = input.arguments.trim().toLowerCase()
+      if (sub === "on" || sub === "off") {
+        yield* config.updateGlobal({ learning: { nudges: sub === "on" } })
+        return yield* goalReply(input, `Learning nudges are ${sub}.`)
+      }
+      if (sub && sub !== "status") return yield* goalReply(input, "Usage: /learning on | off | status")
+      const cfg = yield* config.get()
+      return yield* goalReply(input, `Learning nudges are ${cfg.learning?.nudges ? "on" : "off"}.`)
+    })
+
     const goalCommand = Effect.fn("SessionPrompt.goalCommand")(function* (input: CommandInput) {
       const cfg = yield* config.get()
       const sessionID = input.sessionID
@@ -2315,6 +2352,7 @@ const layer = Layer.effect(
       })
       if (input.command === "goal") return yield* goalCommand(input)
       if (input.command === "loop") return yield* loopCommand(input)
+      if (input.command === "learning") return yield* learningCommand(input)
       const cmd = yield* commands.get(input.command)
       if (!cmd) {
         const available = (yield* commands.list()).map((c) => c.name)

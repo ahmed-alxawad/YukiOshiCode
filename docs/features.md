@@ -687,6 +687,12 @@ curl -X POST http://127.0.0.1:4096/trigger \
   -d '{"prompt": "Fix the failing test in packages/api", "directory": "/home/user/projects/my-repo"}'
 ```
 
+## Learning nudges
+
+With `learning.nudges` on (off by default, global config only), a turn that used at least `learning.min_tool_calls` tool calls (default 8) or fixed an error (a failing tool call followed by a success) adds one hidden reminder to the next turn. It suggests that the agent consider `memory_save` or `skill_save` for anything reusable. It saves nothing by itself, grants no permission, and appears at most once per `learning.every_turns` turns (default 20). It only applies when project memory (`memory.enabled`) or learned skills (`skills.learn`) are on. Saving still follows the normal permission rules.
+
+Use `/learning on`, `/learning off` or `/learning status` to change it; the choice is saved in your global config. A project configuration cannot enable it.
+
 ## Installing many skills at once
 
 `yukioshi skill add` takes any number of sources in one command: git URLs, local

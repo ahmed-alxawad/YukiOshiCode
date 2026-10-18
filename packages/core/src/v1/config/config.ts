@@ -36,6 +36,7 @@ import { ConfigAuditV1 } from "./audit"
 import { ConfigTriggersV1 } from "./triggers"
 import { ConfigWebSearchV1 } from "./web-search"
 import { ConfigWebFetchV1 } from "./webfetch"
+import { ConfigLearningV1 } from "./learning"
 import { ConfigBrowserV1 } from "./browser"
 import { ConfigBackgroundShellV1 } from "./background-shell"
 import { Info as ConfigShellV1 } from "./shell"
@@ -226,6 +227,9 @@ export const Info = Schema.Struct({
   }),
   web_search: Schema.optional(ConfigWebSearchV1.Info).annotate({
     description: "The websearch tool and the search service it uses (off by default)",
+  }),
+  learning: Schema.optional(ConfigLearningV1.Info).annotate({
+    description: "Learning nudges (global config only; off by default)",
   }),
   webfetch: Schema.optional(ConfigWebFetchV1.Info).annotate({
     description: "The webfetch tool (allow_private is read from global config only)",

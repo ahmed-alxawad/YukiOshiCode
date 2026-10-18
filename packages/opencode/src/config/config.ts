@@ -535,6 +535,8 @@ const layer = Layer.effect(
           if (next.webfetch) {
             delete next.webfetch
           }
+          // learning.nudges adds hidden reminders to turns, so only the user's own config may turn it on.
+          delete next.learning
           for (const item of next.skills?.paths ?? []) projectSkillPaths.add(item)
           if (projectTrusted) {
             for (const item of next.skills?.urls ?? []) projectSkillUrls.add(item)

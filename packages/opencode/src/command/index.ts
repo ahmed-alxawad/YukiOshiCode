@@ -52,6 +52,7 @@ export const Default = {
   PR: "pr",
   GOAL: "goal",
   LOOP: "loop",
+  LEARNING: "learning",
 } as const
 
 export interface Interface {
@@ -131,6 +132,14 @@ const layer = Layer.effect(
           template: "$ARGUMENTS",
           hints: ["$ARGUMENTS"],
         }
+      }
+
+      commands[Default.LEARNING] = {
+        name: Default.LEARNING,
+        description: "turn learning nudges on or off [on | off | status]",
+        source: "command",
+        template: "$ARGUMENTS",
+        hints: ["$ARGUMENTS"],
       }
 
       for (const [name, command] of Object.entries(cfg.command ?? {})) {

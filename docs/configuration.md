@@ -134,6 +134,7 @@ Normal `{env:…}` substitution applies to both aliases. If a local MCP server s
 | `lsp`, `formatter`     | language servers (off unless `lsp` is `true` or an object) and formatters |                                             |
 | `lsp_tool`             | the `lsp` code navigation tool when language servers are on (off by default) | [Features](features.md#code-navigation) |
 | `web_search`           | the `websearch` tool: `enabled` (off by default), `provider` (`exa` or `parallel`) | [Features](features.md#web-search) |
+| `learning`             | learning nudges: `nudges` (off by default; global only), `min_tool_calls` (8), `every_turns` (20) | [Learning nudges](features.md#learning-nudges) |
 | `webfetch`             | webfetch options: `allow_private` (off by default; global only) | [Permissions and safety](permissions-and-safety.md#webfetch-and-private-network-protection) |
 | `compaction`           | how long conversations are summarised to stay within context        |                                             |
 | `goal`                 | `/goal`: `enabled` and `max_rounds` (default 20)                    | [Features](features.md)                     |
@@ -270,6 +271,14 @@ The `webfetch` tool fetches HTTP and HTTPS URLs for the agent. It inspects the a
 ```
 
 With `allow_private: true`, private addresses are fetched under your normal `webfetch` permission rules, with no extra prompt. This option is accepted in global configuration only (`~/.config/yukioshi/yukioshi.json`); project-level configurations cannot enable private fetches (the key is stripped from them). See [Webfetch and private network protection](permissions-and-safety.md#webfetch-and-private-network-protection).
+
+## Learning nudges
+
+```json
+{ "learning": { "nudges": true, "min_tool_calls": 8, "every_turns": 20 } }
+```
+
+Off by default. Accepted in global configuration only; a project configuration cannot turn it on (the key is stripped). Toggle it with `/learning on|off|status`, which writes the global config file. See [Learning nudges](features.md#learning-nudges).
 
 ## Environment variables
 

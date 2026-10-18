@@ -93,7 +93,7 @@ export function dollars(value: number) {
 }
 
 /** Commands the session handles itself, before looking one up in the command list. */
-const SESSION_COMMANDS = new Set(["goal", "loop"])
+const SESSION_COMMANDS = new Set(["goal", "loop", "learning"])
 
 /**
  * The message for `yukioshi run --command <name>` when no such command exists, or undefined when it does. The
