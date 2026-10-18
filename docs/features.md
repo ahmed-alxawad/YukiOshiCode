@@ -710,6 +710,21 @@ curl -X POST http://127.0.0.1:4096/trigger \
   -d '{"prompt": "Fix the failing test in packages/api", "directory": "/home/user/projects/my-repo"}'
 ```
 
+## Shell backends (docker and ssh)
+
+Off by default (`local`). In your global config only (a project config cannot set it):
+
+```json
+{ "shell": { "backend": "docker", "docker": { "image": "node:22", "network": "none", "mount": "project" } } }
+{ "shell": { "backend": "ssh", "ssh": { "host": "box.example", "user": "dev", "port": 22, "identity_file": "~/.ssh/id_ed25519" } } }
+```
+
+- **docker**: each shell command runs in `docker run --rm -i --network none` with the project mounted at `/work` and the working directory mapped. Only the MCP-isolation allow-list of environment variables (locale, proxy and the like) reaches the container, by name; no secrets and no privileged flags. Aborting or a timeout kills the local client and runs `docker kill` on the named container.
+- **ssh**: `ssh -o BatchMode=yes -o StrictHostKeyChecking=yes [-i key] user@host -- sh -c '<quoted command>'`. No password prompts, the host must already be in `known_hosts`, the command is quoted so it stays one remote command. Abort and timeout kill the local ssh client.
+- Permissions are decided before anything runs, exactly as for local commands.
+- The read, edit and write tools stay local. With docker the shell sees the same files because the project is mounted. With ssh it does NOT: the remote machine sees different files than your edits unless you sync them yourself.
+- The OS sandbox is not combined with these backends (the container or remote host is the sandbox). `sandbox.enabled` together with `ssh` is refused with an error; with docker it is not applied.
+
 ## Learning nudges
 
 With `learning.nudges` on (off by default, global config only), a turn that used at least `learning.min_tool_calls` tool calls (default 8) or fixed an error (a failing tool call followed by a success) adds one hidden reminder to the next turn. It suggests that the agent consider `memory_save` or `skill_save` for anything reusable. It saves nothing by itself, grants no permission, and appears at most once per `learning.every_turns` turns (default 20). It only applies when project memory (`memory.enabled`) or learned skills (`skills.learn`) are on. Saving still follows the normal permission rules.

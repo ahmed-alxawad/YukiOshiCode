@@ -539,6 +539,12 @@ const layer = Layer.effect(
           delete next.learning
           // repo_map adds file and symbol names to every prompt, so only the user's own config may turn it on.
           delete next.repo_map
+          // Docker/ssh shell backends send every command elsewhere, so only the user's own config may choose them.
+          if (next.shell && typeof next.shell === "object" && (next.shell.backend || next.shell.docker || next.shell.ssh)) {
+            blockedExecutables.add(`${source} (shell backend)`)
+            const { backend: _b, docker: _d, ssh: _s, ...rest } = next.shell
+            next.shell = rest as typeof next.shell
+          }
           for (const item of next.skills?.paths ?? []) projectSkillPaths.add(item)
           if (projectTrusted) {
             for (const item of next.skills?.urls ?? []) projectSkillUrls.add(item)

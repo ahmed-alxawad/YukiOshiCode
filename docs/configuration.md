@@ -274,6 +274,10 @@ The `webfetch` tool fetches HTTP and HTTPS URLs for the agent. It inspects the a
 
 With `allow_private: true`, private addresses are fetched under your normal `webfetch` permission rules, with no extra prompt. This option is accepted in global configuration only (`~/.config/yukioshi/yukioshi.json`); project-level configurations cannot enable private fetches (the key is stripped from them). See [Webfetch and private network protection](permissions-and-safety.md#webfetch-and-private-network-protection).
 
+## Shell backend
+
+`shell.backend` (`local` default, `docker`, `ssh`) moves shell commands into a container or onto a remote host. Global config only; a project config value is ignored and reported as blocked. Keys: `shell.docker.{image, network ("none" default), mount ("project")}` and `shell.ssh.{host, user, port, identity_file}`. See [Shell backends](features.md#shell-backends-docker-and-ssh).
+
 ## Learning nudges
 
 ```json

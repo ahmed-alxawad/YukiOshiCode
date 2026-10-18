@@ -16,6 +16,7 @@ import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Shell } from "@yukioshi/core/shell"
 import { ShellID } from "./shell/id"
 import { sandboxProfile } from "./sandbox-profile"
+import * as ShellBackend from "./shell-backend"
 
 import * as Truncate from "./truncate"
 import { Plugin } from "@/plugin"
@@ -359,6 +360,37 @@ export const ShellTool = Tool.define(
     const defaultTimeoutMs = flags.bashDefaultTimeoutMs ?? 2 * 60 * 1000
     const globalShell = yield* config.getGlobal()
     const killOnExit = typeof globalShell.shell === "object" && globalShell.shell.kill_on_exit === true
+    // Remote backends come from the user's global config only (project config is stripped of them).
+    const backendConfig: ShellBackend.Config | undefined =
+      typeof globalShell.shell === "object" ? (globalShell.shell as ShellBackend.Config) : undefined
+
+    /** The command to spawn: local (optionally sandboxed), or the docker/ssh client for the configured backend. */
+    const buildCommand = Effect.fnUntraced(function* (
+      input: { shell: string; command: string; cwd: string; env: NodeJS.ProcessEnv },
+      instance: InstanceContext,
+      sandbox: Sandbox.Profile | undefined,
+    ) {
+      const remote = ShellBackend.active(backendConfig)
+      if (!remote) {
+        const local = cmd(input.shell, input.command, input.cwd, input.env, killOnExit)
+        return sandbox ? yield* Sandbox.prepareCommand(local, input.cwd, input.env) : local
+      }
+      ShellBackend.check(backendConfig, sandbox !== undefined)
+      const root = instance.worktree === "/" ? instance.directory : instance.worktree
+      const plan = ShellBackend.plan(backendConfig!, { command: input.command, cwd: input.cwd, env: input.env, root })
+      if (plan.container) {
+        const name = plan.container
+        yield* Effect.addFinalizer(() => Effect.sync(() => ShellBackend.killContainer(name, plan.env)))
+      }
+      return ChildProcess.make(plan.file, plan.args, {
+        cwd: input.cwd,
+        env: plan.env,
+        extendEnv: false,
+        stdin: "ignore" as const,
+        detached: process.platform !== "win32",
+        killOnExit,
+      } as any)
+    })
 
     const cygpath = Effect.fn("ShellTool.cygpath")(function* (shell: string, text: string) {
       const lines = yield* spawner
@@ -497,9 +529,7 @@ export const ShellTool = Tool.define(
 
       const spawnEffect = Effect.gen(function* () {
         yield* Effect.addFinalizer(closeSink)
-        const command = sandbox
-          ? yield* Sandbox.prepareCommand(cmd(input.shell, input.command, input.cwd, input.env, killOnExit), input.cwd, input.env)
-          : cmd(input.shell, input.command, input.cwd, input.env, killOnExit)
+        const command = yield* buildCommand(input, instance, sandbox)
         const handle = yield* spawner.spawn(command)
 
         yield* Effect.forkScoped(
@@ -631,9 +661,7 @@ export const ShellTool = Tool.define(
       const services = yield* Effect.context<never>()
       const launch = (io: BackgroundShell.Io) => {
         const spawnEffect = Effect.gen(function* () {
-          const command = sandbox
-            ? yield* Sandbox.prepareCommand(cmd(input.shell, input.command, input.cwd, input.env, killOnExit), input.cwd, input.env)
-            : cmd(input.shell, input.command, input.cwd, input.env, killOnExit)
+          const command = yield* buildCommand(input, instance, sandbox)
           const handle = yield* spawner.spawn(command)
           io.setPid(Number(handle.pid))
           yield* Effect.forkScoped(Stream.runForEach(Stream.decodeText(handle.all), (chunk) => Effect.sync(() => io.push(chunk))))

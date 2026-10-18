@@ -131,6 +131,10 @@ Plainly: `SHA256SUMS` comes from the same host as the binary, and the release
 is not signed. The checksum detects a corrupted download, not a compromised
 release host or repository account. There is no signature check yet.
 
+## Shell backends
+
+`shell.backend` docker or ssh is chosen only in the global config. Docker: no network by default, only the project mounted at `/work` (it is writable, so the container can change project files), host environment filtered like MCP servers, no privileged flags. Ssh: BatchMode, strict host-key checking, command single-quoted; the remote host is trusted with whatever the account can do and is not confined. Not protected: the docker daemon itself (anyone who can run docker is root-equivalent on the host), and file edits made by the agent's local tools never go through the container or ssh. The OS sandbox is not applied to these backends.
+
 ## What is NOT protected
 
 - **A malicious or misled model with `auto-all`** (or `allow` rules for `bash`)
