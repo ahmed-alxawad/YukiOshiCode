@@ -726,7 +726,9 @@ Options:
       --print-logs  print logs to stderr                                                   [boolean]
       --log-level   log level                   [string] [choices: "DEBUG", "INFO", "WARN", "ERROR"]
       --pure        run without external plugins                                           [boolean]
-      --format      output format             [string] [choices: "table", "json"] [default: "table"]"
+      --format      output format             [string] [choices: "table", "json"] [default: "table"]
+      --agents      also validate session agents, as for \`run --agents\` (JSON object or file path;
+                    or YUKIOSHI_SESSION_AGENTS)                                             [string]"
 `;
 
 exports[`yukioshi CLI help-text snapshots every documented command emits stable help text: yukioshi agent show --help 1`] = `
