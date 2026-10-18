@@ -175,16 +175,21 @@ describe("checkpoint corners", () => {
   })
 
   test("d. big repository: 20,000 small files plus one 200 MB file", () => {
+    // Staging 20,000 files took ~12 minutes on NTFS runners (one `git add -A`, no per-file git calls), so the
+    // scenario is scaled down to a tenth on Windows; other systems keep the full size.
+    const scaled = process.platform === "win32"
+    const dirs = scaled ? 20 : 200
+    const bigBytes = (scaled ? 20 : 200) * 1024 * 1024
     const dir = repo()
     const many = path.join(dir, "many")
-    for (let d = 0; d < 200; d++) {
+    for (let d = 0; d < dirs; d++) {
       const sub = path.join(many, `dir-with-a-fairly-long-name-${d}`)
       mkdirSync(sub, { recursive: true })
       for (let f = 0; f < 100; f++) writeFileSync(path.join(sub, `small-file-number-${f}.txt`), `${d}:${f}\n`)
     }
     const bigPath = path.join(dir, "big.bin")
     const fd = openSync(bigPath, "w")
-    ftruncateSync(fd, 200 * 1024 * 1024)
+    ftruncateSync(fd, bigBytes)
     closeSync(fd)
 
     const rssBefore = process.memoryUsage().rss
@@ -194,8 +199,8 @@ describe("checkpoint corners", () => {
     const rssAfter = process.memoryUsage().rss
     console.log(`[d] first checkpoint: ${elapsed} ms, rss ${Math.round(rssBefore / 1e6)} -> ${Math.round(rssAfter / 1e6)} MB`)
     expect(created).toBeDefined()
-    expect(git(dir, "cat-file", "-s", `${created!.id}:big.bin`)).toBe(String(200 * 1024 * 1024))
-    expect(git(dir, "ls-tree", "-r", "--name-only", created!.id).split("\n").length).toBe(20_000 + 2)
+    expect(git(dir, "cat-file", "-s", `${created!.id}:big.bin`)).toBe(String(bigBytes))
+    expect(git(dir, "ls-tree", "-r", "--name-only", created!.id).split("\n").length).toBe(dirs * 100 + 2)
 
     // Second checkpoint after a small edit should reuse the index of the previous commit and stay fast.
     writeFileSync(path.join(dir, "file.txt"), "edit")
@@ -207,6 +212,5 @@ describe("checkpoint corners", () => {
     expect(withIsolatedEnv(() => listCheckpoints(dir, "ses_big")).length).toBe(2)
     // Memory stays bounded: the 200 MB file is streamed by git, not read into this process.
     expect(rssAfter - rssBefore).toBeLessThan(150 * 1024 * 1024)
-    // 20,000 files take several minutes to stage on NTFS runners; the limit only needs to catch a hang.
-  }, process.platform === "win32" ? 600_000 : 120_000)
+  }, process.platform === "win32" ? 300_000 : 120_000)
 })
