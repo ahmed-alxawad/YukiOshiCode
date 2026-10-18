@@ -89,13 +89,11 @@ describe("yukioshi tasks --all (real run in the background)", () => {
         const listP = async () => JSON.parse(await tasks(home, ["--all", "--format", "json"])) as Listing
         const list = () => Effect.promise(listP)
 
-        // The run is still migrating the shared fresh database while we poll, so an early listing can fail
-        // ("table already exists"); keep polling until the session shows up or the deadline passes.
         let listing: Listing = { sessions: [] }
         const deadline = Date.now() + 90_000
         while (listing.sessions.length === 0 && Date.now() < deadline) {
           yield* Effect.sleep("500 millis")
-          listing = yield* Effect.tryPromise(listP).pipe(Effect.orElseSucceed(() => ({ sessions: [] }) as Listing))
+          listing = yield* list()
         }
         expect(listing.sessions).toHaveLength(1)
         expect(listing.sessions[0]!.state).toContain("turn")

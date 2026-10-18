@@ -5,6 +5,8 @@ import { Effect, Semaphore } from "effect"
 import type { EffectDrizzleSqlite } from "@yukioshi/effect-drizzle-sqlite"
 import { migrations } from "./migration.gen"
 import schema from "./schema.gen"
+import "../global"
+import { Flock } from "../util/flock"
 
 type Database = EffectDrizzleSqlite.EffectSQLiteDatabase
 type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0]
@@ -17,7 +19,11 @@ export type Migration = {
 
 export function apply(db: Database) {
   return lock.withPermit(
+    Effect.scoped(
     Effect.gen(function* () {
+      // Serialize first-start migration across processes; the state below is read only after the lock is held,
+      // so the loser of a race sees the winner's tables and applies nothing.
+      yield* Flock.effect("db-migrate", { timeoutMs: 120_000 })
       const tables = yield* db.all<{ name: string }>(
         sql`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`,
       )
@@ -37,6 +43,7 @@ export function apply(db: Database) {
         }),
       )
     }),
+    ),
   )
 }
 
