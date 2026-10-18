@@ -255,7 +255,7 @@ describe("session.retry.retryable", () => {
     const request = MessageV2.fromError(new ProviderError.HeaderTimeoutError(10000), { providerID })
     expect(SessionV1.APIError.isInstance(request)).toBe(true)
     expect(SessionRetry.retryable(request, retryProvider)).toEqual({
-      message: "Provider response headers timed out after 10000ms",
+      message: "Provider response headers timed out after 10000ms (raise provider.test.options.headerTimeout to wait longer)",
     })
   })
 
@@ -436,5 +436,20 @@ describe("session.message-v2.fromError", () => {
     expect(SessionRetry.retryable(result, retryProvider)).toEqual({
       message: "An error occurred while processing your request.",
     })
+  })
+})
+
+describe("timeout hints", () => {
+  const wrapMsg = (message: string) =>
+    Schema.decodeUnknownSync(SessionV1.APIError.Schema)(
+      new SessionV1.APIError({ message, isRetryable: true }).toObject(),
+    )
+  test("stall names chunkTimeout", () => {
+    const r = SessionRetry.retryable(wrapMsg("Provider stream stalled: no data for 30000ms"), "google")
+    expect(r?.message).toContain("provider.google.options.chunkTimeout")
+  })
+  test("header timeout names headerTimeout", () => {
+    const r = SessionRetry.retryable(wrapMsg("Provider response headers timed out after 15000ms"), "google")
+    expect(r?.message).toContain("provider.google.options.headerTimeout")
   })
 })

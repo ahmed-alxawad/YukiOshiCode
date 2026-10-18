@@ -112,8 +112,9 @@ literal key in a file you commit; use `{env:…}` or `yukioshi providers login`.
 
 ### Timeouts
 
-YukiOshi is tuned for interactive use: it waits up to 15 seconds for a response
-to start and up to 30 seconds between streamed chunks, and retries a failing
+YukiOshi is tuned for interactive use: it waits up to 60 seconds for a response
+to start and up to 60 seconds between streamed chunks (180 seconds for Google and
+Google Vertex, whose thinking models can be silent for a long time), and retries a failing
 provider at most twice, waiting no more than 10 seconds between tries. If a
 provider is overloaded, switch to another model instead of waiting, or let
 YukiOshi do it with [fallback models](#fallback-models-and-key-rotation). Providers

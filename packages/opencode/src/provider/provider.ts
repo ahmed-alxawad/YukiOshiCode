@@ -46,6 +46,20 @@ import {
 // override either value in configuration when a long-running model needs it.
 const PROVIDER_HEADER_TIMEOUT_DEFAULT = 60_000
 const PROVIDER_CHUNK_TIMEOUT_DEFAULT = 60_000
+// Gemini thinking models can stay silent for minutes before the first token.
+const PROVIDER_SLOW_TIMEOUT_DEFAULT = 180_000
+const SLOW_PROVIDERS = new Set(["google", "google-vertex"])
+
+export function providerTimeoutDefaults(providerID: string) {
+  if (SLOW_PROVIDERS.has(providerID))
+    return { headerTimeout: PROVIDER_SLOW_TIMEOUT_DEFAULT, chunkTimeout: PROVIDER_SLOW_TIMEOUT_DEFAULT }
+  return { headerTimeout: PROVIDER_HEADER_TIMEOUT_DEFAULT, chunkTimeout: PROVIDER_CHUNK_TIMEOUT_DEFAULT }
+}
+
+export function resolveTimeouts(providerID: string, options: Record<string, any>) {
+  const d = providerTimeoutDefaults(providerID)
+  return { chunkTimeout: options["chunkTimeout"] ?? d.chunkTimeout, headerTimeout: options["headerTimeout"] ?? d.headerTimeout }
+}
 
 function wrapSSE(res: Response, ms: number, ctl?: AbortController) {
   if (!res.body) return res
@@ -1980,8 +1994,7 @@ const layer = Layer.effect(
         if (existing) return existing
 
         const customFetch = options["fetch"]
-        const chunkTimeout = options["chunkTimeout"] ?? PROVIDER_CHUNK_TIMEOUT_DEFAULT
-        const headerTimeout = options["headerTimeout"] ?? PROVIDER_HEADER_TIMEOUT_DEFAULT
+        const { chunkTimeout, headerTimeout } = resolveTimeouts(model.providerID, options)
         delete options["chunkTimeout"]
         delete options["headerTimeout"]
 
