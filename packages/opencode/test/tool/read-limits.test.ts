@@ -76,6 +76,8 @@ describe("tool.read limits", () => {
       expect(result.output).toContain("line truncated to 2000 chars")
       expect(grown).toBeLessThan(250)
     }),
+    // Writing 400 MB and scanning it takes about a minute on loaded Windows runners (30 s default was hit).
+    process.platform === "win32" ? 120_000 : undefined,
   )
 
   it.instance("refuses an image attachment above the size limit", () =>

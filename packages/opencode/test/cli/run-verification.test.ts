@@ -402,6 +402,8 @@ describe("run verification post-turn", () => {
         yield* llm.text("Created version.ts")
 
         const result = yield* opencode.run("create the version file", {
+          // A CLI run takes 50-60 s on loaded Windows runners (see the other real-CLI tests), so the default 60 s is too tight.
+          timeoutMs: process.platform === "win32" ? 150_000 : undefined,
           extraArgs: ["--dangerously-skip-permissions", "--verify"],
           env: {
             HTTP_PROXY: "",
