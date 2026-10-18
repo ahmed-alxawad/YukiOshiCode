@@ -328,7 +328,8 @@ const layer = Layer.effect(
     })
 
     const ids: Interface["ids"] = Effect.fn("ToolRegistry.ids")(function* () {
-      return (yield* all()).map((tool) => tool.id)
+      const memoryOn = ((yield* config.get()).memory?.enabled ?? false) === true
+      return (yield* all()).filter((tool) => memoryOn || tool.id !== MemorySaveTool.id).map((tool) => tool.id)
     })
 
     const describeTask = Effect.fn("ToolRegistry.describeTask")(function* (agent: Agent.Info) {

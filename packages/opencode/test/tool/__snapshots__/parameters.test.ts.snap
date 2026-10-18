@@ -313,6 +313,10 @@ exports[`tool parameters JSON Schema (wire shape) task 1`] = `
       "description": "A short (3-5 words) description of the task",
       "type": "string",
     },
+    "fork": {
+      "description": "Start the subagent with a copy of this conversation so far instead of a blank context. It cannot start subagents itself",
+      "type": "boolean",
+    },
     "prompt": {
       "description": "The task for the agent to perform",
       "type": "string",
