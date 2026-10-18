@@ -86,13 +86,16 @@ describe("yukioshi tasks --all (real run in the background)", () => {
       Effect.gen(function* () {
         yield* llm.hang
         const handle = yield* opencode.startRun("block forever", { env: { YUKIOSHI_DB: path.join(home, "sessions.db") } })
-        const list = () =>
-          Effect.promise(async () => JSON.parse(await tasks(home, ["--all", "--format", "json"])) as Listing)
+        const listP = async () => JSON.parse(await tasks(home, ["--all", "--format", "json"])) as Listing
+        const list = () => Effect.promise(listP)
 
+        // The run is still migrating the shared fresh database while we poll, so an early listing can fail
+        // ("table already exists"); keep polling until the session shows up or the deadline passes.
         let listing: Listing = { sessions: [] }
-        for (let i = 0; i < 60 && listing.sessions.length === 0; i++) {
+        const deadline = Date.now() + 90_000
+        while (listing.sessions.length === 0 && Date.now() < deadline) {
           yield* Effect.sleep("500 millis")
-          listing = yield* list()
+          listing = yield* Effect.tryPromise(listP).pipe(Effect.orElseSucceed(() => ({ sessions: [] }) as Listing))
         }
         expect(listing.sessions).toHaveLength(1)
         expect(listing.sessions[0]!.state).toContain("turn")
