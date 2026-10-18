@@ -1,4 +1,5 @@
 import fs from "fs/promises"
+import { existsSync } from "fs"
 import path from "path"
 import { Global } from "@yukioshi/core/global"
 
@@ -129,14 +130,24 @@ export function checkArchiveListing(lines: { type: string; size: number; name: s
   if (total > MAX_REPO_SIZE) throw new Error("Archive is too large (max 50 MB)")
 }
 
-async function extractArchive(file: string, dest: string) {
+// On Windows a bare "tar" can resolve to GNU tar from Git for Windows, which reads "C:\\x.tar" as host "C".
+// Prefer the bsdtar that ships with Windows, and always pass the archive by relative name from its own folder.
+const TAR = (() => {
+  if (process.platform !== "win32") return "tar"
+  const bsd = path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe")
+  return existsSync(bsd) ? bsd : "tar"
+})()
+
+async function extractArchive(fullPath: string, dest: string) {
+  const file = path.basename(fullPath)
+  const home = path.dirname(fullPath)
   const zip = /\.zip$/i.test(file)
   const useUnzip = zip && process.platform !== "win32"
   // Names come from the plain listing and types/sizes from the verbose one, so parsing does not depend on
   // GNU tar vs bsdtar vs unzip column layouts.
-  const names = useUnzip ? await run(["unzip", "-Z1", "--", file], dest) : await run(["tar", zip ? "-tf" : "-tzf", file], dest)
+  const names = useUnzip ? await run(["unzip", "-Z1", "--", file], home) : await run([TAR, zip ? "-tf" : "-tzf", file], home)
   if (names.code !== 0) throw new Error(`Could not read archive: ${names.err.trim() || `exit ${names.code}`}`)
-  const verbose = useUnzip ? await run(["unzip", "-Z", "--", file], dest) : await run(["tar", zip ? "-tvf" : "-tzvf", file], dest)
+  const verbose = useUnzip ? await run(["unzip", "-Z", "--", file], home) : await run([TAR, zip ? "-tvf" : "-tzvf", file], home)
   if (verbose.code !== 0) throw new Error(`Could not read archive: ${verbose.err.trim() || `exit ${verbose.code}`}`)
   const nameList = names.out.split(/\r?\n/).filter((l) => l.length > 0)
   const detail = verbose.out.split(/\r?\n/).filter((l) => /^[-dlhrwxsc?][-rwxsStTl]{9}/.test(l))
@@ -150,8 +161,8 @@ async function extractArchive(file: string, dest: string) {
   const out = path.join(dest, "repo")
   await fs.mkdir(out)
   const x = useUnzip
-    ? await run(["unzip", "-q", "--", file, "-d", out], dest)
-    : await run(["tar", zip ? "-xf" : "-xzf", file, "--no-same-owner", "-C", out], dest)
+    ? await run(["unzip", "-q", "--", file, "-d", out], home)
+    : await run([TAR, zip ? "-xf" : "-xzf", file, "--no-same-owner", "-C", out], home)
   if (x.code !== 0) throw new Error(`Could not extract archive: ${x.err.trim() || `exit ${x.code}`}`)
   return out
 }

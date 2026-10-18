@@ -2,6 +2,7 @@ import { describe, expect } from "bun:test"
 import { Effect } from "effect"
 import fs from "node:fs"
 import path from "node:path"
+import zlib from "node:zlib"
 import { cliIt } from "../lib/cli-process"
 
 function git(cwd: string, ...args: string[]) {
@@ -10,6 +11,30 @@ function git(cwd: string, ...args: string[]) {
     { cwd, stdout: "pipe", stderr: "pipe" },
   )
   if (proc.exitCode !== 0) throw new Error(`git ${args.join(" ")}: ${proc.stderr.toString()}`)
+}
+
+// Windows has no `zip`, `python3` or reliable symlink rights, so test archives are written in-process.
+function tarGz(file: string, entries: { name: string; content?: string; link?: string }[]) {
+  const blocks: Buffer[] = []
+  for (const e of entries) {
+    const body = Buffer.from(e.content ?? "")
+    const h = Buffer.alloc(512)
+    h.write(e.name, 0, 100)
+    h.write("0000644\0", 100)
+    h.write("0000000\0", 108)
+    h.write("0000000\0", 116)
+    h.write(body.length.toString(8).padStart(11, "0") + "\0", 124)
+    h.write("00000000000\0", 136)
+    h.fill(" ", 148, 156)
+    h.write(e.link ? "2" : "0", 156)
+    if (e.link) h.write(e.link, 157, 100)
+    h.write("ustar\0" + "00", 257)
+    const sum = h.reduce((a, b) => a + b, 0)
+    h.write(sum.toString(8).padStart(6, "0") + "\0 ", 148)
+    blocks.push(h, body, Buffer.alloc((512 - (body.length % 512)) % 512))
+  }
+  blocks.push(Buffer.alloc(1024))
+  fs.writeFileSync(file, zlib.gzipSync(Buffer.concat(blocks)))
 }
 
 // Builds a local bare repository (no network) holding the given files and returns its path.
@@ -181,8 +206,11 @@ describe("skill add/list/remove", () => {
         const dir = folder(home, "dirsrc", { "b/SKILL.md": skillMd("dir-skill") })
         folder(home, "zipsrc", { "c/SKILL.md": skillMd("zip-skill") })
         folder(home, "tarsrc", { "d/SKILL.md": skillMd("tar-skill") })
-        Bun.spawnSync(["zip", "-qr", path.join(home, "zipsrc.zip"), "c"], { cwd: path.join(home, "zipsrc") })
-        Bun.spawnSync(["tar", "-czf", path.join(home, "tarsrc.tar.gz"), "d"], { cwd: path.join(home, "tarsrc") })
+        // bsdtar (Windows 10+) writes zip with -a; elsewhere use zip.
+        if (process.platform === "win32")
+          Bun.spawnSync([path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe"), "-a", "-cf", path.join(home, "zipsrc.zip"), "c"], { cwd: path.join(home, "zipsrc") })
+        else Bun.spawnSync(["zip", "-qr", path.join(home, "zipsrc.zip"), "c"], { cwd: path.join(home, "zipsrc") })
+        tarGz(path.join(home, "tarsrc.tar.gz"), [{ name: "d/SKILL.md", content: skillMd("tar-skill") }])
         const result = yield* opencode.spawn(
           ["skill", "add", repo, dir, path.join(home, "zipsrc.zip"), path.join(home, "tarsrc.tar.gz")],
           { cwd: home },
@@ -263,17 +291,13 @@ describe("skill add/list/remove", () => {
     "rejects archives with path traversal or symlinks and installs nothing from them",
     ({ home, opencode }) =>
       Effect.gen(function* () {
-        // A tar whose entry escapes via "..": built with python so the name is stored verbatim.
+        // A tar whose entry escapes via "..", and one holding a symlink; built in-process so names stay verbatim.
         const evil = path.join(home, "evil.tar.gz")
-        const py = `import tarfile,io,sys
-t=tarfile.open(sys.argv[1],'w:gz')
-d=b'x'
-i=tarfile.TarInfo('../escape/SKILL.md'); i.size=1; t.addfile(i,io.BytesIO(d))
-t.close()`
-        Bun.spawnSync(["python3", "-c", py, evil])
-        const linked = folder(home, "linksrc", { "s/SKILL.md": skillMd("linked") })
-        fs.symlinkSync("/etc/passwd", path.join(linked, "s/leak"))
-        Bun.spawnSync(["tar", "-czf", path.join(home, "linked.tgz"), "s"], { cwd: linked })
+        tarGz(evil, [{ name: "../escape/SKILL.md", content: "x" }])
+        tarGz(path.join(home, "linked.tgz"), [
+          { name: "s/SKILL.md", content: skillMd("linked") },
+          { name: "s/leak", link: "/etc/passwd" },
+        ])
         const result = yield* opencode.spawn(["skill", "add", evil, path.join(home, "linked.tgz")], { cwd: home })
         expect(result.exitCode).toBe(1)
         expect(out(result)).toContain("escapes")
