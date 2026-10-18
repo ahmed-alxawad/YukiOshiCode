@@ -8,11 +8,12 @@
  * that the interval is cleared after the parent (the test process) exits.
  */
 
+import { afterAll, describe, it, expect } from "bun:test";
 import { execSync } from "child_process";
 import { join } from "path";
 
 // Import the watchdog; it starts automatically.
-import "../../src/util/watchdog";
+import "../src/util/watchdog";
 
 describe("watchdog", () => {
   it("should not throw on import and clean up after exit", () => {
