@@ -8,10 +8,10 @@ import { promptText } from "../../src/memory"
 
 test("each agent gets its own memory directory, user or project scoped", () => {
   const ctx = { directory: "/work/app", worktree: "/work/app" }
-  expect(MemoryPaths.agentRoot(ctx, "project", "Reviewer", "/data")).toBe("/work/app/.yukioshi/agent-memory/reviewer")
-  expect(MemoryPaths.agentRoot(ctx, "user", "Reviewer", "/data")).toBe("/data/agent-memory/reviewer")
-  expect(MemoryPaths.agentRoot(ctx, "user", "../../etc", "/data").startsWith("/data/agent-memory/")).toBe(true)
-  expect(path.dirname(MemoryPaths.agentRoot(ctx, "user", "../../etc", "/data"))).toBe("/data/agent-memory")
+  expect(MemoryPaths.agentRoot(ctx, "project", "Reviewer", "/data")).toBe(path.join("/work/app", ".yukioshi", "agent-memory", "reviewer"))
+  expect(MemoryPaths.agentRoot(ctx, "user", "Reviewer", "/data")).toBe(path.join("/data", "agent-memory", "reviewer"))
+  expect(MemoryPaths.agentRoot(ctx, "user", "../../etc", "/data").startsWith(path.join("/data", "agent-memory") + path.sep)).toBe(true)
+  expect(path.dirname(MemoryPaths.agentRoot(ctx, "user", "../../etc", "/data"))).toBe(path.join("/data", "agent-memory"))
 })
 
 test("an agent's memory file is separate from project memory and size-capped", async () => {

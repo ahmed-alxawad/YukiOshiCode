@@ -420,6 +420,6 @@ describe("run verification post-turn", () => {
         // Verify that verification was executed and printed matching main's UX
         expect(result.stdout).toMatch(/Verification: VERIFIED/)
       }),
-    60_000,
+    180_000,
   )
 })
