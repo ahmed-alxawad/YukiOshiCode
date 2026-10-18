@@ -198,6 +198,12 @@ export const RunCommand = effectCmd({
         type: "string",
         describe: "session-only subagents as a JSON object or a path to a JSON file: {name: {description, prompt, tools, model}}",
       })
+      // Must run at parse time: the effect command bootstrap can read config before the handler runs.
+      .check((argv) => {
+        if (argv.agents === undefined) return true
+        process.env.YUKIOSHI_SESSION_AGENTS = parseSessionAgents(argv.agents as string)
+        return true
+      })
       .option("format", {
         type: "string",
         choices: ["default", "json"],
@@ -325,13 +331,6 @@ export const RunCommand = effectCmd({
         describe: "enable direct interactive demo slash commands; pass one as the message to run it immediately",
       }),
   handler: Effect.fn("Cli.run")(function* (args) {
-    if (args.agents !== undefined) {
-      try {
-        process.env.YUKIOSHI_SESSION_AGENTS = parseSessionAgents(args.agents)
-      } catch (error) {
-        return yield* fail(error instanceof Error ? error.message : String(error))
-      }
-    }
     const { Agent } = yield* Effect.promise(() => import("@/agent/agent"))
     const { RuntimeFlags } = yield* Effect.promise(() => import("@/effect/runtime-flags"))
     const { InstanceRef } = yield* Effect.promise(() => import("@/effect/instance-ref"))
