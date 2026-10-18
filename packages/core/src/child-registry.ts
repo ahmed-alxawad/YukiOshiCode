@@ -2,9 +2,10 @@
 // (Ctrl-C, SIGTERM from a supervisor, SIGHUP when the terminal closes) none of them is left running on the
 // machine. A child started in its own process group is signalled as a group, so grandchildren go with it.
 import type { ChildProcess } from "node:child_process"
+import { readFileSync } from "node:fs"
 import { isMainThread } from "node:worker_threads"
 
-type Entry = { pid: number; group: boolean; killOnExit: boolean }
+type Entry = { pid: number; group: boolean; killOnExit: boolean; identity?: string }
 
 const live = new Map<number, Entry>()
 const hooks = new Set<() => Promise<unknown> | unknown>()
@@ -24,7 +25,7 @@ function reports() {
       channel.onmessage = (event: { data: unknown }) => {
         const report = event.data as Report | undefined
         if (report?.op === "track" && typeof report.pid === "number")
-          live.set(report.pid, { pid: report.pid, group: report.group, killOnExit: report.killOnExit })
+          live.set(report.pid, { pid: report.pid, group: report.group, killOnExit: report.killOnExit, identity: processIdentity(report.pid) })
         else if (report?.op === "untrack" && typeof report.pid === "number") live.delete(report.pid)
       }
     }
@@ -43,7 +44,24 @@ function report(message: Report) {
   }
 }
 
+function processIdentity(pid: number) {
+  if (process.platform !== "linux") return undefined
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8")
+    return stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19]
+  } catch {
+    return undefined
+  }
+}
+
+function isSameProcess(entry: Entry) {
+  if (process.platform !== "linux") return true
+  const current = processIdentity(entry.pid)
+  return entry.identity !== undefined && current !== undefined && current === entry.identity
+}
+
 function send(entry: Entry, signal: NodeJS.Signals) {
+  if (!isSameProcess(entry)) return
   try {
     process.kill(entry.group && process.platform !== "win32" ? -entry.pid : entry.pid, signal)
   } catch {
@@ -52,6 +70,7 @@ function send(entry: Entry, signal: NodeJS.Signals) {
 }
 
 function alive(entry: Entry) {
+  if (!isSameProcess(entry)) return false
   try {
     process.kill(entry.group && process.platform !== "win32" ? -entry.pid : entry.pid, 0)
     return true
@@ -75,7 +94,7 @@ export function track(proc: Pick<ChildProcess, "pid" | "once">, group: boolean, 
   const pid = proc.pid
   if (typeof pid !== "number") return
   guard()
-  live.set(pid, { pid, group, killOnExit })
+  live.set(pid, { pid, group, killOnExit, identity: processIdentity(pid) })
   report({ op: "track", pid, group, killOnExit })
   proc.once("close", () => {
     live.delete(pid)
@@ -93,9 +112,9 @@ export function track(proc: Pick<ChildProcess, "pid" | "once">, group: boolean, 
 }
 
 /** Registers a process id started elsewhere. */
-export function trackPid(pid: number, group: boolean) {
+export function trackPid(pid: number, group: boolean, identity = processIdentity(pid)) {
   guard()
-  live.set(pid, { pid, group, killOnExit: true })
+  live.set(pid, { pid, group, killOnExit: true, identity })
   report({ op: "track", pid, group, killOnExit: true })
 }
 
