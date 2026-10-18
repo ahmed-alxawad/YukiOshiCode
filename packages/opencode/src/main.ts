@@ -30,6 +30,7 @@ import { PluginCommand } from "./cli/cmd/plug"
 import { Heap } from "./cli/heap"
 import { TrustCommand } from "./cli/cmd/trust"
 import { CheckpointCommand } from "./cli/cmd/checkpoint"
+import { UndoCommand } from "./cli/cmd/undo"
 import { ScheduleCommand } from "./cli/cmd/schedule"
 import { SkillCommand } from "./cli/cmd/skill"
 import { WorktreeCommand } from "./cli/cmd/worktree"
@@ -109,6 +110,7 @@ const cli = yargs(args)
   .command(PluginCommand)
   .command(TrustCommand)
   .command(CheckpointCommand)
+  .command(UndoCommand)
   .command(ScheduleCommand)
   .command(SkillCommand)
   .command(WorktreeCommand)

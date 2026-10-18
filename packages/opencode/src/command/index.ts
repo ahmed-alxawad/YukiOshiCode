@@ -10,6 +10,7 @@ import { Skill } from "../skill"
 import PROMPT_INITIALIZE from "./template/initialize.txt"
 import PROMPT_REVIEW from "./template/review.txt"
 import PROMPT_COMMIT from "./template/commit.txt"
+import PROMPT_UNDO from "./template/undo.txt"
 import PROMPT_PR from "./template/pr.txt"
 import { LegacyEvent } from "@yukioshi/schema/legacy-event"
 
@@ -49,6 +50,7 @@ export const Default = {
   INIT: "init",
   REVIEW: "review",
   COMMIT: "commit",
+  UNDO: "undo",
   PR: "pr",
   GOAL: "goal",
   LOOP: "loop",
@@ -101,6 +103,15 @@ const layer = Layer.effect(
           return PROMPT_COMMIT.replace("${path}", ctx.worktree)
         },
         hints: hints(PROMPT_COMMIT),
+      }
+      commands[Default.UNDO] = {
+        name: Default.UNDO,
+        description: "revert the last turn's file changes (needs checkpoints or git.auto_commit)",
+        source: "command",
+        get template() {
+          return PROMPT_UNDO.replace("${path}", ctx.worktree)
+        },
+        hints: hints(PROMPT_UNDO),
       }
       commands[Default.PR] = {
         name: Default.PR,

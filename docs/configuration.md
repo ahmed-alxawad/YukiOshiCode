@@ -147,6 +147,7 @@ Normal `{env:…}` substitution applies to both aliases. If a local MCP server s
 | `delegate`             | hand tasks to other coding agents over ACP: `enabled`, `agents`, per-agent `timeout` (off by default) | [Features](features.md#delegating-to-other-agents) |
 | `browser`              | browser automation via Playwright MCP: `enabled` (off by default), `headless` (default true), `engine` (`chrome`, `chromium`, `firefox`, `webkit`, `msedge`) | [Features](features.md#browser-automation) |
 | `checkpoints`          | durable git commits on `refs/yukioshi/checkpoints/*` (off by default) | [Features](features.md#git-checkpoints) |
+| `git`                  | `auto_commit`: commit each completed turn's changes (off by default); `/undo` reverts them | [Features](features.md#undo-and-auto-commit) |
 | `audit`                | local log of tool calls and approvals: `enabled` (off by default; global config only) | [Permissions and safety](permissions-and-safety.md#audit-log) |
 | `subagents`            | background subagents (`background`) and the `task_parallel` tool (`parallel`), both off by default | [Features](features.md#subagents) |
 | `background_shell`     | shell commands in the background with `monitor`, `job_list` and `job_stop`: `enabled` (off by default), `max_jobs` (4), `max_minutes` (30), `buffer_kb` (1024), `run_wait_seconds` (60) | [Features](features.md#background-shell-commands) |

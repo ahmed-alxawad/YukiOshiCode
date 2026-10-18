@@ -178,12 +178,12 @@ export function restoreCheckpoint(input: { directory: string; id: string; yes?: 
   const targetID = resolveCheckpointID(listCheckpoints(root), input.id)
   if (hasWorkingTreeChanges(root) && !input.yes)
     throw new Error("Unsaved changes exist. Re-run with --yes to restore after making a safety checkpoint.")
-  const safety = createCheckpoint({
-    directory: root,
-    sessionID: input.sessionID,
-    prompt: `Before restoring ${input.id}`,
-    force: true,
-  })
+  restoreTree(root, targetID, input.sessionID, `Before restoring ${input.id}`)
+  return root
+}
+
+function restoreTree(root: string, targetID: string, sessionID: string, prompt: string) {
+  const safety = createCheckpoint({ directory: root, sessionID, prompt, force: true })
   if (!safety) throw new Error("Could not create the safety checkpoint.")
   const target = new Set(
     git(root, ["ls-tree", "-r", "-z", "--name-only", targetID]).stdout.split("\0").filter(Boolean),
@@ -202,7 +202,84 @@ export function restoreCheckpoint(input: { directory: string; id: string; yes?: 
   } finally {
     rmSync(temp, { recursive: true, force: true })
   }
-  return root
+}
+
+const TRAILER = "YukiOshi-Auto-Commit"
+
+function treeOfWorkingDirectory(root: string, base: string) {
+  const temp = mkdtempSync(path.join(tmpdir(), "yukioshi-checkpoint-"))
+  try {
+    const env = { GIT_INDEX_FILE: path.join(temp, "index") }
+    git(root, ["read-tree", base], env)
+    git(root, ["add", "-A"], env)
+    return git(root, ["write-tree"], env).stdout.trim()
+  } finally {
+    rmSync(temp, { recursive: true, force: true })
+  }
+}
+
+// Match the repository's own style: Conventional Commits when most recent subjects use them, else a plain subject.
+function commitSubject(root: string, prompt: string) {
+  const line = (prompt.split(/\r?\n/, 1)[0]?.trim() || "YukiOshi changes").replace(/\s+/g, " ")
+  const recent = tryGit(root, ["log", "-n", "10", "--format=%s"]).stdout.split("\n").filter(Boolean)
+  const conventional = recent.filter((s) => /^\w+(\([^)]*\))?!?: /.test(s)).length * 2 > recent.length && recent.length > 0
+  const subject = conventional ? `chore: ${line.charAt(0).toLowerCase()}${line.slice(1)}` : line
+  return subject.length > 72 ? `${subject.slice(0, 69)}...` : subject
+}
+
+/** Commit only the files this turn's checkpoint changed. The trailer marks the commit as ours for `undoLastTurn`. */
+export function autoCommitTurn(input: { directory: string; checkpointID: string; prompt: string }) {
+  const root = repositoryRoot(input.directory)
+  const files = git(root, ["diff-tree", "--no-commit-id", "--name-only", "-r", "-z", "--root", input.checkpointID])
+    .stdout.split("\0")
+    .filter(Boolean)
+  if (files.length === 0) return undefined
+  git(root, ["add", "-A", "--", ...files])
+  const staged = tryGit(root, ["diff", "--cached", "--quiet", "--", ...files])
+  if (staged.status === 0) return undefined
+  git(root, [
+    "commit",
+    "-m",
+    commitSubject(root, input.prompt),
+    "-m",
+    `${TRAILER}: ${input.checkpointID}`,
+    "--only",
+    "--",
+    ...files,
+  ])
+  return git(root, ["rev-parse", "HEAD"]).stdout.trim()
+}
+
+/**
+ * Revert only the last turn's file changes: the working tree must still match the newest checkpoint, and goes
+ * back to its parent. An unpushed auto-commit made for that turn is dropped with `git reset --soft`; a pushed
+ * one (or anything not made by us) is never touched.
+ */
+export function undoLastTurn(input: { directory: string; sessionID?: string }) {
+  const root = repositoryRoot(input.directory)
+  const latest = listCheckpoints(root, input.sessionID)[0]
+  if (!latest) throw new Error("Nothing to undo: no checkpoints exist. Turn on `checkpoints.enabled` or `git.auto_commit`.")
+  const parent = git(root, ["rev-parse", `${latest.id}^`]).stdout.trim()
+  const checkpointTree = git(root, ["rev-parse", `${latest.id}^{tree}`]).stdout.trim()
+  if (treeOfWorkingDirectory(root, latest.id) !== checkpointTree)
+    throw new Error("Files have changed since the last turn, so nothing was undone. Review them with `git status`.")
+  const head = currentHead(root)
+  let dropped = false
+  if (head) {
+    const message = git(root, ["show", "-s", "--format=%B", head]).stdout
+    if (message.includes(`${TRAILER}: ${latest.id}`)) {
+      if (tryGit(root, ["branch", "-r", "--contains", head]).stdout.trim())
+        throw new Error("The last turn's auto-commit has been pushed, so nothing was undone.")
+      git(root, ["reset", "--soft", "HEAD~1"])
+      git(root, ["reset", "-q"])
+      dropped = true
+    }
+  }
+  restoreTree(root, parent, `${latest.sessionID}-undo`, `Before undoing ${latest.id.slice(0, 12)}`)
+  const parentIsCheckpoint = /^Turn: \d+$/m.test(git(root, ["show", "-s", "--format=%B", parent]).stdout)
+  if (parentIsCheckpoint) git(root, ["update-ref", latest.ref, parent])
+  else git(root, ["update-ref", "-d", latest.ref])
+  return { root, checkpoint: latest.id, droppedCommit: dropped }
 }
 
 export function pruneCheckpoints(directory: string, olderThanMs: number) {
@@ -224,6 +301,7 @@ export interface Interface {
   readonly list: (sessionID?: string) => Effect.Effect<CheckpointInfo[], Error>
   readonly show: (id: string) => Effect.Effect<string, Error>
   readonly restore: (input: { id: string; yes?: boolean; sessionID: string }) => Effect.Effect<string, Error>
+  readonly undo: (input: { sessionID?: string }) => Effect.Effect<{ root: string; checkpoint: string; droppedCommit: boolean }, Error>
   readonly prune: (olderThanMs: number) => Effect.Effect<number, Error>
 }
 
@@ -238,7 +316,10 @@ const layer = Layer.effect(
         try: fn,
         catch: (error) => (error instanceof Error ? error : new Error(String(error))),
       })
-    const enabled = Effect.map(config.get(), (value) => value.checkpoints?.enabled === true)
+    const enabled = Effect.map(
+      config.get(),
+      (value) => value.checkpoints?.enabled === true || value.git?.auto_commit === true,
+    )
     const withRoot = <A>(fn: (root: string) => A) =>
       Effect.flatMap(InstanceState.context, (ctx) => run(() => fn(ctx.worktree === "/" ? ctx.directory : ctx.worktree)))
     return {
@@ -248,11 +329,17 @@ const layer = Layer.effect(
           if (!isEnabled) return undefined
           const ctx = yield* InstanceState.context
           const root = ctx.worktree === "/" ? ctx.directory : ctx.worktree
-          return yield* run(() => createCheckpoint({ directory: root, ...input }))
+          const created = yield* run(() => createCheckpoint({ directory: root, ...input }))
+          if (created && (yield* config.get()).git?.auto_commit === true)
+            yield* run(() => autoCommitTurn({ directory: root, checkpointID: created.id, prompt: input.prompt })).pipe(
+              Effect.ignore,
+            )
+          return created
         }),
       list: (sessionID) => withRoot((root) => listCheckpoints(root, sessionID)),
       show: (id) => withRoot((root) => showCheckpoint(root, id)),
       restore: (input) => withRoot((root) => restoreCheckpoint({ directory: root, ...input })),
+      undo: (input) => withRoot((root) => undoLastTurn({ directory: root, ...input })),
       prune: (olderThanMs) => withRoot((root) => pruneCheckpoints(root, olderThanMs)),
     } satisfies Interface
   }),

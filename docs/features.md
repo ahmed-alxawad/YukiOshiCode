@@ -299,6 +299,18 @@ checkpoints of that session, not commits already on your branch. Repositories
 with very large Git output (tens of thousands of files) are handled: output is
 no longer cut off at 1 MB.
 
+### Undo and auto-commit
+
+`/undo` (or `yukioshi undo`) reverts only the last turn's file changes, using
+the checkpoints above (turn on `checkpoints.enabled` or `git.auto_commit`). It
+refuses, and changes nothing, if files changed since that turn. Set
+`{ "git": { "auto_commit": true } }` (off by default) to commit each completed
+turn's changed files, with a subject in your repository's style
+(Conventional Commits when your recent commits use them) and a
+`YukiOshi-Auto-Commit` trailer. `/undo` drops such a commit with
+`git reset --soft` only when it is the latest commit and not on any remote
+branch; it never touches pushed commits or commits you made.
+
 ## Files changed summary
 
 After a completed turn, YukiOshi can show the files changed, additions, and

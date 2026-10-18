@@ -1,0 +1,3 @@
+Undo the last turn's file changes in ${path}.
+
+Run `yukioshi undo` with the shell tool, in ${path}, and report its output exactly. Do nothing else: do not edit files, do not run other git commands, and do not retry if it refuses. If it says files changed since the last turn, tell the user and stop.

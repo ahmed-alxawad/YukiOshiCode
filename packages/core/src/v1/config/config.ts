@@ -25,6 +25,7 @@ import { ConfigWebhookV1 } from "./webhook"
 import { ConfigBudgetV1 } from "./budget"
 import { ConfigRedactV1 } from "./redact"
 import { ConfigCheckpointsV1 } from "./checkpoints"
+import { ConfigGitV1 } from "./git"
 import { ConfigPermissionV1 } from "./permission"
 import { ConfigPluginV1 } from "./plugin"
 import { ConfigProviderV1 } from "./provider"
@@ -106,6 +107,9 @@ export const Info = Schema.Struct({
   }),
   checkpoints: Schema.optional(ConfigCheckpointsV1.Info).annotate({
     description: "Durable git checkpoints on a separate YukiOshi ref (off by default)",
+  }),
+  git: Schema.optional(ConfigGitV1.Info).annotate({
+    description: "Git behaviour: auto_commit commits each completed turn (off by default)",
   }),
   redact: Schema.optional(ConfigRedactV1.Info).annotate({
     description: "Mask secrets before they are sent to the model (on by default)",
