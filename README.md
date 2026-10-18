@@ -133,6 +133,8 @@ yukioshi run -c "now add a test for it"   # continue the last session
 | [Providers](docs/providers.md)                            | Connecting models, credentials, OAuth, custom endpoints       |
 | [Configuration](docs/configuration.md)                    | Config files and precedence, variables, common settings       |
 | [Permissions and safety](docs/permissions-and-safety.md)  | Modes, rules, hard blocks, sandbox, trust, keychain           |
+| [Security model](docs/security-model.md)                  | What is trusted, what is protected, and what is not           |
+| [Privacy](docs/privacy.md)                                | What leaves your machine and what is stored locally           |
 | [Features](docs/features.md)                              | Modes, goals, loops, usage, verification, memory, code search, subagents, delegation |
 | [Hooks](docs/hooks.md)                                    | Running your own commands at points in the agent's work       |
 | [Skills](docs/skills.md)                                  | Built-in skills and adding your own                           |

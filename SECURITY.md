@@ -7,7 +7,7 @@ security reports get priority.
 
 Please do not open a public issue. Use GitHub's private vulnerability
 reporting (**Report a vulnerability** under this repository's **Security**
-tab) and include:
+tab), or write to `[TBD owner: security contact]`, and include:
 
 - your `yukioshi --version` and OS;
 - steps to reproduce, such as a repository layout, prompt, or config;
@@ -17,6 +17,13 @@ tab) and include:
 
 Security fixes are made for the latest release. Run `yukioshi upgrade` to get
 it.
+
+## Response expectations
+
+TBD. There is no committed acknowledgement or fix time yet.
+
+For how the protections work, and what they do not cover, see
+[docs/security-model.md](docs/security-model.md).
 
 ## In scope
 
