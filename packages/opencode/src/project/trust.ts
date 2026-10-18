@@ -64,7 +64,7 @@ function decode(value: unknown): Store {
 const CONFIG_NAMES = new Set(["yukioshi.json", "yukioshi.jsonc", "opencode.json", "opencode.jsonc", "tui.json", "tui.jsonc"])
 const EXECUTABLE_KEYS = ["hooks", "plugin", "mcp", "lsp", "formatter"] as const
 const CONFIG_DIR = /(^|\/)\.(yukioshi|opencode)\//
-const GENERATED = new Set([".gitignore", "package-lock.json", "bun.lock", "bun.lockb"])
+const GENERATED = new Set([".yukioshi-skill.json", ".gitignore", "package-lock.json", "bun.lock", "bun.lockb"])
 
 async function projectFiles(root: string): Promise<string[]> {
   const listed = await (async () => {

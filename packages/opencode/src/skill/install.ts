@@ -79,8 +79,10 @@ async function dirSize(dir: string): Promise<number> {
   return total
 }
 
-async function skillNames(dir: string) {
-  const names: string[] = []
+type Found = { name: string; dir: string }
+
+async function skillDirs(dir: string): Promise<Found[]> {
+  const found: Found[] = []
   const realDir = await fs.realpath(dir).catch(() => dir)
   await walk(dir, async (file, entry) => {
     if (entry.isSymbolicLink() || !entry.isFile() || entry.name !== "SKILL.md") return
@@ -94,53 +96,220 @@ async function skillNames(dir: string) {
     if (declared && (declared.includes("/") || declared.includes("\\") || declared.includes("..") || !NAME.test(declared))) return
     const fallback = path.basename(path.dirname(file))
     if (!NAME.test(fallback)) return
-    names.push(declared ?? fallback)
+    found.push({ name: declared ?? fallback, dir: path.dirname(file) })
   })
-  return names
+  return found
 }
 
-export async function add(input: { url: string; name?: string }): Promise<Installed> {
-  const url = validateGitUrl(input.url)
-  const name = input.name ?? nameFromUrl(url)
-  if (!NAME.test(name)) throw new Error(`Invalid skill name "${name}"; use letters, digits, ".", "_" or "-" (pass --name)`)
+const MAX_FILES = 2000
+const ARCHIVE = /\.(zip|tar\.gz|tgz)$/i
 
-  const skills = root()
+async function run(cmd: string[], cwd: string) {
+  const proc = Bun.spawn(cmd, { cwd, stdout: "pipe", stderr: "pipe", stdin: "ignore" })
+  const [out, err, code] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ])
+  return { out, err, code }
+}
+
+// An archive is checked from its listing before anything is extracted: no absolute paths, no "..",
+// no links of any kind, and a cap on entry count and declared size.
+export function checkArchiveListing(lines: { type: string; size: number; name: string }[]) {
+  if (lines.length > MAX_FILES) throw new Error(`Archive has too many entries (max ${MAX_FILES})`)
+  let total = 0
+  for (const line of lines) {
+    const name = line.name.replaceAll("\\", "/")
+    if (name.startsWith("/") || /^[A-Za-z]:/.test(name) || name.split("/").includes(".."))
+      throw new Error(`Archive entry escapes the target folder: ${line.name}`)
+    if (line.type === "l" || line.type === "h") throw new Error(`Archive contains a link, which is not allowed: ${line.name}`)
+    total += line.size
+  }
+  if (total > MAX_REPO_SIZE) throw new Error("Archive is too large (max 50 MB)")
+}
+
+async function extractArchive(file: string, dest: string) {
+  const zip = /\.zip$/i.test(file)
+  const useUnzip = zip && process.platform !== "win32"
+  const listing = useUnzip ? await run(["unzip", "-Z", "--", file], dest) : await run(["tar", zip ? "-tvf" : "-tzvf", file], dest)
+  if (listing.code !== 0) throw new Error(`Could not read archive: ${listing.err.trim() || `exit ${listing.code}`}`)
+  const lines: { type: string; size: number; name: string }[] = []
+  for (const raw of listing.out.split(/\r?\n/)) {
+    const m = useUnzip
+      ? /^([-dlrwx?])[-rwxsStTl]{9}\s+\S+\s+\S+\s+(\d+)\s+\S+\s+\S+\s+\S+\s+\S+\s+(.*)$/.exec(raw)
+      : /^([-dlhrwxsc?])[-rwxsStTl]{9}\s+\S+\s+(\d+)\s+\S+\s+\S+\s+(.*)$/.exec(raw)
+    if (m) lines.push({ type: m[1], size: Number(m[2]), name: m[3] })
+    else if (raw.trim() && /^[lh]/.test(raw)) throw new Error(`Archive contains a link, which is not allowed: ${raw}`)
+  }
+  checkArchiveListing(lines)
+  const out = path.join(dest, "repo")
+  await fs.mkdir(out)
+  const x = useUnzip
+    ? await run(["unzip", "-q", "--", file, "-d", out], dest)
+    : await run(["tar", zip ? "-xf" : "-xzf", file, "--no-same-owner", "-C", out], dest)
+  if (x.code !== 0) throw new Error(`Could not extract archive: ${x.err.trim() || `exit ${x.code}`}`)
+  return out
+}
+
+function isRemote(source: string) {
+  return /^[a-z][a-z0-9+.-]*:\/\//i.test(source) || /^[^\s/@]+@[^\s/]+:/.test(source)
+}
+
+async function isGitDir(dir: string) {
+  const has = (n: string) => fs.stat(path.join(dir, n)).then(() => true, () => false)
+  return (await has(".git")) || ((await has("HEAD")) && (await has("objects")))
+}
+
+// Puts the source's files in `<temp>/repo` and returns that folder. Nothing is executed.
+async function fetchSource(source: string, temp: string): Promise<string> {
+  const clone = path.join(temp, "repo")
+  const stat = isRemote(source) ? undefined : await fs.stat(source).catch(() => undefined)
+  if (stat?.isFile()) {
+    if (!ARCHIVE.test(source)) throw new Error("Not a supported archive (use .zip, .tar.gz or .tgz)")
+    return extractArchive(path.resolve(source), temp)
+  }
+  if (stat?.isDirectory() && !(await isGitDir(source))) {
+    const files = { count: 0 }
+    await walk(source, async (_f, entry) => {
+      if (entry.isFile()) files.count++
+    })
+    if (files.count > MAX_FILES) throw new Error(`Folder has too many files (max ${MAX_FILES})`)
+    if ((await dirSize(source)) > MAX_REPO_SIZE) throw new Error("Folder is too large (max 50 MB)")
+    await fs.cp(source, clone, { recursive: true })
+    return clone
+  }
+  if (!stat && !isRemote(source) && ARCHIVE.test(source)) throw new Error(`File not found: ${source}`)
+  const url = validateGitUrl(source)
+  const result = await git(
+    ["-c", "core.hooksPath=/dev/null", "clone", "--depth", "1", "--no-recurse-submodules", "--", url, clone],
+    temp,
+  )
+  if (result.code !== 0) throw new Error(`git clone failed: ${result.err.trim() || `exit ${result.code}`}`)
+  return clone
+}
+
+export type Outcome = {
+  source: string
+  status: "installed" | "skipped" | "failed" | "found"
+  name?: string
+  skills: string[]
+  reason?: string
+}
+
+export type AddManyInput = {
+  sources: string[]
+  name?: string
+  select?: string[]
+  force?: boolean
+  listOnly?: boolean
+  /** Install folder; defaults to the global skills folder. */
+  root?: string
+}
+
+async function addOne(source: string, input: AddManyInput, skills: string): Promise<Outcome> {
+  const name = input.name ?? nameFromUrl(source).replace(/\.(zip|tar\.gz|tgz)$/i, "")
+  if (!input.listOnly && !NAME.test(name))
+    throw new Error(`Invalid skill name "${name}"; use letters, digits, ".", "_" or "-" (pass --name)`)
   const target = path.join(skills, name)
-  if (await fs.stat(target).catch(() => undefined))
-    throw new Error(`A skill source named "${name}" is already installed; remove it first (yukioshi skill remove ${name})`)
+  if (!input.listOnly) {
+    const existing = await fs.stat(target).catch(() => undefined)
+    const marked = existing && (await fs.stat(path.join(target, META)).catch(() => undefined))
+    if (existing && !marked)
+      throw new Error(`A folder named "${name}" exists that YukiOshi did not install; it will not be overwritten`)
+    if (existing && !input.force)
+      return {
+        source,
+        name,
+        status: "skipped",
+        skills: [],
+        reason: `A skill source named "${name}" is already installed; remove it first (yukioshi skill remove ${name}) or use --force`,
+      }
+  }
 
   await fs.mkdir(skills, { recursive: true })
   const temp = await fs.mkdtemp(path.join(path.dirname(skills), ".skill-install-"))
   try {
-    const clone = path.join(temp, "repo")
-    const result = await git(
-      ["-c", "core.hooksPath=/dev/null", "clone", "--depth", "1", "--no-recurse-submodules", "--", url, clone],
-      temp,
-    )
-    if (result.code !== 0) throw new Error(`git clone failed: ${result.err.trim() || `exit ${result.code}`}`)
-
+    const clone = await fetchSource(source, temp)
     await fs.rm(path.join(clone, ".git"), { recursive: true, force: true })
     await walk(clone, async (file, entry) => {
       if (entry.isSymbolicLink()) await fs.rm(file, { force: true, recursive: true })
     })
+    if ((await dirSize(clone)) > MAX_REPO_SIZE) throw new Error(`Repository is too large (max 50 MB)`)
 
-    const size = await dirSize(clone)
-    if (size > MAX_REPO_SIZE) throw new Error(`Repository is too large (max 50 MB)`)
+    const all = await skillDirs(clone)
+    if (all.length === 0) throw new Error("This repository has no SKILL.md, so there is nothing to install")
+    const wanted = input.select?.length ? new Set(input.select) : undefined
+    const chosen = wanted
+      ? all.filter((item) => wanted.has(item.name) || wanted.has(path.basename(item.dir)))
+      : all
+    const names = chosen.map((item) => item.name)
+    if (input.listOnly) return { source, name, status: "found", skills: all.map((item) => item.name) }
+    if (chosen.length === 0)
+      return { source, name, status: "skipped", skills: [], reason: "none of the selected skills are in this source" }
 
-    const found = await skillNames(clone)
-    if (found.length === 0) throw new Error("This repository has no SKILL.md, so there is nothing to install")
-
-    const meta: InstalledSource = { url, name, skills: found }
-    await fs.writeFile(path.join(clone, META), JSON.stringify(meta, null, 2) + "\n")
-    await fs.rename(clone, target)
-    return { ...meta, directory: target }
+    let dir = clone
+    if (wanted && chosen.length < all.length) {
+      const keep = new Set(chosen.map((item) => item.dir))
+      const drop = all.filter((item) => !keep.has(item.dir))
+      const hasKept = (d: string) => [...keep].some((k) => k === d || k.startsWith(d + path.sep))
+      dir = path.join(temp, "selected")
+      await fs.cp(clone, dir, {
+        recursive: true,
+        filter: (src) => {
+          for (const item of drop) {
+            if (src === path.join(item.dir, "SKILL.md") && hasKept(item.dir)) return false
+            if (src === item.dir && !hasKept(item.dir)) return false
+          }
+          return true
+        },
+      })
+    }
+    const meta: InstalledSource = { url: source, name, skills: names }
+    await fs.writeFile(path.join(dir, META), JSON.stringify(meta, null, 2) + "\n")
+    const old = path.join(temp, "old")
+    if (await fs.stat(target).catch(() => undefined)) await fs.rename(target, old)
+    await fs.rename(dir, target)
+    return { source, name, status: "installed", skills: names }
   } finally {
     await fs.rm(temp, { recursive: true, force: true }).catch(() => {})
   }
 }
 
-export async function list(): Promise<Installed[]> {
-  const dir = root()
+// Installs many sources (git URLs, local folders, .zip/.tar.gz archives). One failing source never
+// stops the others; each gets an outcome row.
+export async function addMany(input: AddManyInput): Promise<Outcome[]> {
+  for (const item of input.select ?? [])
+    if (!NAME.test(item)) throw new Error(`Invalid skill name "${item}" in --select`)
+  if (input.name && input.sources.length > 1) throw new Error("--name can only be used with a single source")
+  const skills = input.root ?? root()
+  const outcomes: Outcome[] = []
+  for (const source of input.sources) {
+    outcomes.push(
+      await addOne(source, input, skills).catch(
+        (error): Outcome => ({
+          source,
+          status: "failed",
+          skills: [],
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+      ),
+    )
+  }
+  for (const item of input.select ?? [])
+    if (!outcomes.some((o) => o.skills.includes(item)))
+      outcomes.push({ source: `--select ${item}`, status: "failed", skills: [], reason: "skill not found in any source" })
+  return outcomes
+}
+
+export async function add(input: { url: string; name?: string }): Promise<Installed> {
+  const [outcome] = await addMany({ sources: [input.url], name: input.name })
+  if (outcome.status !== "installed") throw new Error(outcome.reason ?? "install failed")
+  return { url: input.url, name: outcome.name!, skills: outcome.skills, directory: path.join(root(), outcome.name!) }
+}
+
+export async function list(base?: string): Promise<Installed[]> {
+  const dir = base ?? root()
   const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => [])
   const result: Installed[] = []
   for (const entry of entries) {
@@ -157,9 +326,9 @@ export async function list(): Promise<Installed[]> {
 
 // Only folders YukiOshi installed itself (marked by the metadata file) can be removed, so a typo
 // can never delete a skill folder the user wrote by hand.
-export async function remove(name: string) {
+export async function remove(name: string, base?: string) {
   if (!NAME.test(name)) throw new Error(`Invalid skill name "${name}"`)
-  const directory = path.join(root(), name)
+  const directory = path.join(base ?? root(), name)
   const marked = await fs.stat(path.join(directory, META)).catch(() => undefined)
   if (!marked) throw new Error(`No installed skill source named "${name}"; see yukioshi skill list`)
   await fs.rm(directory, { recursive: true, force: true })
