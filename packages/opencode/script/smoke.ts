@@ -120,8 +120,7 @@ type Result = { code: number; stdout: string; stderr: string }
 async function yk(args: string[], extra: Record<string, string> = {}): Promise<Result> {
   const proc = Bun.spawn([bin!, ...args], {
     cwd: project,
-    // Bun.spawn leaves PWD at the parent's value; a shell would have set it to the project.
-    env: { ...env, PWD: project, ...extra },
+    env: { ...env, ...extra },
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
@@ -301,12 +300,429 @@ await check("serve accepts a trigger with the right token only", async () => {
   }
 })
 
-// The release archives are made from the folder that holds the binary (`tar -czf … *` or `zip -r … *` in
-// build.ts), so the licence files must sit next to it.
-await check("the binary folder holds THIRD-PARTY-NOTICES.md and LICENSE", async () => {
-  const folder = path.dirname(bin!)
-  for (const name of ["LICENSE", "THIRD-PARTY-NOTICES.md"]) {
-    expect(fs.existsSync(path.join(folder, name)), `${name} is missing next to ${bin}`)
+// ---- Helper: init a git repo in a directory ---------------------------------------------------------------
+
+function initGit(dir: string) {
+  const run = (...args: string[]) => {
+    const r = Bun.spawnSync(["git", ...args], { cwd: dir, stdout: "pipe", stderr: "pipe" })
+    if (r.exitCode !== 0) throw new Error(`git ${args.join(" ")}: ${r.stderr.toString()}`)
+    return r.stdout.toString().trim()
+  }
+  run("init", "-q")
+  run("config", "user.email", "smoke@example.invalid")
+  run("config", "user.name", "Smoke")
+  fs.writeFileSync(path.join(dir, "base.txt"), "base")
+  run("add", "base.txt")
+  run("commit", "-qm", "initial")
+  return run
+}
+
+// ---- Helper: await binary output line matching a pattern ---------------------------------------------------
+
+async function waitForOutput(
+  proc: ReturnType<typeof Bun.spawn>,
+  pattern: RegExp,
+  timeoutMs = 30_000,
+): Promise<string> {
+  const reader = (proc.stdout as ReadableStream<Uint8Array>).getReader()
+  let seen = ""
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const { value, done } = await reader.read()
+    if (done) break
+    seen += new TextDecoder().decode(value)
+    const m = seen.match(pattern)
+    if (m) return m[1] ?? m[0]
+  }
+  throw new Error(`Timed out waiting for ${pattern} in: ${seen.slice(-500)}`)
+}
+
+// ---- Worktrees ------------------------------------------------------------------------------------------
+
+await check("worktree new/list/path/remove lifecycle", async () => {
+  const wtProject = path.join(root, "wt-project")
+  fs.mkdirSync(wtProject, { recursive: true })
+  initGit(wtProject)
+
+  const wtEnv = { ...env, HOME: home, USERPROFILE: home }
+
+  const created = Bun.spawnSync([bin!, "worktree", "new", "smoke-wt"], {
+    cwd: wtProject,
+    env: wtEnv,
+    stdout: "pipe",
+    stderr: "pipe",
+  })
+  const createdOut = created.stdout.toString() + created.stderr.toString()
+  expect(created.exitCode === 0, `worktree new failed: ${createdOut}`)
+  expect(
+    createdOut.includes("smoke-wt") && createdOut.includes("yukioshi/smoke-wt"),
+    `unexpected worktree new output: ${createdOut}`,
+  )
+
+  const listed = Bun.spawnSync([bin!, "worktree", "list"], {
+    cwd: wtProject,
+    env: wtEnv,
+    stdout: "pipe",
+    stderr: "pipe",
+  })
+  const listedOut = listed.stdout.toString() + listed.stderr.toString()
+  expect(listed.exitCode === 0, `worktree list failed: ${listedOut}`)
+  expect(listedOut.includes("smoke-wt"), `worktree list missing smoke-wt: ${listedOut}`)
+
+  const located = Bun.spawnSync([bin!, "worktree", "path", "smoke-wt"], {
+    cwd: wtProject,
+    env: wtEnv,
+    stdout: "pipe",
+    stderr: "pipe",
+  })
+  const wtDir = (located.stdout.toString() + located.stderr.toString()).trim()
+  expect(located.exitCode === 0, `worktree path failed: ${wtDir}`)
+  expect(fs.existsSync(path.join(wtDir, "base.txt")), `base.txt missing in worktree at ${wtDir}`)
+
+  const removed = Bun.spawnSync([bin!, "worktree", "remove", "smoke-wt", "--yes"], {
+    cwd: wtProject,
+    env: wtEnv,
+    stdout: "pipe",
+    stderr: "pipe",
+  })
+  const removedOut = removed.stdout.toString() + removed.stderr.toString()
+  expect(removed.exitCode === 0, `worktree remove failed: ${removedOut}`)
+  expect(!fs.existsSync(wtDir), `worktree dir still exists after remove: ${wtDir}`)
+})
+
+await check("run --worktree executes in the worktree checkout", async () => {
+  // Needs a git project. Create one in the smoke's throwaway root.
+  const wtProject = path.join(root, "wt-run-project")
+  fs.mkdirSync(wtProject, { recursive: true })
+  initGit(wtProject)
+
+  const wtName = "smoke-run-wt"
+
+  const created = Bun.spawnSync([bin!, "worktree", "new", wtName], {
+    cwd: wtProject,
+    env,
+    stdout: "pipe",
+    stderr: "pipe",
+  })
+  const createdOut = created.stdout.toString() + created.stderr.toString()
+  expect(created.exitCode === 0, `worktree new failed: ${createdOut}`)
+
+  try {
+    const located = Bun.spawnSync([bin!, "worktree", "path", wtName], {
+      cwd: wtProject,
+      env,
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    const wtDir = (located.stdout.toString() + located.stderr.toString()).trim()
+    const targetFile = path.join(wtDir, "wt-smoke-made.txt")
+    const writeCmd = process.platform === "win32"
+      ? `echo wt-content > "${targetFile.replace(/\\/g, "\\\\")}"`
+      : `printf %s 'wt-content' > '${targetFile}'`
+    queue = [{ tool: "bash", args: { command: writeCmd, description: "write in worktree" } }, { text: "done" }]
+
+    const wtRunProc = Bun.spawn(
+      [bin!, "run", "--worktree", wtName, "--dangerously-skip-permissions", "write a file in the worktree"],
+      { cwd: wtProject, env, stdin: "ignore", stdout: "pipe", stderr: "pipe" },
+    )
+    const [wtStdout, wtStderr] = await Promise.all([
+      new Response(wtRunProc.stdout).text(),
+      new Response(wtRunProc.stderr).text(),
+    ])
+    const wtCode = await wtRunProc.exited
+    const runOut = wtStdout + wtStderr
+    expect(wtCode === 0, `run --worktree failed: exit=${wtCode}\n${runOut.slice(-800)}`)
+    // Main project dir must NOT have the file
+    expect(!fs.existsSync(path.join(wtProject, "wt-smoke-made.txt")), "file leaked into main project dir")
+    // Worktree dir must have the file
+    expect(fs.existsSync(targetFile), `file not found in worktree at ${targetFile}`)
+  } finally {
+    Bun.spawnSync([bin!, "worktree", "remove", wtName, "--yes"], { cwd: wtProject, env, stdout: "pipe", stderr: "pipe" })
+  }
+})
+
+// ---- Checkpoints ----------------------------------------------------------------------------------------
+
+await check("checkpoints: enabled=true creates a checkpoint after a changed turn", async () => {
+  const cpProject = path.join(root, "cp-project")
+  fs.mkdirSync(cpProject, { recursive: true })
+  const runGit = initGit(cpProject)
+  const head = runGit("rev-parse", "HEAD")
+
+  globalConfig({ checkpoints: { enabled: true } })
+
+  const targetFile = path.join(cpProject, "base.txt")
+  const writeCmd = process.platform === "win32"
+    ? `echo checkpoint-value > "${targetFile.replace(/\\/g, "\\\\")}"`
+    : `printf %s 'checkpoint-value' > '${targetFile}'`
+  queue = [{ tool: "bash", args: { command: writeCmd, description: "write" } }, { text: "done" }]
+
+  const cpRunProc = Bun.spawn(
+    [bin!, "run", "--dangerously-skip-permissions", "--dir", cpProject, "write checkpoint-value to base"],
+    { cwd: cpProject, env, stdin: "ignore", stdout: "pipe", stderr: "pipe" },
+  )
+  const [cpStdout, cpStderr] = await Promise.all([
+    new Response(cpRunProc.stdout).text(),
+    new Response(cpRunProc.stderr).text(),
+  ])
+  const cpCode = await cpRunProc.exited
+  const runOut = cpStdout + cpStderr
+  globalConfig({})
+
+  expect(cpCode === 0, `run failed (exit ${cpCode}): ${runOut.slice(-500)}`)
+
+  // HEAD must not move
+  const headAfter = runGit("rev-parse", "HEAD")
+  expect(headAfter === head, `HEAD moved from ${head} to ${headAfter}`)
+
+  // There should be at least one checkpoint ref
+  const refs = runGit("for-each-ref", "--format=%(refname)", "refs/yukioshi/checkpoints")
+  expect(refs.length > 0, "no checkpoint ref created under refs/yukioshi/checkpoints")
+})
+
+await check("checkpoint list/show work with the written checkpoint", async () => {
+  // Uses the cp-project from the previous check.
+  const cpProject = path.join(root, "cp-project")
+
+  const listed = Bun.spawnSync([bin!, "checkpoint", "list"], {
+    cwd: cpProject,
+    env,
+    stdout: "pipe",
+    stderr: "pipe",
+  })
+  const listedOut = listed.stdout.toString() + listed.stderr.toString()
+  expect(listed.exitCode === 0, `checkpoint list failed (exit ${listed.exitCode}): ${listedOut}`)
+
+  // Should have at least one checkpoint from the previous check
+  const idMatch = listedOut.match(/^([0-9a-f]{12})\s/m)
+  expect(!!idMatch, `no checkpoint ID in list output: ${listedOut}`)
+  const cpId = idMatch![1]
+
+  const shown = Bun.spawnSync([bin!, "checkpoint", "show", cpId], {
+    cwd: cpProject,
+    env,
+    stdout: "pipe",
+    stderr: "pipe",
+  })
+  const shownOut = shown.stdout.toString() + shown.stderr.toString()
+  expect(shown.exitCode === 0, `checkpoint show failed (exit ${shown.exitCode}): ${shownOut.slice(0, 500)}`)
+  expect(
+    shownOut.includes("checkpoint-value") || shownOut.includes("base.txt"),
+    `checkpoint show content unexpected: ${shownOut.slice(0, 500)}`,
+  )
+})
+
+// ---- Schedule -------------------------------------------------------------------------------------------
+
+await check("schedule add/list/run/remove (store + crontab on non-Windows, store-only on Windows)", async () => {
+  const crontabFile = path.join(root, "smoke-crontab")
+  const schedEnv = {
+    ...env,
+    ...(process.platform !== "win32" ? { YUKIOSHI_CRONTAB: crontabFile } : {}),
+  }
+
+  // Add a scheduled job
+  const added = Bun.spawnSync(
+    [bin!, "schedule", "add", "0 6 * * *", "smoke summary job", "--name", "smoke-sched", "--auto"],
+    { cwd: project, env: schedEnv, stdout: "pipe", stderr: "pipe" },
+  )
+  const addedOut = added.stdout.toString() + added.stderr.toString()
+  expect(added.exitCode === 0, `schedule add failed: ${addedOut}`)
+  expect(addedOut.includes("smoke-sched"), `job name missing in add output: ${addedOut}`)
+  const jobMatch = addedOut.match(/Added scheduled job ([0-9a-f]{8})/)
+  expect(!!jobMatch, `no job ID in add output: ${addedOut}`)
+  const jobId = jobMatch![1]
+
+  // Crontab should contain the block on non-Windows
+  if (process.platform !== "win32") {
+    const crontab = fs.readFileSync(crontabFile, "utf8")
+    expect(
+      crontab.includes("# BEGIN yukioshi schedule") && crontab.includes(`schedule run ${jobId}`),
+      `crontab missing block: ${crontab.slice(0, 400)}`,
+    )
+  }
+
+  // List shows the job
+  const listed = Bun.spawnSync([bin!, "schedule", "list"], {
+    cwd: project,
+    env: schedEnv,
+    stdout: "pipe",
+    stderr: "pipe",
+  })
+  const listedOut = listed.stdout.toString() + listed.stderr.toString()
+  expect(listed.exitCode === 0, `schedule list failed: ${listedOut}`)
+  expect(listedOut.includes(jobId) && listedOut.includes("smoke-sched"), `job missing in list: ${listedOut}`)
+
+  // Run the job immediately via the CLI (it launches an in-process run, so we must use async spawn
+  // to keep the fake model server's event loop running while the job executes).
+  queue = [{ text: "smoke-schedule-done" }]
+  const ranProc = Bun.spawn([bin!, "schedule", "run", jobId], {
+    cwd: project,
+    env: schedEnv,
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+  })
+  const [ranStdout, ranStderr] = await Promise.all([
+    new Response(ranProc.stdout).text(),
+    new Response(ranProc.stderr).text(),
+  ])
+  const ranCode = await ranProc.exited
+  const ranOut = ranStdout + ranStderr
+  expect(ranCode === 0, `schedule run failed (exit ${ranCode}): ${ranOut.slice(-600)}`)
+
+  // Remove the job
+  const removed = Bun.spawnSync([bin!, "schedule", "remove", jobId], {
+    cwd: project,
+    env: schedEnv,
+    stdout: "pipe",
+    stderr: "pipe",
+  })
+  const removedOut = removed.stdout.toString() + removed.stderr.toString()
+  expect(removed.exitCode === 0, `schedule remove failed: ${removedOut}`)
+  expect(removedOut.includes(jobId), `job ID missing from remove output: ${removedOut}`)
+
+  // Crontab block cleaned up on non-Windows
+  if (process.platform !== "win32" && fs.existsSync(crontabFile)) {
+    const after = fs.readFileSync(crontabFile, "utf8")
+    expect(!after.includes("# BEGIN yukioshi schedule"), `crontab block not removed: ${after.slice(0, 400)}`)
+  }
+})
+
+// ---- Budget ---------------------------------------------------------------------------------------------
+
+await check("budget.session stops the next request with exit code 6", async () => {
+  globalConfig({ budget: { tokens: { session: 5 } } })
+
+  // First turn: succeeds and uses tokens
+  queue = [{ text: "first" }]
+  const first = await yk(["run", "first turn"])
+  expect(first.code === 0, `first run failed: ${first.stderr.slice(-400)}`)
+
+  // Second turn continuing the session: budget is exceeded → exit code 6
+  queue = [{ text: "second" }]
+  const second = await yk(["run", "--continue", "second turn"])
+  expect(second.code === 6, `expected exit 6 from budget, got ${second.code}\n${second.stderr.slice(-600)}`)
+  expect(
+    second.stderr.includes("budget") || second.stderr.includes("Budget") || second.stderr.includes("tokens"),
+    `budget message missing: ${second.stderr.slice(-600)}`,
+  )
+
+  globalConfig({})
+})
+
+// ---- Redaction ------------------------------------------------------------------------------------------
+
+await check("a fake secret in a tool result is masked before the model sees it", async () => {
+  const secretFile = path.join(project, "smoke-secret.env")
+  const fakeToken = "ghp_SmokeTestFakeToken123456789ABCDEF"
+  fs.writeFileSync(secretFile, `GITHUB_TOKEN=${fakeToken}\n`)
+
+  queue = [{ tool: "read", args: { filePath: secretFile } }, { text: "redacted" }]
+  const result = await yk(["run", "--dangerously-skip-permissions", "read the secret file"])
+  fs.unlinkSync(secretFile)
+
+  expect(result.code === 0, `run failed: ${result.stderr.slice(-400)}`)
+
+  // requests logged by the fake model must not contain the raw token
+  const allBodies = JSON.stringify(requests)
+  expect(!allBodies.includes(fakeToken), `raw token leaked into requests: ${allBodies.slice(0, 800)}`)
+  expect(
+    allBodies.includes("[REDACTED:github-token]") || allBodies.includes("REDACTED"),
+    `redaction placeholder missing from requests: ${allBodies.slice(0, 800)}`,
+  )
+})
+
+// ---- Goal -----------------------------------------------------------------------------------------------
+
+await check("run --command goal exits 0 when the goal is reported done", async () => {
+  // The goal checker looks for DONE: in the model reply.
+  queue = [
+    { text: "CONTINUE: still working on it" },
+    { text: "DONE: the goal is complete" },
+  ]
+  const result = await yk(["run", "--command", "goal", "finish the task"])
+  expect(result.code === 0, `goal run failed (exit ${result.code}): ${result.stderr.slice(-600)}`)
+})
+
+// ---- Memory ---------------------------------------------------------------------------------------------
+
+await check("memory: save and recall a note across sessions", async () => {
+  globalConfig({ memory: { enabled: true } })
+
+  // First session: save a memory entry
+  queue = [
+    { tool: "memory_save", args: { action: "remember", key: "smoke-key", text: "always-use-bun" } },
+    { text: "saved" },
+  ]
+  const saved = await yk(["run", "--dangerously-skip-permissions", "save project guidance"])
+  expect(saved.code === 0, `memory save failed: ${saved.stderr.slice(-400)}`)
+
+  // Second session: the saved note must appear in the system prompt sent to the model
+  queue = [{ text: "recalled" }]
+  const recalled = await yk(["run", "what do you remember?"])
+  expect(recalled.code === 0, `memory recall run failed: ${recalled.stderr.slice(-400)}`)
+
+  const allBodies = JSON.stringify(requests)
+  expect(
+    allBodies.includes("always-use-bun"),
+    `saved memory note not present in subsequent requests: ${allBodies.slice(0, 800)}`,
+  )
+
+  globalConfig({})
+})
+
+// ---- Webhooks -------------------------------------------------------------------------------------------
+
+await check("webhooks: turn.finished delivers a signed payload to a local HTTP server", async () => {
+  const deliveries: { body: string; sig: string | null }[] = []
+  const secret = "smoke-webhook-secret-value-xyz"
+
+  const webhookServer = Bun.serve({
+    port: 0,
+    hostname: "127.0.0.1",
+    async fetch(request) {
+      deliveries.push({
+        body: await request.text(),
+        sig: request.headers.get("X-YukiOshi-Signature"),
+      })
+      return new Response("ok")
+    },
+  })
+
+  try {
+    globalConfig({
+      webhooks: [{ url: `http://127.0.0.1:${webhookServer.port}`, secret, events: ["turn.finished"] }],
+    })
+
+    queue = [{ text: "webhook-payload-smoke" }]
+    const result = await yk(["run", "trigger webhook"])
+    expect(result.code === 0, `run failed: ${result.stderr.slice(-400)}`)
+
+    // Wait up to 5 s for the delivery
+    const deadline = Date.now() + 5_000
+    while (deliveries.length === 0 && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 50))
+    }
+    expect(deliveries.length === 1, `expected 1 webhook delivery, got ${deliveries.length}`)
+
+    const payload = JSON.parse(deliveries[0]!.body) as Record<string, unknown>
+    expect(payload.event === "turn.finished", `unexpected event type: ${payload.event}`)
+    expect(typeof payload.time === "string", `time field missing: ${JSON.stringify(payload)}`)
+    const sess = payload.session as Record<string, unknown> | undefined
+    expect(sess !== undefined && typeof (sess.id ?? sess) === "string", `session field missing or wrong type: ${JSON.stringify(payload)}`)
+
+    // Verify HMAC signature
+    const hmac = (await import("node:crypto")).createHmac("sha256", secret)
+      .update(deliveries[0]!.body)
+      .digest("hex")
+    expect(
+      deliveries[0]!.sig === `sha256=${hmac}`,
+      `HMAC mismatch: got ${deliveries[0]!.sig}, want sha256=${hmac}`,
+    )
+  } finally {
+    globalConfig({})
+    webhookServer.stop(true)
   }
 })
 

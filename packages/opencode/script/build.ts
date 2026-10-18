@@ -185,7 +185,7 @@ for (const item of targets) {
     format: "esm",
     minify: true,
     sourcemap: sourcemapsFlag ? "linked" : "none",
-    splitting: true,
+    splitting: false,
     // No precompiled bytecode: with the pinned Bun (1.3.14) a bytecode build crashed on Windows at
     // launch and lost the embedded built-in skills on linux-x64, which the v0.3.3 release checks caught.
     compile: {
