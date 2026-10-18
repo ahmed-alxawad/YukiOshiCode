@@ -662,7 +662,7 @@ const layer = Layer.effect(
           }).pipe(Effect.ensuring(markReady))
 
           const cfg = yield* config.get()
-          const sh = Shell.preferred(cfg.shell)
+          const sh = Shell.preferred(typeof cfg.shell === "string" ? cfg.shell : undefined)
           const args = Shell.args(sh, input.command, cwd)
           let output = ""
           let aborted = false
@@ -2308,7 +2308,7 @@ const layer = Layer.effect(
       const shellMatches = ConfigMarkdown.shell(template)
       if (shellMatches.length > 0) {
         const cfg = yield* config.get()
-        const sh = Shell.preferred(cfg.shell)
+        const sh = Shell.preferred(typeof cfg.shell === "string" ? cfg.shell : undefined)
         const results = yield* Effect.promise(() =>
           Promise.all(
             shellMatches.map(async ([, cmd]) => (await Process.text([cmd], { shell: sh, nothrow: true })).text),

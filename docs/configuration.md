@@ -122,6 +122,7 @@ Normal `{env:…}` substitution applies to both aliases. If a local MCP server s
 | `provider`             | provider options, custom endpoints, extra models                    | [Providers](providers.md)                   |
 | `enabled_providers`, `disabled_providers` | limit which providers load                       | [Providers](providers.md)                   |
 | `permission`           | per-tool rules: `allow`, `ask`, or `deny`                           | [Permissions and safety](permissions-and-safety.md) |
+| `shell`                | default shell path as a string, or `{ "kill_on_exit": true }` in global config to terminate shell children on exit | [Features](features.md#shell-process-lifecycle) |
 | `sandbox`              | OS sandbox for shell commands and file edits                        | [Permissions and safety](permissions-and-safety.md) |
 | `redact`               | mask secrets before sending to model: `enabled` (default true), `patterns`, `allow` | [Permissions and safety](permissions-and-safety.md#secret-redaction) |
 | `hooks`                | your commands at fixed points in the agent's work                   | [Hooks](hooks.md)                           |

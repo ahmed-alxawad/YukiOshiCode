@@ -302,23 +302,23 @@ const ask = Effect.fn("ShellTool.ask")(function* (
   })
 })
 
-function cmd(shell: string, command: string, cwd: string, env: NodeJS.ProcessEnv) {
+function cmd(shell: string, command: string, cwd: string, env: NodeJS.ProcessEnv, killOnExit: boolean) {
   if (process.platform === "win32" && Shell.ps(shell)) {
-    return ChildProcess.make(shell, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command], {
-      cwd,
-      env,
-      stdin: "ignore",
-      detached: false,
-    })
+    return ChildProcess.make(
+      shell,
+      ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command],
+      Object.assign({ cwd, env, stdin: "ignore" as const, detached: false }, { killOnExit }),
+    )
   }
 
-  return ChildProcess.make(command, [], {
-    shell,
-    cwd,
-    env,
-    stdin: "ignore",
-    detached: process.platform !== "win32",
-  })
+  return ChildProcess.make(
+    command,
+    [],
+    Object.assign(
+      { shell, cwd, env, stdin: "ignore" as const, detached: process.platform !== "win32" },
+      { killOnExit },
+    ),
+  )
 }
 const parser = lazy(async () => {
   const { Parser } = await import("web-tree-sitter")
@@ -357,6 +357,8 @@ export const ShellTool = Tool.define(
     const plugin = yield* Plugin.Service
     const flags = yield* RuntimeFlags.Service
     const defaultTimeoutMs = flags.bashDefaultTimeoutMs ?? 2 * 60 * 1000
+    const globalShell = yield* config.getGlobal()
+    const killOnExit = typeof globalShell.shell === "object" && globalShell.shell.kill_on_exit === true
 
     const cygpath = Effect.fn("ShellTool.cygpath")(function* (shell: string, text: string) {
       const lines = yield* spawner
@@ -496,8 +498,8 @@ export const ShellTool = Tool.define(
       const spawnEffect = Effect.gen(function* () {
         yield* Effect.addFinalizer(closeSink)
         const command = sandbox
-          ? yield* Sandbox.prepareCommand(cmd(input.shell, input.command, input.cwd, input.env), input.cwd, input.env)
-          : cmd(input.shell, input.command, input.cwd, input.env)
+          ? yield* Sandbox.prepareCommand(cmd(input.shell, input.command, input.cwd, input.env, killOnExit), input.cwd, input.env)
+          : cmd(input.shell, input.command, input.cwd, input.env, killOnExit)
         const handle = yield* spawner.spawn(command)
 
         yield* Effect.forkScoped(
@@ -630,8 +632,8 @@ export const ShellTool = Tool.define(
       const launch = (io: BackgroundShell.Io) => {
         const spawnEffect = Effect.gen(function* () {
           const command = sandbox
-            ? yield* Sandbox.prepareCommand(cmd(input.shell, input.command, input.cwd, input.env), input.cwd, input.env)
-            : cmd(input.shell, input.command, input.cwd, input.env)
+            ? yield* Sandbox.prepareCommand(cmd(input.shell, input.command, input.cwd, input.env, killOnExit), input.cwd, input.env)
+            : cmd(input.shell, input.command, input.cwd, input.env, killOnExit)
           const handle = yield* spawner.spawn(command)
           io.setPid(Number(handle.pid))
           yield* Effect.forkScoped(Stream.runForEach(Stream.decodeText(handle.all), (chunk) => Effect.sync(() => io.push(chunk))))
@@ -677,7 +679,7 @@ export const ShellTool = Tool.define(
     return () =>
       Effect.gen(function* () {
         const cfg = yield* config.get()
-        const shell = Shell.acceptable(cfg.shell)
+        const shell = Shell.acceptable(typeof cfg.shell === "string" ? cfg.shell : undefined)
         const name = Shell.name(shell)
         const limits = yield* trunc.limits()
         const prompt = ShellPrompt.render(name, process.platform, limits, defaultTimeoutMs)

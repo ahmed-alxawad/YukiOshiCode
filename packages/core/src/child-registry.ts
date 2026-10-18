@@ -2,10 +2,9 @@
 // (Ctrl-C, SIGTERM from a supervisor, SIGHUP when the terminal closes) none of them is left running on the
 // machine. A child started in its own process group is signalled as a group, so grandchildren go with it.
 import type { ChildProcess } from "node:child_process"
-import { readFileSync } from "node:fs"
 import { isMainThread } from "node:worker_threads"
 
-type Entry = { pid: number; group: boolean; identity?: string }
+type Entry = { pid: number; group: boolean; killOnExit: boolean }
 
 const live = new Map<number, Entry>()
 const hooks = new Set<() => Promise<unknown> | unknown>()
@@ -15,7 +14,7 @@ let guarded = false
 // therefore reports every child it starts or releases to the main thread, which keeps the list that
 // the signal handlers act on. The channel is separate from the worker's own message port, so it cannot
 // disturb any protocol spoken over that.
-type Report = { op: "track"; pid: number; group: boolean } | { op: "untrack"; pid: number }
+type Report = { op: "track"; pid: number; group: boolean; killOnExit: boolean } | { op: "untrack"; pid: number }
 let channel: BroadcastChannel | undefined
 function reports() {
   if (channel) return channel
@@ -24,9 +23,8 @@ function reports() {
     if (isMainThread) {
       channel.onmessage = (event: { data: unknown }) => {
         const report = event.data as Report | undefined
-        if (report?.op === "track" && typeof report.pid === "number") {
-          live.set(report.pid, { pid: report.pid, group: report.group, identity: processIdentity(report.pid) })
-        }
+        if (report?.op === "track" && typeof report.pid === "number")
+          live.set(report.pid, { pid: report.pid, group: report.group, killOnExit: report.killOnExit })
         else if (report?.op === "untrack" && typeof report.pid === "number") live.delete(report.pid)
       }
     }
@@ -45,25 +43,7 @@ function report(message: Report) {
   }
 }
 
-function processIdentity(pid: number) {
-  if (process.platform !== "linux") return undefined
-  try {
-    const stat = readFileSync(`/proc/${pid}/stat`, "utf8")
-    // The command name may contain spaces and parentheses; fields start after its final ")".
-    return stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19]
-  } catch {
-    return undefined
-  }
-}
-
-function isSameProcess(entry: Entry) {
-  if (process.platform !== "linux") return true
-  const current = processIdentity(entry.pid)
-  return entry.identity !== undefined && current !== undefined && current === entry.identity
-}
-
 function send(entry: Entry, signal: NodeJS.Signals) {
-  if (!isSameProcess(entry)) return
   try {
     process.kill(entry.group && process.platform !== "win32" ? -entry.pid : entry.pid, signal)
   } catch {
@@ -72,7 +52,6 @@ function send(entry: Entry, signal: NodeJS.Signals) {
 }
 
 function alive(entry: Entry) {
-  if (!isSameProcess(entry)) return false
   try {
     process.kill(entry.group && process.platform !== "win32" ? -entry.pid : entry.pid, 0)
     return true
@@ -87,17 +66,17 @@ function guard() {
   if (isMainThread) reports()
   // Last resort, also covers `process.exit()`: nothing registered may outlive this process.
   process.on("exit", () => {
-    for (const entry of live.values()) send(entry, "SIGKILL")
+    for (const entry of live.values()) if (entry.killOnExit) send(entry, "SIGKILL")
   })
 }
 
 /** Registers a child. `group` is true when it was started detached (its own process group). */
-export function track(proc: Pick<ChildProcess, "pid" | "once">, group: boolean) {
+export function track(proc: Pick<ChildProcess, "pid" | "once">, group: boolean, killOnExit = true) {
   const pid = proc.pid
   if (typeof pid !== "number") return
   guard()
-  live.set(pid, { pid, group, identity: processIdentity(pid) })
-  report({ op: "track", pid, group })
+  live.set(pid, { pid, group, killOnExit })
+  report({ op: "track", pid, group, killOnExit })
   proc.once("close", () => {
     live.delete(pid)
     report({ op: "untrack", pid })
@@ -114,10 +93,10 @@ export function track(proc: Pick<ChildProcess, "pid" | "once">, group: boolean) 
 }
 
 /** Registers a process id started elsewhere. */
-export function trackPid(pid: number, group: boolean, identity = processIdentity(pid)) {
+export function trackPid(pid: number, group: boolean) {
   guard()
-  live.set(pid, { pid, group, identity })
-  report({ op: "track", pid, group })
+  live.set(pid, { pid, group, killOnExit: true })
+  report({ op: "track", pid, group, killOnExit: true })
 }
 
 /**

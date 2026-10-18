@@ -28,6 +28,8 @@ import { ChildRegistry } from "./child-registry"
 import { makeGlobalNode } from "./effect/app-node"
 import { filesystem, path } from "./effect/app-node-platform"
 
+type SpawnOptions = NodeChildProcess.SpawnOptions & { killOnExit?: boolean }
+
 const toError = (err: unknown): Error => (err instanceof globalThis.Error ? err : new globalThis.Error(String(err)))
 
 const toTag = (err: NodeJS.ErrnoException): PlatformError.SystemErrorTag => {
@@ -264,11 +266,11 @@ export const make = Effect.gen(function* () {
     return { stdout, stderr, all: Stream.merge(stdout, stderr) }
   }
 
-  const spawn = (command: ChildProcess.StandardCommand, opts: NodeChildProcess.SpawnOptions) =>
+  const spawn = (command: ChildProcess.StandardCommand, opts: SpawnOptions) =>
     Effect.callback<readonly [NodeChildProcess.ChildProcess, ExitSignal], PlatformError.PlatformError>((resume) => {
       const signal = Deferred.makeUnsafe<readonly [code: number | null, signal: NodeJS.Signals | null]>()
       const proc = launch(command.command, command.args, opts)
-      ChildRegistry.track(proc, opts.detached === true && process.platform !== "win32")
+      ChildRegistry.track(proc, opts.detached === true && process.platform !== "win32", opts.killOnExit)
       // Defensive: a process that exits without ever reading stdin closes its end of the pipe,
       // and writing to it afterward (setupStdin's own listener, attached later via Effect's Sink
       // machinery, loses this race for processes that exit immediately) raises EPIPE with zero
@@ -386,6 +388,7 @@ export const make = Effect.gen(function* () {
               detached: command.options.detached ?? process.platform !== "win32",
               shell: command.options.shell,
               windowsHide: process.platform === "win32",
+              killOnExit: (command.options as ChildProcess.CommandOptions & { killOnExit?: boolean }).killOnExit,
             }),
             Effect.fnUntraced(function* ([proc, signal]) {
               const done = yield* Deferred.isDone(signal)

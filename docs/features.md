@@ -376,6 +376,21 @@ merged permission rules.
 `yukioshi run --agents '<json or file>'` defines subagents for that run only, using the same fields as markdown agents (`prompt` is the system prompt). They come from your own command line, so they are not treated as untrusted project files, but they cannot widen what the parent session denies.
 
 To reuse existing Claude subagents, set `"agent_sources": ["claude"]` in your global config (a project config cannot set it; default is off). YukiOshi then reads `~/.claude/agents/*.md` and, for the project, `.claude/agents/*.md` found by walking up like other project agent folders. Project ones get the same untrusted-project filtering as `.yukioshi/agents` (allow rules are dropped until you trust the project). Precedence on a name clash: `--agents`, then `.yukioshi`/`.opencode`, then `.claude`, then global. `yukioshi agent validate` reports duplicates and which file wins.
+## Shell process lifecycle
+
+Shell commands normally remain detached from process-exit cleanup, while daemon
+and other registered children keep their existing lifecycle. To opt shell
+commands into termination when YukiOshi exits, set this in the global config:
+
+```json
+{
+  "shell": { "kill_on_exit": true }
+}
+```
+
+This setting is global-only and defaults to `false` for shell commands. It does
+not change the behavior of signals, explicit cancellation, timeouts, or
+background-shell job cleanup.
 
 ## Background shell commands
 

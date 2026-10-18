@@ -35,7 +35,7 @@ export function isV1(input: unknown) {
 export function migrate(info: typeof ConfigV1.Info.Type) {
   return {
     $schema: info.$schema,
-    shell: info.shell,
+    shell: typeof info.shell === "string" ? info.shell : undefined,
     model: info.model,
     default_agent: info.default_agent,
     autoupdate: info.autoupdate,
