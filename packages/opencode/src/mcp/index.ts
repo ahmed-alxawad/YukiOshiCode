@@ -38,6 +38,7 @@ import { McpBrowser } from "./browser"
 import { McpGuard } from "./guard"
 import { McpEnvironment } from "./environment"
 import { ChildRegistry } from "@yukioshi/core/child-registry"
+import { attachWatchdog, type WatchdogHandle } from "@/util/watchdog"
 
 const DEFAULT_TIMEOUT = 30_000
 const CLIENT_OPTIONS = {
@@ -467,6 +468,7 @@ const layer = Layer.effect(
     // child registry can reach the server (and, through descendants(), its grandchildren) even then.
     // group=false: the SDK spawns in YukiOshi's own process group, so signalling -pid would hit us.
     const trackedPids = new WeakMap<MCPClient, number>()
+    const trackedWatchdogs = new WeakMap<MCPClient, WatchdogHandle>()
 
     function trackClient(client: MCPClient) {
       if (!(client.transport instanceof StdioClientTransport)) return
@@ -474,9 +476,12 @@ const layer = Layer.effect(
       if (typeof pid !== "number") return
       ChildRegistry.trackPid(pid, false)
       trackedPids.set(client, pid)
+      trackedWatchdogs.set(client, attachWatchdog(pid, { group: false }))
     }
 
     function untrackClient(client: MCPClient) {
+      trackedWatchdogs.get(client)?.cleanup()
+      trackedWatchdogs.delete(client)
       const pid = trackedPids.get(client)
       if (pid === undefined) return
       trackedPids.delete(client)
