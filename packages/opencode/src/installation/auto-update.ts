@@ -14,6 +14,7 @@ import { createHash } from "crypto"
 import { spawn, spawnSync } from "child_process"
 import semver from "semver"
 import type { Method } from "."
+import { checkSums } from "./release-key"
 
 export const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000
 export const STATE_FILE = "autoupdate.json"
@@ -409,6 +410,10 @@ export async function installRelease(input: {
   timeoutMs?: number
   maxBytes?: number
   ops?: Partial<SwapOps>
+  /** Overrides the embedded release key and signing cutoff (tests). */
+  signing?: { key?: string; requiredFrom?: string }
+  /** Called with a note when the release is allowed without a signature. */
+  warn?: (message: string) => void
 }) {
   const fetcher = input.fetch ?? fetch
   const timeoutMs = input.timeoutMs ?? 10 * 60_000
@@ -421,7 +426,26 @@ export async function installRelease(input: {
       `the release has no SHA256SUMS to verify the download with (${error instanceof Error ? error.message : String(error)})`,
     )
   })
-  const expected = checksumFor(await sumsResponse.text(), input.asset)
+  const sumsBytes = new Uint8Array(await sumsResponse.arrayBuffer())
+  const sigResponse = await fetcher(`${base}/SHA256SUMS.sig`, { signal: AbortSignal.timeout(timeoutMs), redirect: "follow" }).catch(
+    (error: unknown) => {
+      throw new UpdateError(`could not download ${base}/SHA256SUMS.sig: ${error instanceof Error ? error.message : String(error)}`)
+    },
+  )
+  if (!sigResponse.ok && sigResponse.status !== 404)
+    throw new UpdateError(`could not download ${base}/SHA256SUMS.sig (HTTP ${sigResponse.status})`)
+  try {
+    const check = checkSums({
+      sums: sumsBytes,
+      signature: sigResponse.ok ? await readLimited(sigResponse, 4096, "SHA256SUMS.sig") : undefined,
+      version: input.version,
+      ...input.signing,
+    })
+    if (check === "unsigned-allowed") input.warn?.("this release has no SHA256SUMS.sig; installing it unsigned")
+  } catch (error) {
+    throw new UpdateError(error instanceof Error ? error.message : String(error))
+  }
+  const expected = checksumFor(new TextDecoder().decode(sumsBytes), input.asset)
   if (!expected) throw new UpdateError(`${input.asset} is not listed in the release's SHA256SUMS`)
 
   const previousSize = await fsp.stat(input.execPath).then(

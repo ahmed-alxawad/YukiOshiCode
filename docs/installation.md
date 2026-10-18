@@ -186,3 +186,34 @@ YukiOshi uses ripgrep for workspace file and text search (`grep`, `glob`, file s
 - If `rg` is already present on your `PATH` (or installed via Homebrew or Chocolatey), YukiOshi uses it directly.
 - If ripgrep is missing, YukiOshi downloads and verifies a pinned, SHA-256-validated ripgrep release (v15.1.0) into its data directory (`Global.Path.data/bin`) on first use. All redirect locations are restricted strictly to GitHub releases.
 - If ripgrep cannot be downloaded or executed (e.g. in offline, proxy-restricted, or air-gapped environments), YukiOshi automatically falls back to built-in pure-JavaScript search with a clear warning: `ripgrep binary is not available; falling back to built-in search`. All tools continue to work seamlessly.
+
+## Release signing (for the owner)
+
+`SHA256SUMS.sig` is an Ed25519 signature (base64 or raw 64 bytes) of the
+`SHA256SUMS` file, published next to it. The updater and `yukioshi upgrade`
+verify it with the public key in `packages/opencode/src/installation/release-key.ts`
+(`RELEASE_PUBLIC_KEY`; empty means no check). Only the in-binary updater
+verifies it; `install` (the shell installer) does not, because `openssl` ed25519
+support is not reliable across macOS LibreSSL and older OpenSSL.
+
+One-time setup:
+
+1. `bun packages/opencode/script/release-keygen.ts` prints a private key (PEM)
+   and the base64 public key.
+2. Store the PEM as the repository secret `YUKIOSHI_RELEASE_SIGNING_KEY`.
+3. Paste the public key into `RELEASE_PUBLIC_KEY` and release a version with it.
+4. Once releases are signed, set `SIGNING_REQUIRED_FROM` to the first signed
+   version; older unsigned releases then still update with a warning, newer
+   ones without a valid `.sig` are refused.
+
+Release workflow step, after `SHA256SUMS` is created and before it is uploaded
+(add it yourself; this repository change does not touch `.github/workflows`):
+
+```yaml
+- name: Sign SHA256SUMS
+  env:
+    YUKIOSHI_RELEASE_SIGNING_KEY: ${{ secrets.YUKIOSHI_RELEASE_SIGNING_KEY }}
+  run: bun packages/opencode/script/release-sign.ts SHA256SUMS
+```
+
+Then upload `SHA256SUMS.sig` with the other release assets.

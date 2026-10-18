@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import fs from "fs"
 import path from "path"
-import { createHash } from "crypto"
+import { createHash, generateKeyPairSync, sign } from "crypto"
 import { spawnSync } from "child_process"
 import { Global } from "@yukioshi/core/global"
 import { Flock } from "@yukioshi/core/util/flock"
@@ -182,7 +182,11 @@ describe("automatic update rules", () => {
 
 // A fake GitHub release server: /releases.atom names the latest version and
 // /releases/download/v<version>/<file> serves the archives and SHA256SUMS.
-type Release = { version: string; script?: string; sums?: "ok" | "missing" | "wrong" | "unlisted" }
+type Release = { version: string; script?: string; sums?: "ok" | "missing" | "wrong" | "unlisted"; sig?: "valid" | "tampered" | "other-key" | "raw" }
+
+const testKey = generateKeyPairSync("ed25519")
+const otherKey = generateKeyPairSync("ed25519")
+const spki = (k: typeof testKey) => k.publicKey.export({ type: "spki", format: "der" }).toString("base64")
 
 function archive(dir: string, script: string) {
   const stage = fs.mkdtempSync(path.join(dir, "stage-"))
@@ -208,6 +212,13 @@ function fakeRelease(dir: string, asset: string, release: Release) {
         )
       const prefix = `/releases/download/v${release.version}/`
       if (url.pathname === prefix + asset) return new Response(body)
+      if (url.pathname === prefix + "SHA256SUMS.sig") {
+        if (!release.sig) return new Response("not found", { status: 404 })
+        const signed = Buffer.from(`${hash}  ${asset}\n`)
+        const data = release.sig === "tampered" ? Buffer.from(`${hash}  ${asset}\n# x\n`) : signed
+        const raw = sign(null, data, (release.sig === "other-key" ? otherKey : testKey).privateKey)
+        return new Response(release.sig === "raw" ? raw : raw.toString("base64"))
+      }
       if (url.pathname === prefix + "SHA256SUMS") {
         if (release.sums === "missing") return new Response("not found", { status: 404 })
         if (release.sums === "unlisted") return new Response(`${hash}  yukioshi-other.tar.gz\n`)
@@ -224,7 +235,7 @@ const unix = process.platform === "linux"
 describe.skipIf(!unix)("installRelease", () => {
   const asset = "yukioshi-linux-x64.tar.gz"
 
-  async function setup(release: Release) {
+  async function setup(release: Release, signing?: { key?: string; requiredFrom?: string }, warn?: (m: string) => void) {
     const tmp = await tmpdir()
     const binDir = path.join(tmp.path, "bin")
     fs.mkdirSync(binDir)
@@ -238,6 +249,8 @@ describe.skipIf(!unix)("installRelease", () => {
         execPath,
         workDir: path.join(tmp.path, "work"),
         baseUrl: fake.url,
+        signing,
+        warn,
       })
     return {
       tmp,
@@ -265,6 +278,46 @@ describe.skipIf(!unix)("installRelease", () => {
     await expect(env.install()).rejects.toThrow("does not match its SHA256SUMS checksum")
     expect(env.version()).toBe("0.4.1")
     expect(fs.readdirSync(env.binDir)).toEqual(["yukioshi"])
+  })
+
+  describe("SHA256SUMS signature", () => {
+    const key = spki(testKey)
+    test("accepts a valid signature (base64 and raw)", async () => {
+      for (const sig of ["valid", "raw"] as const) {
+        await using env = await setup({ version: "0.5.0", sig }, { key })
+        await env.install()
+        expect(env.version()).toBe("0.5.0")
+      }
+    })
+    test("rejects a tampered SHA256SUMS", async () => {
+      await using env = await setup({ version: "0.5.0", sig: "tampered" }, { key })
+      await expect(env.install()).rejects.toThrow("signature of SHA256SUMS is not valid")
+      expect(env.version()).toBe("0.4.1")
+    })
+    test("rejects a signature from another key", async () => {
+      await using env = await setup({ version: "0.5.0", sig: "other-key" }, { key })
+      await expect(env.install()).rejects.toThrow("signature of SHA256SUMS is not valid")
+      expect(env.version()).toBe("0.4.1")
+    })
+    test("missing .sig is allowed with a warning below the cutoff, or with no cutoff", async () => {
+      for (const requiredFrom of ["0.6.0", undefined]) {
+        const warnings: string[] = []
+        await using env = await setup({ version: "0.5.0" }, { key, requiredFrom }, (m) => warnings.push(m))
+        await env.install()
+        expect(env.version()).toBe("0.5.0")
+        expect(warnings.length).toBe(1)
+      }
+    })
+    test("missing .sig is refused from the cutoff on", async () => {
+      await using env = await setup({ version: "0.5.0" }, { key, requiredFrom: "0.5.0" })
+      await expect(env.install()).rejects.toThrow("must be signed")
+      expect(env.version()).toBe("0.4.1")
+    })
+    test("no key configured leaves behaviour unchanged, even with a bad .sig", async () => {
+      await using env = await setup({ version: "0.5.0", sig: "tampered" }, { key: "" })
+      await env.install()
+      expect(env.version()).toBe("0.5.0")
+    })
   })
 
   test("refuses a release without SHA256SUMS", async () => {
@@ -380,6 +433,7 @@ describe.skipIf(!unix)("binary swap", () => {
       fetch(req) {
         const url = new URL(req.url)
         if (url.pathname.endsWith("SHA256SUMS")) return new Response(`${"a".repeat(64)}  yukioshi-linux-x64.tar.gz\n`)
+        if (url.pathname.endsWith(".sig")) return new Response("not found", { status: 404 })
         const chunk = new Uint8Array(64 * 1024)
         return new Response(
           new ReadableStream({

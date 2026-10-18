@@ -129,7 +129,15 @@ releases are never installed automatically. It can be turned off with
 
 Plainly: `SHA256SUMS` comes from the same host as the binary, and the release
 is not signed. The checksum detects a corrupted download, not a compromised
-release host or repository account. There is no signature check yet.
+release host or repository account on its own. Releases can also carry an Ed25519
+signature, `SHA256SUMS.sig`. When a release public key is built into the binary
+(`src/installation/release-key.ts`), the updater and `yukioshi upgrade` verify
+`SHA256SUMS` against it and refuse the update, keeping the current binary, if
+the signature is invalid. A release with no `.sig` is installed with a warning
+unless it is at or above the `SIGNING_REQUIRED_FROM` version. With no key built
+in (the current state: `[TBD owner: release public key]`), nothing is verified
+beyond the checksum. Only the in-binary updater verifies the signature; the
+shell installer (`install`) checks the checksum only.
 
 ## Shell backends
 
@@ -144,7 +152,8 @@ release host or repository account. There is no signature check yet.
   does not stop reading secrets or sending them out while network is allowed.
 - **Windows** has no OS sandbox.
 - **A compromised release host** (GitHub account, release assets and their
-  `SHA256SUMS`) could ship a malicious update; there is no signature.
+  `SHA256SUMS`) could ship a malicious update unless a release key is built in and the
+  signature is required (see above); the shell installer never checks it.
 - **Trusted repositories** run their hooks, plugins and MCP servers with your
   privileges, and are outside the sandbox.
 - **Redaction misses** secrets in formats it does not know.
