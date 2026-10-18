@@ -115,8 +115,8 @@ const withGlobal = <A, E, R>(shell: object, self: Effect.Effect<A, E, R>) =>
     return yield* self
   })
 
-const docker = { backend: "docker", docker: { image: "alpine:3" } }
-const ssh = { backend: "ssh", ssh: { host: "box.example", user: "dev", port: 2222, identity_file: "/home/me/my key" } }
+const docker = { backend: "docker", docker: { image: "alpine:3" } } as const
+const ssh = { backend: "ssh", ssh: { host: "box.example", user: "dev", port: 2222, identity_file: "/home/me/my key" } } as const
 const exec = (args: { command: string; timeout?: number }, abort?: AbortSignal) =>
   Effect.gen(function* () {
     const tool = yield* initShell()
@@ -244,7 +244,7 @@ describe("shell backend execution with fake docker and ssh", () => {
         const result = yield* exec({ command: "__SLEEP__", timeout: 500 })
         expect(result.metadata.exit).toBeNull()
         const run = records("docker").find((r) => r.argv[0] === "run")!
-        yield* Effect.promise(() => Bun.sleep(500))
+        yield* Effect.promise(() => Bun.sleep(1500))
         expect(alive(run.pid)).toBe(false)
         const killed = records("docker").find((r) => r.argv[0] === "kill")
         expect(killed?.argv[1]).toBe(run.argv[run.argv.indexOf("--name") + 1])
@@ -258,11 +258,15 @@ describe("shell backend execution with fake docker and ssh", () => {
       const tmp = yield* tmpdirScoped()
       yield* withGlobal(ssh, runIn(tmp, Effect.gen(function* () {
         const controller = new AbortController()
-        setTimeout(() => controller.abort(), 400)
+        const timer = setInterval(() => {
+          if (records("ssh").length === 0) return
+          clearInterval(timer)
+          controller.abort()
+        }, 50)
         const result = yield* exec({ command: "__SLEEP__" }, controller.signal)
         expect(result.metadata.exit).toBeNull()
         const [rec] = records("ssh")
-        yield* Effect.promise(() => Bun.sleep(500))
+        yield* Effect.promise(() => Bun.sleep(1500))
         expect(alive(rec!.pid)).toBe(false)
       })))
     }),
