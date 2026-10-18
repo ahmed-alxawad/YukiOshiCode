@@ -545,7 +545,9 @@ const layer = Layer.effect(
           // Delegate agents run a command, webhooks send session events to a URL, enterprise/share
           // exfiltrates sessions, and remote skills/instructions/MCP headers fetch third-party code
           // or leak credentials, so like hooks they are ignored until the project is trusted.
-          const { hooks, plugin, delegate, webhooks, enterprise, browser, triggers, audit, shell, ...safe } = next
+          const { hooks, plugin, delegate, webhooks, enterprise, browser, triggers, audit, shell, architect, ...safe } = next
+          // Architect mode starts a second model with edit tools, so an untrusted project cannot turn it on.
+          if (architect?.enabled) blockedExecutables.add(`${source} (architect mode)`)
           if (plugin?.length) blockedExecutables.add(`${source} (plugins)`)
           if (delegate?.agents && Object.keys(delegate.agents).length > 0)
             blockedExecutables.add(`${source} (delegate agents)`)
@@ -1009,6 +1011,12 @@ const layer = Layer.effect(
             result.agent ?? {},
             ConfigAgent.fromRecord(JSON.parse(process.env.YUKIOSHI_SESSION_AGENTS)),
           )
+        }
+
+        // `yukioshi run --architect <planner>[,<editor>]`: the user's own command line, so it overrides config.
+        if (process.env.YUKIOSHI_ARCHITECT) {
+          const [planner, editor] = process.env.YUKIOSHI_ARCHITECT.split(",")
+          result.architect = { ...result.architect, enabled: true, planner_model: planner, ...(editor ? { editor_model: editor } : {}) }
         }
 
         if (process.env.YUKIOSHI_CONFIG_CONTENT) {

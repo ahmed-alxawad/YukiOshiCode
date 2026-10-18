@@ -34,6 +34,7 @@ import { EXIT, dollars, goalExitCode, readOutputSchema, unknownCommandMessage } 
 import { schemaViolation } from "./run/schema"
 import { combineFileChanges, formatFileChanges, type FileChange } from "@yukioshi/core/files-changed-summary"
 import { ChildRegistry } from "@yukioshi/core/child-registry"
+import { checkModel } from "@/agent/architect"
 import { parseSessionAgents } from "@/config/session-agents"
 
 type ModelInput = Parameters<OpencodeClient["session"]["prompt"]>[0]["model"]
@@ -198,7 +199,20 @@ export const RunCommand = effectCmd({
         type: "string",
         describe: "session-only subagents as a JSON object or a path to a JSON file: {name: {description, prompt, tools, model}}",
       })
+      .option("architect", {
+        type: "string",
+        describe: "architect/editor mode: a read-only planner model writes an edit plan, an editor model applies it: <planner>[,<editor>] as provider/model",
+      })
       // Must run at parse time: the effect command bootstrap can read config before the handler runs.
+      .check((argv) => {
+        if (argv.architect === undefined) return true
+        const [planner, editor, ...extra] = String(argv.architect).split(",")
+        if (extra.length) throw new Error("--architect takes <planner>[,<editor>]")
+        checkModel("--architect planner", planner)
+        if (editor !== undefined) checkModel("--architect editor", editor)
+        process.env.YUKIOSHI_ARCHITECT = String(argv.architect)
+        return true
+      })
       .check((argv) => {
         if (argv.agents === undefined) return true
         process.env.YUKIOSHI_SESSION_AGENTS = parseSessionAgents(argv.agents as string)
@@ -1336,6 +1350,7 @@ export async function runMini(input: MiniCommandInput) {
     model: input.model,
     agent: input.agent,
     agents: undefined,
+    architect: undefined,
     format: "default",
     file: undefined,
     title: undefined,

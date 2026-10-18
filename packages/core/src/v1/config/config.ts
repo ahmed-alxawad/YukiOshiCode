@@ -33,6 +33,7 @@ import { ConfigSandboxV1 } from "./sandbox"
 import { ConfigServerV1 } from "./server"
 import { ConfigSkillsV1 } from "./skills"
 import { ConfigSubagentsV1 } from "./subagents"
+import { ConfigArchitectV1 } from "./architect"
 import { ConfigAuditV1 } from "./audit"
 import { ConfigTriggersV1 } from "./triggers"
 import { ConfigWebSearchV1 } from "./web-search"
@@ -184,6 +185,9 @@ export const Info = Schema.Struct({
   }),
   subagents: Schema.optional(ConfigSubagentsV1.Info).annotate({
     description: "Background and parallel subagents (both off by default)",
+  }),
+  architect: Schema.optional(ConfigArchitectV1.Info).annotate({
+    description: "Architect/editor two-model mode (off by default)",
   }),
   username: Schema.optional(Schema.String).annotate({
     description: "Custom username to display in conversations instead of system username",

@@ -571,6 +571,16 @@ When the delegated agent requests permission to execute a tool (e.g. running a t
 
 The `delegate` tool itself is classified as high-risk in YukiOshi's permission system.
 
+## Architect/editor mode
+
+Off by default. A planner model that can only read the project writes a concrete edit plan, then hands it to an editor subagent that has its own model and the normal edit tools. The final answer summarizes what the editor did.
+
+```json
+{ "architect": { "enabled": true, "planner_model": "anthropic/claude-opus-4-1", "editor_model": "openai/gpt-5-mini" } }
+```
+
+Or per run: `yukioshi run --architect anthropic/claude-opus-4-1,openai/gpt-5-mini "..."` (the editor defaults to the planner model). Your `permission` deny rules apply to both stages, and both models appear in the usage and cost totals like any subagent. Only the global config or a trusted project can enable it. A model must look like `provider/model`.
+
 ## Browser automation
 
 Browser automation is off by default. Turn it on in your configuration:

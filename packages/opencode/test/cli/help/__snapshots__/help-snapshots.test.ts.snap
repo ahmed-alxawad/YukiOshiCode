@@ -93,6 +93,8 @@ Options:
                        agent                                                                [string]
       --agents         session-only subagents as a JSON object or a path to a JSON file: {name:
                        {description, prompt, tools, model}}                                 [string]
+      --architect      architect/editor mode: a read-only planner model writes an edit plan, an
+                       editor model applies it: <planner>[,<editor>] as provider/model      [string]
       --format         format: default (formatted) or json (raw JSON events)
                                           [string] [choices: "default", "json"] [default: "default"]
   -f, --file           file(s) to attach to message                                          [array]

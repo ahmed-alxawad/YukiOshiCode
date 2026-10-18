@@ -17,6 +17,7 @@ import PROMPT_TITLE from "./prompt/title.txt"
 import PROMPT_MODE_ROUTER from "./prompt/mode-router.txt"
 import PROMPT_GOAL_JUDGE from "./prompt/goal-judge.txt"
 import * as Mode from "./mode"
+import { architectAgents, PLANNER } from "./architect"
 import { Permission } from "@/permission"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@yukioshi/core/global"
@@ -385,6 +386,8 @@ const layer = Layer.effect(
           },
         }
 
+        if (cfg.architect?.enabled) Object.assign(agents, architectAgents({ settings: cfg.architect, defaults, user }))
+
         for (const [key, value] of Object.entries(cfg.agent ?? {})) {
           if (value.disable) {
             delete agents[key]
@@ -457,11 +460,12 @@ const layer = Layer.effect(
 
         const defaultInfo = Effect.fnUntraced(function* () {
           const c = yield* config.get()
-          if (c.default_agent) {
-            const agent = agents[c.default_agent]
-            if (!agent) throw new Error(`default agent "${c.default_agent}" not found`)
-            if (agent.mode === "subagent") throw new Error(`default agent "${c.default_agent}" is a subagent`)
-            if (agent.hidden === true) throw new Error(`default agent "${c.default_agent}" is hidden`)
+          const wanted = c.default_agent ?? (c.architect?.enabled ? PLANNER : undefined)
+          if (wanted) {
+            const agent = agents[wanted]
+            if (!agent) throw new Error(`default agent "${wanted}" not found`)
+            if (agent.mode === "subagent") throw new Error(`default agent "${wanted}" is a subagent`)
+            if (agent.hidden === true) throw new Error(`default agent "${wanted}" is hidden`)
             return agent
           }
           const visible = Object.values(agents).find((a) => a.mode !== "subagent" && a.hidden !== true)
