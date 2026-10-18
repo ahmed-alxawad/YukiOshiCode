@@ -469,8 +469,7 @@ const layer = Layer.effect(
       if (typeof pid !== "number") return
       ChildRegistry.trackPid(pid, false)
       trackedPids.set(client, pid)
-      const watchdog = attachWatchdog(pid, { group: false })
-      trackedWatchdogs.set(client, watchdog)
+      if (!trackedWatchdogs.has(client)) trackedWatchdogs.set(client, attachWatchdog(pid, { group: false }))
     }
 
     function untrackClient(client: MCPClient) {
