@@ -5,6 +5,7 @@ import os from "node:os"
 import path from "node:path"
 import { cliIt } from "../lib/cli-process"
 import {
+  claudeAgentDirs,
   knownModelLookup,
   runtimeFieldProblems,
   modelProblem,
@@ -322,4 +323,29 @@ describe("yukioshi agent show", () => {
       }),
     60_000,
   )
+})
+
+describe("claudeAgentDirs", () => {
+  test("stops at the git root and never reads parent directories outside the project", () => {
+    const base = fs.mkdtempSync(path.join(process.env.TMPDIR ?? os.tmpdir(), "claude-dirs-"))
+    const project = path.join(base, "outer", "repo")
+    const sub = path.join(project, "pkg")
+    fs.mkdirSync(path.join(project, ".git"), { recursive: true })
+    fs.mkdirSync(sub, { recursive: true })
+    return claudeAgentDirs({ agent_sources: ["claude"] }, sub).then((dirs) => {
+      expect(dirs).toContain(path.join(project, ".claude"))
+      expect(dirs).toContain(path.join(sub, ".claude"))
+      expect(dirs).not.toContain(path.join(base, "outer", ".claude"))
+      expect(dirs).not.toContain(path.join(base, ".claude"))
+    })
+  })
+
+  test("without a git root only the working directory counts", async () => {
+    const base = fs.mkdtempSync(path.join(process.env.TMPDIR ?? os.tmpdir(), "claude-dirs-"))
+    const dir = path.join(base, "a", "b")
+    fs.mkdirSync(dir, { recursive: true })
+    const dirs = await claudeAgentDirs({ agent_sources: ["claude"] }, dir)
+    expect(dirs).toContain(path.join(dir, ".claude"))
+    expect(dirs).not.toContain(path.join(base, "a", ".claude"))
+  })
 })

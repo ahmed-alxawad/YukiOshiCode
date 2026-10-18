@@ -1,3 +1,4 @@
+import { claudeProjectStop } from "./claude-agents"
 import { LayerNode } from "@yukioshi/core/effect/layer-node"
 import { httpClient } from "@yukioshi/core/effect/app-node-platform"
 import { serviceUse } from "@yukioshi/core/effect/service-use"
@@ -900,7 +901,7 @@ const layer = Layer.effect(
           const globalClaude = path.join(Global.Path.home, ".claude")
           const projectClaude = Flag.YUKIOSHI_DISABLE_PROJECT_CONFIG
             ? []
-            : yield* fs.up({ targets: [".claude"], start: ctx.directory, stop: ctx.worktree })
+            : yield* fs.up({ targets: [".claude"], start: ctx.directory, stop: claudeProjectStop(ctx.directory, ctx.worktree) })
           const sources = [
             { dir: globalClaude, project: false },
             ...projectClaude.filter((dir) => dir !== globalClaude).map((dir) => ({ dir, project: true })),

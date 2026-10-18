@@ -133,4 +133,17 @@ describe("agent_sources claude", () => {
       expect((config.agent?.proj?.permission as any)?.edit).toBe("deny")
     }),
   )
+
+  it.effect("does not read .claude agents from parent directories outside the project", () =>
+    Effect.gen(function* () {
+      const config = yield* resolve({
+        global: { agent_sources: ["claude"] },
+        project: {},
+        trusted: true,
+        files: { "../.claude/agents/outside.md": agentMd(), ".claude/agents/proj.md": agentMd() },
+      })
+      expect(config.agent?.proj).toBeDefined()
+      expect(config.agent?.outside).toBeUndefined()
+    }),
+  )
 })

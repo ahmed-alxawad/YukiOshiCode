@@ -1,4 +1,5 @@
 import path from "path"
+import { existsSync } from "fs"
 
 // Where Claude-style agent directories slot into the config-merge order of
 // `Config.directories()`: after the user's own config dir (and its plugin dirs) and before
@@ -17,3 +18,18 @@ export function withClaudeDirs(directories: string[], claude: string[], globalCo
 }
 
 export const isClaudeDir = (dir: string) => path.basename(dir) === ".claude"
+
+// Upper bound for the project `.claude` search. A non-git project reports the filesystem root
+// as its worktree; never walk up to it, stay inside the project directory instead.
+export function claudeProjectStop(directory: string, worktree?: string) {
+  if (!worktree || worktree === path.parse(worktree).root) return directory
+  return worktree
+}
+
+// Same boundary without an Instance: the nearest ancestor with a `.git`, else the directory itself.
+export function claudeProjectRoot(directory: string) {
+  for (let dir = directory; ; dir = path.dirname(dir)) {
+    if (existsSync(path.join(dir, ".git"))) return dir
+    if (path.dirname(dir) === dir) return directory
+  }
+}

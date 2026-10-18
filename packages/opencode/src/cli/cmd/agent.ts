@@ -13,7 +13,7 @@ import { effectCmd, fail } from "../effect-cmd"
 import { requireTerminal } from "../needs-terminal"
 import { ConfigAgentV1 } from "@yukioshi/core/v1/config/agent"
 import { Glob } from "@yukioshi/core/util/glob"
-import { isClaudeDir, withClaudeDirs } from "@/config/claude-agents"
+import { claudeProjectRoot, isClaudeDir, withClaudeDirs } from "@/config/claude-agents"
 import { ConfigMarkdown } from "@/config/markdown"
 import { ConfigParse } from "@/config/parse"
 import { configEntryNameFromPath } from "@/config/entry-name"
@@ -232,10 +232,11 @@ export async function scanAgentFiles(
 export async function claudeAgentDirs(cfg: { agent_sources?: readonly string[] }, cwd = process.cwd()) {
   if (!cfg.agent_sources?.includes("claude")) return []
   const found: string[] = [path.join(Global.Path.home, ".claude")]
+  const root = claudeProjectRoot(cwd)
   for (let dir = cwd; ; dir = path.dirname(dir)) {
     const candidate = path.join(dir, ".claude")
     if (!found.includes(candidate)) found.push(candidate)
-    if (path.dirname(dir) === dir) break
+    if (dir === root || path.dirname(dir) === dir) break
   }
   return found
 }
