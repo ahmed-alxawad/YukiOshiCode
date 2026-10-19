@@ -249,12 +249,12 @@ describe("shell backend execution with fake docker and ssh", () => {
       yield* withGlobal(docker, runIn(tmp, Effect.gen(function* () {
         const result = yield* exec({ command: `echo "it's" $(id)` })
         expect(result.output).toContain("docker-ran")
-        const [rec] = records("docker")
-        expect(rec!.argv.slice(-3)).toEqual(["sh", "-c", `echo "it's" $(id)`])
-        expect(rec!.argv).toContain("--rm")
-        expect(rec!.argv[rec!.argv.indexOf("--network") + 1]).toBe("none")
-        expect(rec!.env).not.toContain("sk-must-not-leak")
-        expect(rec!.env).not.toContain("OPENAI_API_KEY")
+        const run = records("docker").find((r) => r.argv[0] === "run")!
+        expect(run.argv.slice(-3)).toEqual(["sh", "-c", `echo "it's" $(id)`])
+        expect(run.argv).toContain("--rm")
+        expect(run.argv[run.argv.indexOf("--network") + 1]).toBe("none")
+        expect(run.env).not.toContain("sk-must-not-leak")
+        expect(run.env).not.toContain("OPENAI_API_KEY")
       })))
     }),
   )
