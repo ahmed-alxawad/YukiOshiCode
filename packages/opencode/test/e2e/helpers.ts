@@ -16,7 +16,7 @@ export function runtimeEnv(home: string) {
 }
 
 export function globalConfig(home: string, extra: Record<string, unknown>) {
-  const directory = `${home}-config/yukioshi`
+  const directory = path.join(`${home}-config`, "yukioshi")
   fs.mkdirSync(directory, { recursive: true })
   const file = path.join(directory, "yukioshi.json")
   const current = fs.existsSync(file) ? (JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>) : {}

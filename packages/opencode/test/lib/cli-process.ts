@@ -66,8 +66,8 @@ function isolatedEnv(home: string, configJson: string): Record<string, string> {
     HOME: home,
     PWD: home,
     XDG_CONFIG_HOME: path.join(home, ".config"),
-    XDG_DATA_HOME: path.join(home, ".local/share"),
-    XDG_STATE_HOME: path.join(home, ".local/state"),
+    XDG_DATA_HOME: path.join(home, ".local", "share"),
+    XDG_STATE_HOME: path.join(home, ".local", "state"),
     XDG_CACHE_HOME: path.join(home, ".cache"),
     YUKIOSHI_CONFIG_CONTENT: configJson,
     YUKIOSHI_DISABLE_PROJECT_CONFIG: "1",
@@ -218,7 +218,7 @@ export function withCliFixture<A, E>(
       // on `Bun.stdin.text()` (see src/cli/cmd/run.ts — non-TTY stdin is
       // consumed as the prompt). The old Process.run wrapper defaulted to
       // ignore; ChildProcess.make defaults to pipe, so we set it explicitly.
-      const command = ChildProcess.make("bun", ["run", cliEntry, ...args], {
+      const command = ChildProcess.make(process.execPath, ["run", cliEntry, ...args], {
         cwd: opts?.cwd ?? home,
         env: { ...env, ...opts?.env },
         extendEnv: true,
@@ -290,7 +290,7 @@ export function withCliFixture<A, E>(
       const options = runOpts(opts)
       const proc = yield* Effect.acquireRelease(
         Effect.sync(() =>
-          Bun.spawn(["bun", "run", cliEntry, ...runArgs(message, opts)], {
+          Bun.spawn([process.execPath, "run", cliEntry, ...runArgs(message, opts)], {
             cwd: home,
             env: { ...process.env, ...env, ...options?.env },
             stdin: "ignore",
@@ -331,7 +331,7 @@ export function withCliFixture<A, E>(
       // as a finalizer error during test teardown.
       const proc = yield* Effect.acquireRelease(
         Effect.sync(() =>
-          Bun.spawn(["bun", "run", cliEntry, ...argv], {
+          Bun.spawn([process.execPath, "run", cliEntry, ...argv], {
             cwd: home,
             env: { ...process.env, ...env, ...opts?.env },
             stdout: "pipe",
@@ -402,7 +402,7 @@ export function withCliFixture<A, E>(
       // Either way we await proc.exited so the test scope doesn't leak.
       const proc = yield* Effect.acquireRelease(
         Effect.sync(() =>
-          Bun.spawn(["bun", "run", cliEntry, ...argv], {
+          Bun.spawn([process.execPath, "run", cliEntry, ...argv], {
             cwd: opts?.cwd ?? home,
             env: { ...process.env, ...env, ...opts?.env },
             stdin: "pipe",
