@@ -123,6 +123,7 @@ Normal `{env:…}` substitution applies to both aliases. If a local MCP server s
 | `enabled_providers`, `disabled_providers` | limit which providers load                       | [Providers](providers.md)                   |
 | `permission`           | per-tool rules: `allow`, `ask`, or `deny`                           | [Permissions and safety](permissions-and-safety.md) |
 | `shell`                | default shell path as a string, or `{ "kill_on_exit": true }` in global config to terminate shell children on exit | [Features](features.md#shell-process-lifecycle) |
+| `shell.backend`        | where shell commands run: `local` (default), `docker` (with `image`, `network`, `mount`) or `ssh` (with `host`, `user`, `port`, `identity_file`); global config only | [Features](features.md#shell-backends-docker-and-ssh) |
 | `sandbox`              | OS sandbox for shell commands and file edits                        | [Permissions and safety](permissions-and-safety.md) |
 | `redact`               | mask secrets before sending to model: `enabled` (default true), `patterns`, `allow` | [Permissions and safety](permissions-and-safety.md#secret-redaction) |
 | `hooks`                | your commands at fixed points in the agent's work                   | [Hooks](hooks.md)                           |
@@ -139,22 +140,24 @@ Normal `{env:…}` substitution applies to both aliases. If a local MCP server s
 | `webfetch`             | webfetch options: `allow_private` (off by default; global only) | [Permissions and safety](permissions-and-safety.md#webfetch-and-private-network-protection) |
 | `compaction`           | how long conversations are summarised to stay within context        |                                             |
 | `goal`                 | `/goal`: `enabled` and `max_rounds` (default 20)                    | [Features](features.md)                     |
-| `loop`                 | `/loop` (off by default): `enabled`, `max_runs` (50), `min_interval` seconds (60) | [Features](features.md#loop) |
+| `loop`                 | `/loop` (on by default): `enabled`, `max_runs` (50), `min_interval` seconds (60) | [Features](features.md#loop) |
 | `fallback`             | backup `models` and API-key rotation when a provider fails (off by default) | [Providers](providers.md#fallback-models-and-key-rotation) |
 | `tool_limits`          | repeated-call note (`repeat_nudge`) and per-tool time limits (`timeout`) | [Tool limits](#tool-limits)                 |
 | `tool_search`          | load MCP tool schemas on demand (`auto`, `true`, `false`) and size threshold | [MCP tool search](#mcp-tool-search) |
 | `webhooks`             | optional outgoing notifications for turns, permission asks, and questions | [Webhooks](#webhooks) |
 | `budget`               | optional dollar/token limits for a session, day, or month | [Spending limits](#spending-limits) |
-| `delegate`             | hand tasks to other coding agents over ACP: `enabled`, `agents`, per-agent `timeout` (off by default) | [Features](features.md#delegating-to-other-agents) |
+| `delegate`             | hand tasks to other coding agents over ACP: `enabled`, `agents`, per-agent `timeout` and `handshakeTimeout` (default 60000 ms) (off by default) | [Features](features.md#delegating-to-other-agents) |
 | `browser`              | browser automation via Playwright MCP: `enabled` (off by default), `headless` (default true), `engine` (`chrome`, `chromium`, `firefox`, `webkit`, `msedge`) | [Features](features.md#browser-automation) |
 | `checkpoints`          | durable git commits on `refs/yukioshi/checkpoints/*` (off by default) | [Features](features.md#git-checkpoints) |
 | `git`                  | `auto_commit`: commit each completed turn's changes (off by default); `/undo` reverts them | [Features](features.md#undo-and-auto-commit) |
 | `audit`                | local log of tool calls and approvals: `enabled` (off by default; global config only) | [Permissions and safety](permissions-and-safety.md#audit-log) |
-| `subagents`            | background subagents (`background`) and the `task_parallel` tool (`parallel`), both off by default | [Features](features.md#subagents) |
+| `subagents`            | background subagents (`background`), the `task_parallel` tool (`parallel`), and `task` with `fork: true` that inherits a copy of the parent conversation (`fork`), all off by default | [Features](features.md#subagents) |
 | `background_shell`     | shell commands in the background with `monitor`, `job_list` and `job_stop`: `enabled` (off by default), `max_jobs` (4), `max_minutes` (30), `buffer_kb` (1024), `run_wait_seconds` (60) | [Features](features.md#background-shell-commands) |
 | `share`, `enterprise.url` | session sharing (`manual`, `auto`, `disabled`) and the share server it needs | [Features](features.md) |
 | `triggers`             | authenticated HTTP trigger endpoint on `yukioshi serve` (global only) | [Features](features.md#triggers) |
 | `default_agent`        | the primary agent used when none is chosen (default `build`)       |                                             |
+| `architect`            | architect/editor mode — a read-only planner writes an edit plan, an editor subagent applies it: `enabled` (off by default), `planner_model`, `editor_model` | [Features](features.md#architecteditor-mode) |
+| `agent_sources`        | extra read-only subagent sources, e.g. `["claude"]` to also read `~/.claude/agents` and project `.claude/agents` (global config only; default none) | [Features](features.md#session-agents-and-claude-agent-folders) |
 | `subagent_depth`       | how deep subagents may nest (default 1: no subagents of subagents) | [Features](features.md#subagents)           |
 | `snapshot`             | file snapshots for undo (default true)                             |                                             |
 | `autoupdate`           | daily background updates: not set or `true` installs newer minor and patch releases, `"notify"` only notifies, `false` never checks (global config only) | [Installation](installation.md#automatic-updates) |
