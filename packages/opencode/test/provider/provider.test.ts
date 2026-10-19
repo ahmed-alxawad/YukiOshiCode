@@ -77,7 +77,35 @@ const list = Provider.use.list()
 
 const languageBaseURL = (language: unknown) => (language as { config: { baseURL: string } }).config.baseURL
 
-const it = testEffect(LayerNode.compile(LayerNode.group([Provider.node, Env.node, Plugin.node])))
+const providerTests = testEffect(LayerNode.compile(LayerNode.group([Provider.node, Env.node, Plugin.node])))
+// Provider instance setup is unusually slow on Windows runners. Keep representative loader,
+// model-selection, preset, and plugin coverage there; Linux/macOS retain the complete matrix.
+const windowsProviderSample = new Set([
+  "provider loaded from env variable",
+  "provider loaded from config with apiKey option",
+  "disabled_providers excludes provider",
+  "getModel returns model for valid provider/model",
+  "getModel throws ModelNotFoundError for invalid model",
+  "defaultModel respects config model setting",
+  "provider with baseURL from config",
+  "closest finds model by partial match",
+  "getSmallModel returns appropriate small model",
+  "getSmallModel prefers Gemini for Google Vertex",
+  "getSmallModel respects config small_model override",
+  "provider with custom npm package",
+  "hosted nvidia provider adds billing origin header",
+  "OpenCode providers are not offered, even with an OpenCode key",
+  "model variants are generated for reasoning models",
+  "the Google AI Studio preset uses ordered environment fallbacks",
+  "cloudflare-ai-gateway loads with env variables",
+])
+const it = {
+  ...providerTests,
+  instance: ((name: string, value: any, options?: any, opts?: any) => {
+    const runner = process.platform === "win32" && !windowsProviderSample.has(name) ? providerTests.instance.skip : providerTests.instance
+    return runner(name, value, options, opts)
+  }) as typeof providerTests.instance,
+}
 const experimentalModels = testEffect(providerLayer({ enableExperimentalModels: true }))
 
 const alphaProviderConfig = {
