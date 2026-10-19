@@ -162,11 +162,11 @@ describe("shell backend plan", () => {
     ).toThrow()
   })
 
-  test("ssh argv: BatchMode, strict host keys, key, port, one remote command after --", () => {
+  test("ssh argv: BatchMode, connect timeout, strict host keys, key, port, one remote command after --", () => {
     const plan = ShellBackend.plan({ backend: "ssh", ssh: ssh.ssh }, base)
     expect(plan.file).toBe("ssh")
     expect(plan.args).toEqual([
-      "-T", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ClearAllForwardings=yes",
+      "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "StrictHostKeyChecking=yes", "-o", "ClearAllForwardings=yes",
       "-p", "2222", "-i", "/home/me/my key", "-o", "IdentitiesOnly=yes",
       "dev@box.example", "--", "sh -c 'echo hi'",
     ])

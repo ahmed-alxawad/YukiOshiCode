@@ -28,6 +28,32 @@ const IMAGE = /^[A-Za-z0-9][A-Za-z0-9._:/@-]*$/
 const NETWORK = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
 // Variables that mean something only on the host; everything else of the MCP allow-list is passed into the container.
 const HOST_ONLY = new Set(["PATH", "HOME", "USER", "TMPDIR", "SHELL"])
+// Host plumbing that must reach the backend client itself, but never the workload: the docker
+// client needs the user's daemon selection, ssh needs the agent socket to authenticate.
+const CLIENT_ONLY: Record<"docker" | "ssh", readonly string[]> = {
+  docker: ["DOCKER_HOST", "DOCKER_CONTEXT"],
+  ssh: ["SSH_AUTH_SOCK"],
+}
+// The MCP allow-list forwards proxy settings by name and their values travel in the client's
+// environment, so credentials in `scheme://user:password@host` form are dropped before a workload can read them.
+const PROXY_VAR = /_proxy$/i
+const PROXY_USERINFO = /^((?:[A-Za-z][A-Za-z0-9+.-]*:)?\/\/)([^/?#]*)@/
+
+/** Copies the backend-client-only variables from the parent environment into the spawn environment. */
+function addClientEnv(env: Record<string, string>, parent: NodeJS.ProcessEnv, backend: "docker" | "ssh") {
+  for (const name of CLIENT_ONLY[backend]) {
+    const value = parent[name]
+    if (typeof value === "string" && value) env[name] = value
+  }
+}
+
+/** Strips `user:password@` from proxy URLs; scheme, host and port are kept. */
+function redactProxyCredentials(env: Record<string, string>) {
+  for (const [name, value] of Object.entries(env)) {
+    if (PROXY_VAR.test(name)) env[name] = value.replace(PROXY_USERINFO, "$1")
+  }
+  return env
+}
 
 export function active(cfg: Config | undefined) {
   return cfg?.backend === "docker" || cfg?.backend === "ssh" ? cfg.backend : undefined
@@ -45,7 +71,8 @@ export function plan(
   cfg: Config,
   input: { command: string; cwd: string; env: NodeJS.ProcessEnv; root: string },
 ): Plan {
-  const env = McpEnvironment.local({}, input.env)
+  if (input.command.includes("\0")) throw new Error("the command cannot contain NUL bytes")
+  const env = redactProxyCredentials(McpEnvironment.local({}, input.env))
   if (cfg.backend === "docker") {
     const docker = cfg.docker
     if (!docker?.image || !IMAGE.test(docker.image)) throw new Error("shell.docker.image is missing or invalid")
@@ -57,6 +84,8 @@ export function plan(
     const workdir = inside && rel ? path.posix.join("/work", ...rel.split(path.sep)) : "/work"
     const container = `yukioshi-${randomBytes(6).toString("hex")}`
     const pass = Object.keys(env).filter((name) => !HOST_ONLY.has(name) && /^[A-Za-z_][A-Za-z0-9_]*$/.test(name))
+    // The client itself needs the daemon selection; added after `pass` so `-e` never forwards it into the container.
+    addClientEnv(env, input.env, "docker")
     return {
       file: "docker",
       args: [
@@ -79,11 +108,13 @@ export function plan(
   if (ssh.user !== undefined && !USER.test(ssh.user)) throw new Error("shell.ssh.user is invalid")
   if (ssh.port !== undefined && !(Number.isInteger(ssh.port) && ssh.port > 0 && ssh.port < 65536))
     throw new Error("shell.ssh.port is invalid")
+  addClientEnv(env, input.env, "ssh")
   return {
     file: "ssh",
     args: [
       "-T",
       "-o", "BatchMode=yes",
+      "-o", "ConnectTimeout=10",
       "-o", "StrictHostKeyChecking=yes",
       "-o", "ClearAllForwardings=yes",
       ...(ssh.port ? ["-p", String(ssh.port)] : []),
@@ -97,9 +128,19 @@ export function plan(
   }
 }
 
-/** Best effort: stop a docker container whose local client was killed. Fails silently when it already exited. */
+/** Best effort: stop a docker container whose local client was killed. A container that already
+ * exited is fine; every other failure is warned about instead of being swallowed. */
 export function killContainer(name: string, env: Record<string, string>) {
+  let child: ReturnType<typeof spawn>
   try {
-    spawn("docker", ["kill", name], { env, stdio: "ignore", detached: true }).on("error", () => {}).unref()
-  } catch {}
+    child = spawn("docker", ["kill", name], { env, stdio: "ignore", detached: true })
+  } catch (error) {
+    console.warn(`[shell] could not spawn docker kill for container ${name}: ${error}`)
+    return
+  }
+  child.on("error", (error) => console.warn(`[shell] could not kill container ${name}: ${error.message}`))
+  child.on("exit", (code, signal) => {
+    if (code !== 0) console.warn(`[shell] docker kill for container ${name} failed (${code !== null ? `exit ${code}` : `signal ${signal}`})`)
+  })
+  child.unref()
 }
