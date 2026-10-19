@@ -17,6 +17,8 @@ import { SessionRunState } from "@/session/run-state"
 import { SessionStatus } from "@/session/status"
 
 import { TaskTool, type TaskPromptOps } from "../../src/tool/task"
+import { forkHistory } from "../../src/tool/task-fork"
+import { MessageV2 } from "../../src/session/message-v2"
 import { Truncate } from "@/tool/truncate"
 import { ToolRegistry } from "@/tool/registry"
 import { RuntimeFlags } from "@/effect/runtime-flags"
@@ -329,5 +331,152 @@ describe("task fork mode", () => {
         expect(texts(msgs).join("\n")).toContain("earlier message")
       }),
     { config: { subagents: { fork: true }, agent: { forky: { mode: "subagent", description: "f", fork: true } } } },
+  )
+
+  it.instance(
+    "fork child copy applies config redact patterns",
+    () =>
+      Effect.gen(function* () {
+        const { result, msgs } = yield* run(true, (chat) =>
+          Effect.gen(function* () {
+            yield* addText(chat.id, "internal note PROJDB-PASS-hunter2")
+          }),
+        )
+        expect(Exit.isSuccess(result)).toBe(true)
+        const all = texts(msgs).join("\n")
+        expect(all).toContain("internal note")
+        expect(all).not.toContain("PROJDB-PASS")
+      }),
+    { config: { subagents: { fork: true }, redact: { patterns: ["PROJDB-PASS-\\S+"] } } },
+  )
+
+  it.instance(
+    "fork child copy carries no queued subtask task",
+    () =>
+      Effect.gen(function* () {
+        const sessions = yield* Session.Service
+        const { msgs } = yield* run(true, (chat) =>
+          Effect.gen(function* () {
+            const user = yield* addText(chat.id, "queue the follow-up")
+            yield* sessions.updatePart({
+              id: PartID.ascending(),
+              messageID: user.id,
+              sessionID: chat.id,
+              type: "subtask",
+              prompt: "do the follow-up",
+              description: "follow-up",
+              agent: "general",
+            })
+          }),
+        )
+        expect(MessageV2.latest(msgs).tasks.some((task) => task.type === "subtask")).toBe(false)
+      }),
+    on,
+  )
+})
+
+// ---------- forkHistory / copyForkHistory pure fixtures ----------
+const FK_BASE = 1_700_000_000_000
+
+const ftext = (messageID: MessageID, sessionID: SessionID, text: string): SessionV1.Part => ({
+  id: PartID.ascending(),
+  messageID,
+  sessionID,
+  type: "text",
+  text,
+})
+
+const fsubtask = (messageID: MessageID, sessionID: SessionID): SessionV1.SubtaskPart => ({
+  id: PartID.ascending(),
+  messageID,
+  sessionID,
+  type: "subtask",
+  prompt: "queued work",
+  description: "queued",
+  agent: "general",
+})
+
+const fuser = (
+  created: number,
+  sessionID: SessionID,
+  parts: (messageID: MessageID) => SessionV1.Part[] = () => [],
+): SessionV1.WithParts => {
+  const id = MessageID.ascending()
+  const info: SessionV1.User = {
+    id,
+    role: "user",
+    sessionID,
+    agent: "build",
+    model: ref,
+    time: { created },
+  }
+  return { info, parts: parts(id) }
+}
+
+const fasst = (
+  created: number,
+  parentID: MessageID,
+  sessionID: SessionID,
+  finish?: SessionV1.Assistant["finish"],
+): SessionV1.WithParts => {
+  const info: SessionV1.Assistant = {
+    id: MessageID.ascending(),
+    role: "assistant",
+    parentID,
+    sessionID,
+    mode: "build",
+    agent: "build",
+    cost: 0,
+    path: { cwd: "/tmp", root: "/tmp" },
+    tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+    modelID: ref.modelID,
+    providerID: ref.providerID,
+    time: { created },
+    ...(finish ? { finish } : {}),
+  }
+  return { info, parts: [] }
+}
+
+describe("forkHistory copy safety", () => {
+  it.effect("queued subtask part is not copied into the child", () =>
+    Effect.gen(function* () {
+      const sessionID = SessionID.make("sess_fk_queued")
+      const u1 = fuser(FK_BASE, sessionID, (id) => [ftext(id, sessionID, "first")])
+      const a1 = fasst(FK_BASE + 10, u1.info.id, sessionID, "stop")
+      // newer than the last finished assistant, so MessageV2.latest would queue it in the child
+      const u2 = fuser(FK_BASE + 20, sessionID, (id) => [ftext(id, sessionID, "queued next"), fsubtask(id, sessionID)])
+      const a2 = fasst(FK_BASE + 30, u2.info.id, sessionID)
+      const history = forkHistory([u1, a1, u2, a2], a2.info.id)
+      expect(MessageV2.latest(history).tasks.some((task) => task.type === "subtask")).toBe(false)
+      expect(history.flatMap((msg) => msg.parts).some((part) => part.type === "subtask")).toBe(false)
+      expect(texts(history)).toContain("queued next")
+    }),
+  )
+
+  it.effect("finished subtask parts are kept as history", () =>
+    Effect.gen(function* () {
+      const sessionID = SessionID.make("sess_fk_done")
+      const u1 = fuser(FK_BASE, sessionID, (id) => [fsubtask(id, sessionID)])
+      const a1 = fasst(FK_BASE + 10, u1.info.id, sessionID, "stop")
+      const u2 = fuser(FK_BASE + 20, sessionID, (id) => [ftext(id, sessionID, "after")])
+      const a2 = fasst(FK_BASE + 30, u2.info.id, sessionID)
+      const history = forkHistory([u1, a1, u2, a2], a2.info.id)
+      expect(MessageV2.latest(history).tasks.some((task) => task.type === "subtask")).toBe(false)
+      expect(history.flatMap((msg) => msg.parts).some((part) => part.type === "subtask")).toBe(true)
+    }),
+  )
+
+  it.effect("missing untilID keeps only strictly older messages", () =>
+    Effect.gen(function* () {
+      const sessionID = SessionID.make("sess_fk_cut")
+      const u1 = fuser(FK_BASE, sessionID, (id) => [ftext(id, sessionID, "before")])
+      const a1 = fasst(FK_BASE + 10, u1.info.id, sessionID, "stop")
+      const gap = MessageID.ascending() // allocated between snapshots: absent from the message list
+      const u2 = fuser(FK_BASE + 20, sessionID, (id) => [ftext(id, sessionID, "after")])
+      const a2 = fasst(FK_BASE + 30, u2.info.id, sessionID)
+      const msgs = [u1, a1, u2, a2]
+      expect(forkHistory(msgs, gap).map((msg) => msg.info.id)).toEqual([u1.info.id, a1.info.id])
+      expect(forkHistory(msgs, a2.info.id).map((msg) => msg.info.id)).toEqual([u1.info.id, a1.info.id, u2.info.id])
+    }),
   )
 })

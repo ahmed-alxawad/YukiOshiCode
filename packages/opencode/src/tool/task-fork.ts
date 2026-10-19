@@ -19,7 +19,16 @@ export function forkSubagents(cfg: { readonly subagents?: { readonly fork?: bool
  */
 export function forkHistory(msgs: SessionV1.WithParts[], untilID: MessageID, maxTokens = FORK_MAX_TOKENS) {
   const cut = msgs.findIndex((msg) => msg.info.id === untilID)
-  const history = MessageV2.filterCompacted((cut < 0 ? msgs : msgs.slice(0, cut)).toReversed()).map((msg) => structuredClone(msg))
+  // If a race leaves untilID missing from the snapshot, ids are time-ordered
+  // (Identifier.ascending), so keep only the messages created before it instead of everything.
+  const sliced = cut < 0 ? msgs.filter((msg) => msg.info.id < untilID) : msgs.slice(0, cut)
+  const history = MessageV2.filterCompacted(sliced.toReversed()).map((msg) => structuredClone(msg))
+  // MessageV2.latest would queue these subtask parts in the child, where prompt.ts dispatches
+  // them with bypassAgentCheck and so bypasses the child's task deny; finished ones are history.
+  const queued = new Set<SessionV1.Part>(
+    MessageV2.latest(history).tasks.filter((part) => part.type === "subtask"),
+  )
+  for (const msg of history) msg.parts = msg.parts.filter((part) => !queued.has(part))
   const size = (msg: SessionV1.WithParts) => Token.estimate(JSON.stringify(msg))
   let total = history.reduce((sum, msg) => sum + size(msg), 0)
   for (const msg of history) {
@@ -37,7 +46,12 @@ export function forkHistory(msgs: SessionV1.WithParts[], untilID: MessageID, max
 /** Copies the history into the child session, masking secrets as exports do. */
 export const copyForkHistory = Effect.fn("TaskFork.copy")(function* (
   sessions: Session.Interface,
-  input: { from: SessionID; to: SessionID; until: MessageID },
+  input: {
+    from: SessionID
+    to: SessionID
+    until: MessageID
+    redact?: Parameters<typeof Redact.maskDeep>[1]
+  },
 ) {
   const history = forkHistory(yield* sessions.messages({ sessionID: input.from }), input.until)
   const ids = new Map<string, MessageID>()
@@ -52,12 +66,15 @@ export const copyForkHistory = Effect.fn("TaskFork.copy")(function* (
       ...(parentID && { parentID }),
     } as SessionV1.Info)
     for (const part of msg.parts) {
-      const copy = Redact.maskDeep({
-        ...part,
-        id: PartID.ascending(),
-        messageID: id,
-        sessionID: input.to,
-      }) as SessionV1.Part
+      const copy = Redact.maskDeep(
+        {
+          ...part,
+          id: PartID.ascending(),
+          messageID: id,
+          sessionID: input.to,
+        },
+        input.redact,
+      ) as SessionV1.Part
       if (copy.type === "compaction" && copy.tail_start_id) copy.tail_start_id = ids.get(copy.tail_start_id)
       yield* sessions.updatePart(copy)
     }

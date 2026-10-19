@@ -230,7 +230,12 @@ export const TaskTool = Tool.define(
         }))
 
       if (fork && !session)
-        yield* copyForkHistory(sessions, { from: ctx.sessionID, to: nextSession.id, until: ctx.messageID })
+        yield* copyForkHistory(sessions, {
+          from: ctx.sessionID,
+          to: nextSession.id,
+          until: ctx.messageID,
+          redact: cfg.redact,
+        })
 
       const msg = yield* MessageV2.get({ sessionID: ctx.sessionID, messageID: ctx.messageID }).pipe(
         Effect.provideService(Database.Service, database),
