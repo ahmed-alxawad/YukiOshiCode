@@ -22,8 +22,8 @@ const alive = (pid: number) => {
   }
 }
 
-// The stub formatter is a POSIX `sh -c ... exec sleep` command with a pid file; it does not exist on Windows.
-describe.skipIf(process.platform === "win32")("formatter time limit", () => {
+// The stub formatter hangs until killed and records its pid to verify termination.
+describe("formatter time limit", () => {
   it.instance(
     "a formatter that never ends is killed at the limit and the edit goes on",
     () =>
@@ -38,7 +38,12 @@ describe.skipIf(process.platform === "win32")("formatter time limit", () => {
         yield* Effect.acquireUseRelease(
           Effect.sync(() => {
             Formatter.mix.extensions = [".mix"]
-            Formatter.mix.enabled = async () => ["sh", "-c", `echo $$ > ${pidFile}; exec sleep 300`]
+            Formatter.mix.enabled = async () => [
+              process.execPath,
+              "-e",
+              'require("fs").writeFileSync(process.argv[1], String(process.pid)); setInterval(() => {}, 1000);',
+              pidFile,
+            ]
           }),
           () =>
             Format.Service.use((fmt) =>
