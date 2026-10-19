@@ -639,6 +639,7 @@ function waitStreamingRequest(pathname: string) {
 
 beforeAll(() => {
   state.server = Bun.serve({
+    hostname: "127.0.0.1",
     port: 0,
     async fetch(req) {
       const next = state.queue.shift()
@@ -1546,7 +1547,7 @@ describe("session.llm.stream", () => {
         expect(JSON.stringify(capture.body.input)).toContain("You are a helpful assistant.")
         expect(capture.body.input).toContainEqual({ role: "user", content: [{ type: "input_text", text: "Hello" }] })
       }),
-    { config: () => openAIConfig(loadFixture("openai", "gpt-5.2").model, `${state.server!.url.origin}/v1`) },
+    { git: false, config: () => openAIConfig(loadFixture("openai", "gpt-5.2").model, `${state.server!.url.origin}/v1`) },
   )
 
   it.instance(
