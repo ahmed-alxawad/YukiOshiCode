@@ -54,6 +54,9 @@ const openAIConfig = (model: ModelsDev.Provider["models"][string], baseURL: stri
 }
 
 const it = testEffect(AppNodeBuilder.build(LayerNode.group([LLM.node, Provider.node])))
+// Native-runtime streams start a child-backed request path and are disproportionately slow on
+// Windows CI. The provider-backed path remains covered there; native variants stay full on Unix.
+const nativeRuntimeIt = process.platform === "win32" ? it.instance.skip : it.instance
 
 // LLM.stream returns a Stream, not an Effect, so we can't use the serviceUse proxy.
 const drain = (input: LLM.StreamInput) => LLM.Service.use((svc) => svc.stream(input).pipe(Stream.runDrain))
@@ -1047,7 +1050,7 @@ describe("session.llm.stream", () => {
   )
 
   const mistralFixture = { providerID: "mistral", modelID: "mistral-small-latest" }
-  it.instance(
+  nativeRuntimeIt(
     "replays native Mistral reasoning from chat history",
     () =>
       Effect.gen(function* () {
@@ -1382,7 +1385,7 @@ describe("session.llm.stream", () => {
     { config: () => openAIConfig(loadFixture("openai", "gpt-5.2").model, `${state.server!.url.origin}/v1`) },
   )
 
-  it.instance(
+  nativeRuntimeIt(
     "keeps supported OpenAI models on AI SDK path when native flag is off",
     () =>
       Effect.gen(function* () {
@@ -1483,7 +1486,7 @@ describe("session.llm.stream", () => {
     { config: () => openAIConfig(loadFixture("openai", "gpt-5.2").model, `${state.server!.url.origin}/v1`) },
   )
 
-  it.instance(
+  nativeRuntimeIt(
     "streams OpenAI through native runtime when opted in",
     () =>
       Effect.gen(function* () {
@@ -1550,7 +1553,7 @@ describe("session.llm.stream", () => {
     { git: false, config: () => openAIConfig(loadFixture("openai", "gpt-5.2").model, `${state.server!.url.origin}/v1`) },
   )
 
-  it.instance(
+  nativeRuntimeIt(
     "uses injected native request executor for tool calls",
     () =>
       Effect.gen(function* () {
@@ -1650,7 +1653,7 @@ describe("session.llm.stream", () => {
     { config: () => openAIConfig(loadFixture("openai", "gpt-5.2").model, "https://injected-openai.test/v1") },
   )
 
-  it.instance(
+  nativeRuntimeIt(
     "executes OpenAI tool calls through native runtime",
     () =>
       Effect.gen(function* () {
