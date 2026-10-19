@@ -18,21 +18,31 @@ function startTime(pid: number): string | undefined {
 }
 
 export function attachWatchdog(target: Pick<ChildProcess, "pid" | "once"> | number, options: WatchdogOptions = {}): WatchdogHandle {
-  if (process.platform === "win32") return { cleanup: () => {} }
+  if (process.platform !== "linux" && process.platform !== "darwin") return { cleanup: () => {} }
   const pid = typeof target === "number" ? target : target.pid
   if (!pid || pid <= 0) return { cleanup: () => {} }
   const parent = process.pid
   const expected = startTime(parent) ?? ""
-  const script = [
-    'parent="$1"; target="$2"; group="$3"; expected="$4"',
-    'while [ -r "/proc/$parent/stat" ]; do',
-    "  if [ -n \"$expected\" ]; then current=$(sed 's/.*) //' \"/proc/$parent/stat\" 2>/dev/null | awk '{print $20}'); [ \"$current\" = \"$expected\" ] || exit 0; fi",
-    "  state=$(sed 's/.*) //' \"/proc/$parent/stat\" 2>/dev/null | awk '{print $1}'); [ \"$state\" = Z ] && break",
-    "  sleep 0.1",
-    "done",
-    'if [ "$group" = 1 ]; then kill -KILL -- -"$target" 2>/dev/null; fi',
-    'kill -KILL "$target" 2>/dev/null',
-  ].join("\n")
+  const script =
+    process.platform === "linux"
+      ? [
+          'parent="$1"; target="$2"; group="$3"; expected="$4"',
+          'while [ -r "/proc/$parent/stat" ]; do',
+          "  if [ -n \"$expected\" ]; then current=$(sed 's/.*) //' \"/proc/$parent/stat\" 2>/dev/null | awk '{print $20}'); [ \"$current\" = \"$expected\" ] || exit 0; fi",
+          "  state=$(sed 's/.*) //' \"/proc/$parent/stat\" 2>/dev/null | awk '{print $1}'); [ \"$state\" = Z ] && break",
+          "  sleep 0.1",
+          "done",
+          'if [ "$group" = 1 ]; then kill -KILL -- -"$target" 2>/dev/null; fi',
+          'kill -KILL "$target" 2>/dev/null',
+        ].join("\n")
+      : [
+          'parent="$1"; target="$2"; group="$3"',
+          'while kill -0 "$parent" 2>/dev/null; do',
+          "  sleep 0.1",
+          "done",
+          'if [ "$group" = 1 ]; then kill -KILL -- -"$target" 2>/dev/null; fi',
+          'kill -KILL "$target" 2>/dev/null',
+        ].join("\n")
   let watcher: ChildProcess | undefined
   try {
     watcher = cpSpawn("/bin/sh", ["-c", script, "watchdog", String(parent), String(pid), options.group ? "1" : "0", expected], { detached: true, stdio: "ignore" })
@@ -55,7 +65,7 @@ export function spawnWithWatchdog(cmd: string[], opts: WatchdogSpawnOptions = {}
   const group = opts.group ?? detached
   const proc = launch(cmd[0], cmd.slice(1), { cwd: opts.cwd, shell: opts.shell, env: opts.env === null ? {} : opts.env ? { ...process.env, ...opts.env } : undefined, stdio: [opts.stdin ?? "ignore", opts.stdout ?? "ignore", opts.stderr ?? "ignore"], windowsHide: process.platform === "win32", detached })
   ChildRegistry.track(proc, group && process.platform !== "win32")
-  const watchdog = opts.watchdog === false || process.platform === "win32" ? undefined : attachWatchdog(proc, { group })
+  const watchdog = opts.watchdog === false || (process.platform !== "linux" && process.platform !== "darwin") ? undefined : attachWatchdog(proc, { group })
   let closed = false
   let timer: ReturnType<typeof setTimeout> | undefined
   const abort = () => { if (closed || proc.exitCode !== null || proc.signalCode !== null) return; closed = true; proc.kill(opts.kill ?? "SIGTERM"); const ms = opts.timeout ?? 5_000; if (ms > 0) timer = setTimeout(() => proc.kill("SIGKILL"), ms) }
