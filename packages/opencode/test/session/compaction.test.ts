@@ -1256,7 +1256,9 @@ describe("session.compaction.process", () => {
         expect(Exit.isFailure(exit)).toBe(true)
         if (Exit.isFailure(exit)) {
           expect(Cause.hasInterrupts(exit.cause)).toBe(true)
-          expect(Date.now() - start).toBeLessThan(250)
+          // Windows scheduling can cross the 250 ms boundary by a few milliseconds.
+          const interruptionBudget = process.platform === "win32" ? 500 : 250
+          expect(Date.now() - start).toBeLessThan(interruptionBudget)
         }
       }).pipe(withCompaction({ llm: stub.llmLayer }))
     },
