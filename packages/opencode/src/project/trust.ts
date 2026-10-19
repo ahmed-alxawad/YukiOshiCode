@@ -4,6 +4,7 @@ import { mkdir, readFile, rename as fsRename, rm, stat, writeFile } from "node:f
 import { parse as parseJsonc } from "jsonc-parser"
 import { fileURLToPath } from "node:url"
 import { Global } from "@yukioshi/core/global"
+import { ConfigMarkdown } from "@yukioshi/core/config/markdown"
 import { Flock } from "@yukioshi/core/util/flock"
 import { Filesystem } from "@/util/filesystem"
 import type { InstanceContext } from "./instance-context"
@@ -63,7 +64,14 @@ function decode(value: unknown): Store {
 // so editing ordinary settings such as `model` does not revoke trust.
 const CONFIG_NAMES = new Set(["yukioshi.json", "yukioshi.jsonc", "opencode.json", "opencode.jsonc", "tui.json", "tui.jsonc"])
 const EXECUTABLE_KEYS = ["hooks", "plugin", "mcp", "lsp", "formatter"] as const
+// Agent markdown frontmatter keys that run or authorize things on the project's behalf —
+// config/agent.ts withholds exactly these from untrusted projects. The prompt body is not
+// executable, so it is never hashed: editing an agent's prompt must not revoke trust.
+const AGENT_KEYS = ["hooks", "mcpServers", "memory", "background", "fork", "isolation", "permission"] as const
 const CONFIG_DIR = /(^|\/)\.(yukioshi|opencode)\//
+// Where the config loaders read agent markdown from: {agent,agents}/**/*.md under
+// .yukioshi/.opencode (ConfigAgent.load) and agents/**/*.md under .claude (ConfigAgent.loadClaude).
+const AGENT_MD_PATTERN = /(^|\/)\.(yukioshi|opencode)\/agents?\/|(^|\/)\.claude\/agents\//
 const GENERATED = new Set([".yukioshi-skill.json", ".gitignore", "package-lock.json", "bun.lock", "bun.lockb"])
 
 async function projectFiles(root: string): Promise<string[]> {
@@ -79,7 +87,7 @@ async function projectFiles(root: string): Promise<string[]> {
   if (listed !== undefined) return listed.split("\0").filter(Boolean)
   // Not a git repository: only the root's own config files and config directories can apply.
   // Bun's glob does not combine brace alternatives with `**`, so scan each pattern separately.
-  const patterns = ["*.json", "*.jsonc", ".yukioshi/**", ".opencode/**"]
+  const patterns = ["*.json", "*.jsonc", ".yukioshi/**", ".opencode/**", ".claude/**"]
   const found = await Promise.all(
     patterns.map((pattern) =>
       Array.fromAsync(new Bun.Glob(pattern).scan({ cwd: root, dot: true, onlyFiles: true })).catch(() => []),
@@ -92,10 +100,13 @@ function relevant(file: string) {
   const normalized = file.replaceAll("\\", "/")
   const name = path.posix.basename(normalized)
   if (CONFIG_NAMES.has(name)) return true
+  // Agent markdown carries executable frontmatter (covered via agentExecutable below); every
+  // other Markdown file — commands, skills, modes — is a prompt.
+  if (name.endsWith(".md")) return AGENT_MD_PATTERN.test(normalized)
   if (!CONFIG_DIR.test(normalized)) return false
-  // Agents, commands, and skills are Markdown prompts. YukiOshi itself writes .gitignore and the
-  // dependency install output when it opens a trusted project; package.json stays covered.
-  if (name.endsWith(".md") || GENERATED.has(name)) return false
+  // YukiOshi itself writes .gitignore and the dependency install output when it opens a trusted
+  // project; package.json stays covered.
+  if (GENERATED.has(name)) return false
   return !normalized.includes("/node_modules/")
 }
 
@@ -104,6 +115,21 @@ function executableConfig(name: string, text: string): unknown {
   const data = parseJsonc(text, [], { allowTrailingComma: true }) as Record<string, unknown> | undefined
   if (typeof data !== "object" || data === null) return undefined
   return EXECUTABLE_KEYS.map((key) => [key, data[key] ?? null])
+}
+
+/**
+ * Canonical view of an agent markdown file's executable frontmatter, or undefined when the file
+ * carries none of the AGENT_KEYS (or is not an agent file at all): the loader would register it
+ * as a prompt-only agent, so it contributes nothing executable to the fingerprint.
+ */
+function agentExecutable(normalized: string, text: string): unknown {
+  if (!normalized.endsWith(".md") || !AGENT_MD_PATTERN.test(normalized)) return undefined
+  const data = ConfigMarkdown.parseOption(text)?.data
+  if (typeof data !== "object" || data === null || Array.isArray(data)) return undefined
+  const frontmatter = data as Record<string, unknown>
+  const selected = AGENT_KEYS.map((key) => [key, frontmatter[key] ?? null])
+  if (selected.every(([, value]) => value === null)) return undefined
+  return selected
 }
 
 function strings(value: unknown, out: string[] = []): string[] {
@@ -149,6 +175,14 @@ export async function fingerprint(root: string) {
     const absolute = path.join(root, file)
     const text = await readFile(absolute, "utf8").catch(() => undefined)
     if (text === undefined) continue
+    // Agent markdown contributes only its executable frontmatter; prompt-only agent files
+    // contribute nothing and are never hashed by raw content.
+    const normalized = file.replaceAll("\\", "/")
+    if (normalized.endsWith(".md") && AGENT_MD_PATTERN.test(normalized)) {
+      const agent = agentExecutable(normalized, text)
+      if (agent !== undefined) entry(file, JSON.stringify(agent))
+      continue
+    }
     const executable = executableConfig(path.basename(file), text)
     if (executable === undefined) {
       entry(file, text)

@@ -1001,6 +1001,9 @@ permission:
 ---
 Ordered permissions`,
     )
+    // Agent frontmatter permission is executable config: writing it revoked the trust granted by
+    // the fixture, so re-grant before loading.
+    yield* trustProject(test.directory)
 
     const config = yield* Config.use.get()
     expect(Object.keys(config.agent?.ordered?.permission ?? {})).toEqual(["bash", "*", "edit"])
