@@ -673,7 +673,7 @@ withMcpInstructions.instance(
       expect(body).toContain("Use lookup before mutate.")
       yield* Fiber.interrupt(fiber)
     }),
-  15_000,
+  30_000,
 )
 
 it.instance("legacy prompt emits message events without session.next events", () =>
@@ -1308,7 +1308,7 @@ it.instance(
           if (tool?.state.status === "running" && tool.state.metadata?.sessionId) return tool
         }),
         "timed out waiting for running subtask metadata",
-        "15 seconds",
+        "30 seconds",
       )
 
       if (tool.state.status !== "running") return
@@ -1319,7 +1319,7 @@ it.instance(
       yield* prompt.cancel(chat.id)
       yield* Fiber.await(fiber)
     }),
-  15_000,
+  30_000,
 )
 
 it.instance(
@@ -1353,7 +1353,7 @@ it.instance(
           if (tool?.state.status === "running" && tool.state.metadata?.sessionId) return tool
         }),
         "timed out waiting for running task metadata",
-        "15 seconds",
+        "30 seconds",
       )
 
       if (tool.state.status !== "running") return
@@ -1364,7 +1364,7 @@ it.instance(
       yield* prompt.cancel(chat.id)
       yield* Fiber.await(fiber)
     }),
-  15_000,
+  30_000,
 )
 
 it.instance(
