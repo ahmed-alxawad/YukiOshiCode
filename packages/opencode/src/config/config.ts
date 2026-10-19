@@ -922,6 +922,7 @@ const layer = Layer.effect(
             const agents = yield* Effect.promise(() => ConfigAgent.loadClaude(dir))
             if (project && !projectTrusted) {
               for (const [name, agent] of Object.entries(agents)) {
+                if (isRecord(agent)) ConfigAgent.dropUntrustedFields(`${dir} agent ${name}`, agent)
                 if (isRecord(agent) && (agent as any)["permission"] !== undefined)
                   (agent as any)["permission"] = withoutAllowRules(
                     `${dir} agent ${name}`,
