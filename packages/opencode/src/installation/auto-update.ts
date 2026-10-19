@@ -35,7 +35,7 @@ export function releaseBaseUrl() {
 export type AvailableReason = "major" | "notify" | "package-manager" | "unknown-method" | "not-writable" | "prerelease"
 
 export type Outcome =
-  | { kind: "installed"; version: string; from: string; at: number; announced?: boolean }
+  | { kind: "installed"; version: string; from: string; at: number; announced?: boolean; warning?: string }
   | {
       kind: "available"
       version: string
@@ -135,10 +135,12 @@ export function upgradeCommand(method: Method, version: string, platform: NodeJS
 /** The one-line message for an outcome, as seen by a process running `current`. */
 export function noticeText(outcome: Outcome, current: string) {
   switch (outcome.kind) {
-    case "installed":
+    case "installed": {
+      const note = outcome.warning ? ` (${outcome.warning})` : ""
       return outcome.version === current
-        ? `YukiOshi was updated to v${outcome.version} automatically.`
-        : `YukiOshi v${outcome.version} was installed in the background; it will be used the next time you start yukioshi.`
+        ? `YukiOshi was updated to v${outcome.version} automatically${note}.`
+        : `YukiOshi v${outcome.version} was installed in the background${note}; it will be used the next time you start yukioshi.`
+    }
     case "available": {
       const why =
         outcome.reason === "major"
@@ -169,7 +171,8 @@ function sanitizeState(parsed: unknown): State {
   const o = raw.outcome as Record<string, unknown> | null | undefined
   if (o && typeof o === "object" && str(o.version) && str(o.from) && typeof o.at === "number") {
     const base = { version: o.version, from: o.from, at: o.at, ...(o.announced === true ? { announced: true } : {}) }
-    if (o.kind === "installed") state.outcome = { kind: "installed", ...base }
+    if (o.kind === "installed")
+      state.outcome = { kind: "installed", ...base, ...(str(o.warning) ? { warning: o.warning } : {}) }
     else if (o.kind === "failed" && str(o.reason)) state.outcome = { kind: "failed", reason: o.reason, ...base }
     else if (o.kind === "available" && str(o.reason) && str(o.command) && str(o.method))
       state.outcome = { kind: "available", reason: o.reason as AvailableReason, command: o.command, method: o.method as Method, ...base }

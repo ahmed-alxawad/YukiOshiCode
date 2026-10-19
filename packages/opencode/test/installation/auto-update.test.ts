@@ -141,6 +141,13 @@ describe("automatic update rules", () => {
     const installed = { kind: "installed", version: "0.5.0", from: "0.4.1", at: 0 } as const
     expect(AutoUpdate.noticeText(installed, "0.4.1")).toContain("v0.5.0 was installed in the background")
     expect(AutoUpdate.noticeText(installed, "0.5.0")).toContain("updated to v0.5.0")
+    const warned = { ...installed, warning: "SHA256SUMS.sig is not published yet" } as const
+    expect(AutoUpdate.noticeText(warned, "0.4.1")).toContain(
+      "v0.5.0 was installed in the background (SHA256SUMS.sig is not published yet); it will be used",
+    )
+    expect(AutoUpdate.noticeText(warned, "0.5.0")).toBe(
+      "YukiOshi was updated to v0.5.0 automatically (SHA256SUMS.sig is not published yet).",
+    )
     const failed = { kind: "failed", version: "0.5.0", from: "0.4.1", reason: "boom", at: 0 } as const
     expect(AutoUpdate.noticeText(failed, "0.4.1")).toContain("failed (boom); still using v0.4.1")
   })
@@ -170,6 +177,9 @@ describe("automatic update rules", () => {
     expect(read({ outcome: { kind: "installed" } }).outcome).toBeUndefined()
     const good = { kind: "installed", version: "0.5.0", from: "0.4.1", at: 1 } as const
     expect(read({ checkedAt: 5, latest: "0.5.0", outcome: good })).toEqual({ checkedAt: 5, latest: "0.5.0", outcome: good })
+    const withWarn = { ...good, warning: "unsigned release" } as const
+    expect(read({ outcome: withWarn }).outcome).toEqual(withWarn)
+    expect(read({ outcome: { ...good, warning: 123 } }).outcome).toEqual(good)
   })
 
   test("SHA256SUMS lines are matched by exact file name", () => {

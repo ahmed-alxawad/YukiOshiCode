@@ -139,17 +139,27 @@ export async function backgroundUpdate(
       record({ kind: "failed", version: decision.version, from: current, reason, at: now })
     const asset = AutoUpdate.detectAsset()
     if (!asset) return failed(`there is no release build for ${process.platform}-${process.arch}`)
+    let warning: string | undefined
     const error = await AutoUpdate.installRelease({
       version: decision.version,
       asset,
       execPath,
       workDir: Global.Path.cache,
+      warn: (msg) => {
+        warning = msg
+      },
     }).then(
       () => undefined,
       (err: unknown) => (err instanceof Error ? err.message : String(err)),
     )
     if (error) return failed(error)
-    return record({ kind: "installed", version: decision.version, from: current, at: now })
+    return record({
+      kind: "installed",
+      version: decision.version,
+      from: current,
+      at: now,
+      ...(warning ? { warning } : {}),
+    })
   } finally {
     await lock.release().catch(() => {})
   }

@@ -27,7 +27,6 @@ The installer:
 2. downloads the matching archive from the latest release;
 3. checks the archive against the release's `SHA256SUMS` and stops if it does
    not match;
-3a. (optional) verifies the GPG/Ed25519 signature (`SHA256SUMS.sig`) of the archive;
 4. runs the new binary once (`--version`) before installing it;
 5. puts it in `~/.yukioshi/bin`, keeping the previous binary as
    `yukioshi.old`, and adds that folder to your shell's `PATH`.
