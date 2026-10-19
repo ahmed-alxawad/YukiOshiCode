@@ -239,7 +239,10 @@ describe("v2 pty HttpApi", () => {
           directoryHeader(dir),
           HttpClientRequest.bodyJson({
             command: "/bin/sh",
-            args: ["-c", 'printf "%s|%s|%s|%s|%s\\n" "$CALLER" "$SHARED" "$PLUGIN" "$TERM" "$HOOK_CWD"; exec cat'],
+            args: [
+              "-c",
+              'printf "%s|%s|%s|%s|%s\\n" "$CALLER" "$SHARED" "$PLUGIN" "$TERM" "$HOOK_CWD"; while read -r _; do printf "%s|%s|%s|%s|%s\\n" "$CALLER" "$SHARED" "$PLUGIN" "$TERM" "$HOOK_CWD"; done',
+            ],
             cwd,
             env: { CALLER: "caller", SHARED: "caller", TERM: "caller" },
           }),
@@ -271,37 +274,37 @@ describe("v2 pty HttpApi", () => {
           )
         const write = yield* socket.writer
 
+        const expected = `caller|plugin|plugin|xterm-256color|${cwd}`
         let output = ""
-        const loop = (expected: string): Effect.Effect<string, unknown> =>
+        const readUntil = (expected: string): Effect.Effect<string, unknown> =>
           Effect.gen(function* () {
             if (output.includes(expected)) return output
             output += yield* Queue.take(messages)
-            return yield* loop(expected)
+            return yield* readUntil(expected)
           })
-        const takeUntil = (expected: string) =>
-          loop(expected).pipe(
-            Effect.timeoutOrElse({
-              duration: "40 seconds",
-              orElse: () =>
-                HttpClientRequest.get(`/api/pty/${info.id}`).pipe(
-                  directoryHeader(dir),
-                  HttpClient.execute,
-                  Effect.flatMap((res) => res.text),
-                  Effect.catch(() => Effect.succeed("pty info unavailable")),
-                  Effect.flatMap((status) =>
-                    Effect.fail(
-                      new Error(
-                        `Timed out waiting for ${expected}; saw ${JSON.stringify(output)}; control frames ${frames.length}; pty ${status}`,
-                      ),
-                    ),
-                  ),
-                ),
-            }),
-          )
 
-        expect(yield* takeUntil(`caller|plugin|plugin|xterm-256color|${cwd}`)).toContain(
-          `caller|plugin|plugin|xterm-256color|${cwd}`,
-        )
+        const receive = (attempt: number): Effect.Effect<string, unknown, HttpClient.HttpClient> =>
+          Effect.gen(function* () {
+            const result = yield* readUntil(expected).pipe(Effect.timeoutOption("2 seconds"))
+            if (result._tag === "Some") return result.value
+            if (attempt >= 20) {
+              const status = yield* HttpClientRequest.get(`/api/pty/${info.id}`).pipe(
+                directoryHeader(dir),
+                HttpClient.execute,
+                Effect.flatMap((res) => res.text),
+                Effect.catch(() => Effect.succeed("pty info unavailable")),
+              )
+              return yield* Effect.fail(
+                new Error(
+                  `Timed out waiting for ${expected}; saw ${JSON.stringify(output)}; control frames ${frames.length}; pty ${status}`,
+                ),
+              )
+            }
+            yield* write("\n").pipe(Effect.catch(() => Effect.void))
+            return yield* receive(attempt + 1)
+          })
+
+        expect(yield* receive(0)).toContain(expected)
         yield* write(new Socket.CloseEvent(1000, "done")).pipe(Effect.catch(() => Effect.void))
         yield* HttpClientRequest.delete(`/api/pty/${info.id}`).pipe(directoryHeader(dir), HttpClient.execute)
       }),

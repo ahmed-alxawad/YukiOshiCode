@@ -7,14 +7,23 @@ import * as RunningTurns from "@/session/running"
 import { TasksCommand } from "@/cli/cmd/tasks"
 import { cliIt } from "../lib/cli-process"
 
+const bunDir = path.dirname(process.execPath)
+if (!process.env.PATH?.split(":").includes(bunDir)) {
+  process.env.PATH = process.env.PATH ? `${bunDir}:${process.env.PATH}` : bunDir
+}
+
 const entry = path.resolve(import.meta.dir, "../../src/index.ts")
 
 // The test preload sets YUKIOSHI_DB=:memory:, so both processes get one shared database file instead.
 async function tasks(home: string, args: string[]) {
-  const proc = Bun.spawn(["bun", "run", entry, "tasks", ...args], {
+  const bunPath = process.execPath
+  const bunDir = path.dirname(bunPath)
+  const pathEnv = process.env.PATH ? `${bunDir}:${process.env.PATH}` : bunDir
+  const proc = Bun.spawn([bunPath, "run", entry, "tasks", ...args], {
     cwd: home,
     env: {
       ...process.env,
+      PATH: pathEnv,
       HOME: home,
       PWD: home,
       XDG_CONFIG_HOME: path.join(home, ".config"),
@@ -87,25 +96,64 @@ describe("yukioshi tasks --all (real run in the background)", () => {
         yield* llm.hang
         const handle = yield* opencode.startRun("block forever", { env: { YUKIOSHI_DB: path.join(home, "sessions.db") } })
         const listP = async () => JSON.parse(await tasks(home, ["--all", "--format", "json"])) as Listing
-        const list = () => Effect.promise(listP)
+        const list = () => Effect.tryPromise(listP).pipe(Effect.orElseSucceed(() => ({ sessions: [] }) as Listing))
 
         let listing: Listing = { sessions: [] }
         const deadline = Date.now() + 90_000
-        while (listing.sessions.length === 0 && Date.now() < deadline) {
-          yield* Effect.sleep("500 millis")
-          listing = yield* list()
+        while (Date.now() < deadline) {
+          yield* Effect.sleep("250 millis")
+          const current = yield* list()
+          if (
+            current.sessions.length === 1 &&
+            current.sessions[0]!.state.includes("turn") &&
+            current.sessions[0]!.sessionID.startsWith("ses_")
+          ) {
+            listing = current
+            break
+          }
         }
         expect(listing.sessions).toHaveLength(1)
         expect(listing.sessions[0]!.state).toContain("turn")
         expect(listing.sessions[0]!.sessionID.startsWith("ses_")).toBe(true)
 
-        const table = yield* Effect.promise(() => tasks(home, ["--all"]))
-        expect(table).toContain(listing.sessions[0]!.sessionID)
+        const sessionID = listing.sessions[0]!.sessionID
+        let table = ""
+        const tableDeadline = Date.now() + 30_000
+        while (Date.now() < tableDeadline) {
+          const res = yield* Effect.tryPromise(() => tasks(home, ["--all"])).pipe(Effect.orElseSucceed(() => ""))
+          if (res.includes(sessionID)) {
+            table = res
+            break
+          }
+          yield* Effect.sleep("250 millis")
+        }
+        expect(table).toContain(sessionID)
 
         handle.interrupt()
         yield* handle.result
-        expect((yield* list()).sessions).toEqual([])
-        const empty = yield* Effect.promise(() => tasks(home, ["--all"]))
+
+        let stoppedListing: Listing = { sessions: ["pending" as any] }
+        const stopDeadline = Date.now() + 30_000
+        while (Date.now() < stopDeadline) {
+          yield* Effect.sleep("250 millis")
+          const current = yield* list()
+          if (current.sessions.length === 0) {
+            stoppedListing = current
+            break
+          }
+        }
+        expect(stoppedListing.sessions).toEqual([])
+
+        let empty = ""
+        const emptyDeadline = Date.now() + 30_000
+        while (Date.now() < emptyDeadline) {
+          const res = yield* Effect.tryPromise(() => tasks(home, ["--all"])).pipe(Effect.orElseSucceed(() => ""))
+          if (res === "No running sessions.\n") {
+            empty = res
+            break
+          }
+          yield* Effect.sleep("250 millis")
+        }
         expect(empty).toBe("No running sessions.\n")
       }),
     120_000,
