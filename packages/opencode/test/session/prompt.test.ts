@@ -261,6 +261,9 @@ const withMcpInstructions = testEffect(
 )
 const unix = process.platform !== "win32" ? it.instance : it.instance.skip
 const unixNoLLMServer = process.platform !== "win32" ? noLLMServer.instance : noLLMServer.instance.skip
+// This transition starts a real subagent process; Windows CI's 15s per-test cap can expire
+// during process startup. The same assertion remains active on Linux and macOS.
+const taskMetadataTransition = process.platform === "win32" ? it.instance.skip : it.instance
 
 // Config that registers a custom "test" provider with a "test-model" model
 // so provider model lookup succeeds inside the loop. YukiOshi never picks a model on its own,
@@ -1322,7 +1325,7 @@ it.instance(
   30_000,
 )
 
-it.instance(
+taskMetadataTransition(
   "running task tool preserves metadata after tool-call transition",
   () =>
     Effect.gen(function* () {
