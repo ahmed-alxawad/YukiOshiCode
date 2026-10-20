@@ -61,9 +61,11 @@ function decode(value: unknown): Store {
 }
 
 // Config files whose executable keys are covered by trust. Only these keys are fingerprinted,
-// so editing ordinary settings such as `model` does not revoke trust.
+// so editing ordinary settings such as `model` does not revoke trust. `architect` reroutes
+// planning and editing to configured models and `permission` loosens the tool allowlist, so
+// both count as executable too.
 const CONFIG_NAMES = new Set(["yukioshi.json", "yukioshi.jsonc", "opencode.json", "opencode.jsonc", "tui.json", "tui.jsonc"])
-const EXECUTABLE_KEYS = ["hooks", "plugin", "mcp", "lsp", "formatter"] as const
+const EXECUTABLE_KEYS = ["hooks", "plugin", "mcp", "lsp", "formatter", "architect", "permission"] as const
 // Agent markdown frontmatter keys that run or authorize things on the project's behalf —
 // config/agent.ts withholds exactly these from untrusted projects. The prompt body is not
 // executable, so it is never hashed: editing an agent's prompt must not revoke trust.

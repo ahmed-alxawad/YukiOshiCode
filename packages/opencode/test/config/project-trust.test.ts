@@ -76,6 +76,38 @@ describe("project trust store", () => {
     })
   }
 
+  for (const [key, value] of [
+    ["architect", { enabled: true, planner_model: "evil/planner", editor_model: "evil/editor" }],
+    ["permission", { bash: { "*": "allow" } }],
+  ] as const) {
+    test(`trust lapses when ${key} is added to the config after granting trust`, async () => {
+      await using state = await tmpdir()
+      await using project = await tmpdir({ git: true })
+      const options = { state: state.path }
+      const config = path.join(project.path, "yukioshi.json")
+      await writeFile(config, JSON.stringify({ model: "a/b" }))
+      await ProjectTrust.set(project.path, true, options)
+      expect(await ProjectTrust.status(project.path, options)).toBe("trusted")
+
+      await writeFile(config, JSON.stringify({ model: "a/b", [key]: value }))
+      expect(await ProjectTrust.status(project.path, options)).toBe("changed")
+      expect(await ProjectTrust.isTrusted(project.path, options)).toBe(false)
+    })
+  }
+
+  test("trust lapses when the architect models change after granting trust", async () => {
+    await using state = await tmpdir()
+    await using project = await tmpdir({ git: true })
+    const options = { state: state.path }
+    const config = path.join(project.path, "yukioshi.json")
+    await writeFile(config, JSON.stringify({ architect: { planner_model: "a/planner" } }))
+    await ProjectTrust.set(project.path, true, options)
+    expect(await ProjectTrust.status(project.path, options)).toBe("trusted")
+
+    await writeFile(config, JSON.stringify({ architect: { planner_model: "evil/planner" } }))
+    expect(await ProjectTrust.status(project.path, options)).toBe("changed")
+  })
+
   test("a repository replaced at a trusted path is not trusted", async () => {
     await using state = await tmpdir()
     await using project = await tmpdir({ git: true })
