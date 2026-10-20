@@ -16,7 +16,7 @@ accept `--print-logs`, `--log-level DEBUG|INFO|WARN|ERROR`, and `--pure`
 | `yukioshi models [provider]`    | list the models you can use (`--verbose`, `--refresh`)   |
 | `yukioshi trust [folder]`       | trust a repository's hooks, plugins, and commands (`--status`, `--revoke`) |
 | `yukioshi checkpoint <action>`  | list, show, restore, or prune durable Git checkpoints (`--session`, `--yes`, `--older-than`) |
-| `yukioshi undo`                 | revert the last turn's file changes; drops our unpushed auto-commit (`--session`) |
+| `yukioshi undo`                 | revert the last turn's file changes; drops our unpushed auto-commit; needs `checkpoints.enabled` or `git.auto_commit` (`--session`) |
 | `yukioshi worktree <action>`    | create (`new`), `list`, locate (`path`), or `remove` Git worktrees for parallel sessions (`--yes`) |
 | `yukioshi upgrade [version]`    | upgrade to the latest or a specific version (`-m, --method`: `curl`, `npm`, `pnpm`, `bun`, `brew`, `choco`, `scoop`) |
 | `yukioshi uninstall`            | remove YukiOshi Code (`--keep-config`, `--keep-data`, `--dry-run`, `-f`) |
@@ -175,6 +175,7 @@ delay; it is on unless `"loop": { "enabled": false }`. See [Features](features.m
 | `yukioshi debug sandbox`        | whether the OS sandbox can run here, and what `sandbox.enabled` does (`--format json`) |
 | `yukioshi debug skill`          | list the skills it found                                |
 | `yukioshi debug lsp …`, `debug rg …`, `debug file …` | language server, search, and file checks (`debug rg` takes `--glob`, `--limit`, `--query`) |
+| `yukioshi debug repo-map`       | print the repo map (`--tokens`)                         |
 | `yukioshi debug scrap`          | list all known projects                                 |
 | `yukioshi debug snapshot …`     | snapshot checks                                         |
 | `yukioshi debug startup`        | print startup timing                                    |

@@ -163,7 +163,8 @@ script: `yukioshi run --command commit`.
 `yukioshi schedule` runs prompts on a recurring cron schedule, for example to summarize commits every morning or review dependencies weekly.
 
 Unlike `/loop` (which runs in an active terminal session or server), scheduled tasks integrate directly into your operating system's background scheduler without running a continuous background daemon of our own:
-- **Linux and macOS:** manages a clearly marked block (`# BEGIN yukioshi schedule` ... `# END yukioshi schedule`) in your user `crontab`, leaving all other cron entries untouched.
+- **Linux:** manages a clearly marked block (`# BEGIN yukioshi schedule` ... `# END yukioshi schedule`) in your user `crontab`, leaving all other cron entries untouched.
+- **macOS:** one user LaunchAgent per job (see [macOS launchd scheduling](#macos-launchd-scheduling)), with the crontab block as a fallback.
 - **Windows:** registers tasks in Windows Task Scheduler via `schtasks` (under `YukiOshi\<id>`).
 
 A job refuses every approval prompt unless it was added with `--auto`, which
@@ -758,7 +759,7 @@ Off by default (`local`). In your global config only (a project config cannot se
 { "shell": { "backend": "ssh", "ssh": { "host": "box.example", "user": "dev", "port": 22, "identity_file": "~/.ssh/id_ed25519" } } }
 ```
 
-- **docker**: each shell command runs in `docker run --rm -i --network none` with the project mounted at `/work` and the working directory mapped. Only the MCP-isolation allow-list of environment variables (locale, proxy and the like) reaches the container, by name; no secrets and no privileged flags. Aborting or a timeout kills the local client and runs `docker kill` on the named container.
+- **docker**: each shell command runs in `docker run --rm -i --network <network>` (`shell.docker.network`, default `none`) with the project mounted at `/work` and the working directory mapped. Only the MCP-isolation allow-list of environment variables (locale, proxy and the like) reaches the container, by name; no secrets and no privileged flags. Aborting or a timeout kills the local client and runs `docker kill` on the named container.
 - **ssh**: `ssh -o BatchMode=yes -o StrictHostKeyChecking=yes [-i key] user@host -- sh -c '<quoted command>'`. No password prompts, the host must already be in `known_hosts`, the command is quoted so it stays one remote command. Abort and timeout kill the local ssh client.
 - Permissions are decided before anything runs, exactly as for local commands.
 - The read, edit and write tools stay local. With docker the shell sees the same files because the project is mounted. With ssh it does NOT: the remote machine sees different files than your edits unless you sync them yourself.

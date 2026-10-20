@@ -26,6 +26,7 @@ command in the terminal UI:
 | `engineering:*` | architecture, code review, debugging, deploy checklist, documentation, incident response, standup, system design, tech debt, testing strategy |
 | `design:*` | accessibility review, design critique, design handoff, design systems, research synthesis, user research, UX copy |
 | `productivity:*` | memory management, getting started, task management, updates |
+| `loop` | how to use `/loop` and when to use `yukioshi schedule` instead |
 | `skill-creator` | create and improve skills |
 | `web-artifacts-builder` | build multi-part web artifacts |
 | `customize-opencode` | help with editing YukiOshi's own configuration |

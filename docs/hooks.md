@@ -13,12 +13,12 @@ unchanged.
 | `preToolUse`       | before a tool call, before the permission check   | yes                                   |
 | `postToolUse`      | after a tool call                                 | the call already ran; a block is sent to the model as feedback |
 | `userPromptSubmit` | before your message is sent                       | yes; standard output is added as context |
-| `sessionStart`     | when a session starts                             | no; standard output is added as context |
+| `sessionStart`     | before the first message of a session             | no; standard output is added as context |
 | `stop`             | when a task completes                             | no                                    |
 | `subagentStart`    | when a subagent session starts                    | no                                    |
 | `subagentStop`     | when a subagent finishes its task                 | no                                    |
 | `preCompact`       | before a long conversation is compacted           | no                                    |
-| `notification`     | when the agent is waiting for your approval       | no                                    |
+| `notification`     | when the agent is waiting for your approval (`matcher` is matched against the permission name) | no |
 
 ## Configuration
 
@@ -46,11 +46,15 @@ For an HTTP hook, see [HTTP hooks](#http-hooks) below.
 
 Event data arrives as JSON on standard input. It always includes
 `hook_event_name` and `cwd`; tool events add `tool_name`, `tool_input`,
-`tool_use_id`, and `session_id`, and `userPromptSubmit` adds `prompt`.
+`tool_use_id`, and `session_id`; `postToolUse` also adds `tool_response`
+(`title`, `output`, `metadata`). `userPromptSubmit` has `session_id` and `prompt`,
+`sessionStart` has `session_id` and `source`, and `notification` has `session_id`,
+`message`, `tool_name` (the permission asked for) and `risk`.
 `subagentStart` has `session_id`, `parent_session_id`, `agent_name` and `description` (the task
 description), and `subagentStop` has `session_id` and `parent_session_id`, and `preCompact` has
 `session_id` and `trigger` (`auto`, or `manual` when you asked for it).
-`stop` runs only for the session you started, not for its subagents.
+`stop` has `session_id` and runs only for the session you started; a subagent
+finishing runs `subagentStop` instead.
 
 Every hook also gets two environment variables:
 
@@ -68,7 +72,9 @@ appear in a prompt or tool output are replaced with `[REDACTED:...]`.
 
 A hook blocks the action by exiting with code `2`, or by printing
 `{"decision":"block","reason":"…"}`. The reason is shown to the model so it
-can adjust.
+can adjust. Only `preToolUse` and `userPromptSubmit` can stop anything; a block
+from any other event is ignored (`postToolUse` sends it to the model as feedback).
+A hook can also print `{"additionalContext":"…"}` to add context (`userPromptSubmit` and `sessionStart`).
 
 ```bash
 #!/bin/sh
