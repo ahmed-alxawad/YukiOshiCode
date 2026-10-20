@@ -192,11 +192,12 @@ YukiOshi uses ripgrep for workspace file and text search (`grep`, `glob`, file s
 ## Release signing (for the owner)
 
 `SHA256SUMS.sig` is an Ed25519 signature (base64 or raw 64 bytes) of the
-`SHA256SUMS` file, published next to it. The updater and `yukioshi upgrade`
-verify it with the public key in `packages/opencode/src/installation/release-key.ts`
-(`RELEASE_PUBLIC_KEY`; empty means no check). Only the in-binary updater
-verifies it; `install` (the shell installer) does not, because `openssl` ed25519
-support is not reliable across macOS LibreSSL and older OpenSSL.
+`SHA256SUMS` file, published next to it. The background updater verifies it
+with the public key in `packages/opencode/src/installation/release-key.ts`
+(`RELEASE_PUBLIC_KEY`; empty means no check, which is the case today). Neither
+`yukioshi upgrade` nor `install` (the shell installer) checks it: they only check
+the `SHA256SUMS` checksums, because `openssl` ed25519 support is not reliable
+across macOS LibreSSL and older OpenSSL.
 
 One-time setup:
 
