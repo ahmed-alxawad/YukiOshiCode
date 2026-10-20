@@ -35,7 +35,7 @@ workflow. Most opencode setups work after a few renames.
 - Untrusted repositories can't start local MCP servers or custom LSP/formatter commands.
 - Installers verify release checksums, and Windows has `install.ps1`.
 - API keys and OAuth tokens stored in the OS keychain.
-- Claude Code-compatible hooks for eight events (`hooks`).
+- Claude Code-compatible hooks for nine events (`hooks`).
 - Project memory (`memory`), semantic code search (`indexing`), and a code
   graph tool (`code_graph`), all off by default.
 - Background subagents, and parallel subagents in isolated git worktrees (`subagents` in config, off by default).

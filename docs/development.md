@@ -50,8 +50,10 @@ cd packages/opencode && bun test test/plugin/google.test.ts
 ```
 
 The pre-push hook runs the typecheck, so keep `~/.bun/bin` on your `PATH`.
-Pull requests and pushes to `main` run typecheck, build, and the test suites
-in CI.
+The hook also checks that your Bun version matches `packageManager`. Pull
+requests and pushes to `main` run typecheck, a Markdown link check
+(`bun packages/opencode/script/check-docs.ts`), the test suites, and a binary
+smoke test in CI.
 
 ## CLI benchmark
 
@@ -87,7 +89,7 @@ Run `bun run notices` to regenerate `THIRD-PARTY-NOTICES.md` after a dependency 
 
 Pushing a tag such as `v0.3.6` starts the release workflow: it builds every
 platform, writes `SHA256SUMS`, checks the binaries on macOS, Windows, Linux
-ARM, and Alpine, publishes the release, and then tests the installers against
+(x64 and ARM), and Alpine, publishes the release, and then tests the installers against
 it. To rebuild an existing tag, run the workflow by hand with that tag.
 
 ## Logo
