@@ -6,7 +6,21 @@ import { watch as fsWatch } from "fs"
 import { effectCmd, fail } from "../effect-cmd"
 import { UI } from "../ui"
 import { ProjectTrust } from "@/project/trust"
-import { findTriggers, promptFor, removeMarker, type Trigger } from "../../watch"
+import {
+  fatalWatcherStop,
+  findTriggers,
+  markTaskFailed,
+  promptFor,
+  queueTriggers,
+  removeMarker,
+  triggerKey,
+  watchRootLostMessage,
+  watchScanErrorMessage,
+  watchStopMessage,
+  WATCH_MAX_ATTEMPTS,
+  type TaskLog,
+  type Trigger,
+} from "../../watch"
 
 const MAX_BYTES = 1024 * 1024
 const SKIP = new Set([".git", "node_modules"])
@@ -64,14 +78,25 @@ export const WatchCommand = effectCmd({
 
 type Options = { root: string; dir: string; mode: string; model?: string; dryRun: boolean; once: boolean }
 
+/** What happened to the marker during a run: removed (task may run again), kept (never re-run), or failed (retry with backoff). */
+type Outcome = "removed" | "kept" | "failed"
+
 async function watchLoop(opts: Options) {
   const { root } = opts
   const queue: { file: string; trigger: Trigger }[] = []
-  const seen = new Set<string>()
+  const seen: TaskLog = new Map()
   const timers = new Map<string, ReturnType<typeof setTimeout>>()
   let running = false
+  let stopping = false
   let finish: () => void = () => {}
   const done = new Promise<void>((resolve) => (finish = resolve))
+
+  /** Ends the loop after a fatal watcher condition (vanished root, fs.watch error) with a non-zero exit. */
+  const stopLoudly = (message: string) => {
+    if (stopping) return
+    stopping = true
+    fatalWatcherStop(message, UI.println, finish)
+  }
 
   const inside = (file: string) => file === root || file.startsWith(root + path.sep)
 
@@ -89,12 +114,7 @@ async function watchLoop(opts: Options) {
     if (await ignored(rel)) return
     const content = await fs.readFile(real, "utf8").catch(() => undefined)
     if (content === undefined || content.includes("\0")) return
-    for (const trigger of findTriggers(content)) {
-      const key = `${rel}:${trigger.line}:${trigger.raw}`
-      if (seen.has(key)) continue
-      seen.add(key)
-      queue.push({ file: rel, trigger })
-    }
+    queue.push(...queueTriggers(seen, rel, findTriggers(content), Date.now()).map((trigger) => ({ file: rel, trigger })))
     void next()
   }
 
@@ -103,19 +123,24 @@ async function watchLoop(opts: Options) {
     const item = queue.shift()
     if (!item) return
     running = true
+    const key = triggerKey(item.file, item.trigger)
+    let outcome: Outcome = "failed"
     try {
-      await handle(item.file, item.trigger)
+      outcome = await handle(item.file, item.trigger)
     } catch (error) {
       UI.println(`watch: ${item.file}:${item.trigger.line} failed: ${error instanceof Error ? error.message : String(error)}`)
     }
+    if (outcome === "removed") seen.delete(key)
+    else if (outcome === "failed" && markTaskFailed(seen, key, Date.now()))
+      UI.println(`watch: giving up on ${item.file}:${item.trigger.text} after ${WATCH_MAX_ATTEMPTS} attempts`)
     running = false
     if (opts.once) return finish()
     void next()
   }
 
-  async function handle(file: string, trigger: Trigger) {
+  async function handle(file: string, trigger: Trigger): Promise<Outcome> {
     UI.println(`${opts.dryRun ? "would run" : "running"} ${trigger.kind === "ask" ? "AI?" : "AI!"} ${file}:${trigger.line}: ${trigger.text}`)
-    if (opts.dryRun) return
+    if (opts.dryRun) return "kept"
     const cmd = [
       ...selfCommand(),
       "run",
@@ -126,20 +151,30 @@ async function watchLoop(opts: Options) {
     ]
     const proc = Bun.spawn(cmd, { cwd: root, stdout: "pipe", stderr: "inherit", stdin: "ignore" })
     const [out, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
-    if (code !== 0) UI.println(`watch: run exited with code ${code}; marker left in place`)
-    if (code !== 0) return
+    if (code !== 0) {
+      UI.println(`watch: run exited with code ${code}; marker left in place`)
+      return "failed"
+    }
     const abs = path.join(root, file)
     const real = await fs.realpath(abs).catch(() => undefined)
-    if (!real || !inside(real)) return
+    if (!real || !inside(real)) return "kept"
     const content = await fs.readFile(real, "utf8")
     const answer = trigger.kind === "ask" ? out.trim() : undefined
     const updated = removeMarker(content, trigger, answer)
-    if (updated !== undefined) await fs.writeFile(real, updated)
-    else UI.println(`watch: ${file}:${trigger.line} changed during the run; marker left in place`)
+    if (updated === undefined) {
+      UI.println(`watch: ${file}:${trigger.line} changed during the run; marker left in place`)
+      return "kept"
+    }
+    await fs.writeFile(real, updated)
+    return "removed"
   }
 
   const watcher = fsWatch(opts.dir, { recursive: true }, (_event, name) => {
-    if (!name) return
+    if (!name) {
+      // Bun reports the watched root's own deletion (branch switch, rm -rf) as a nameless event and never emits "error".
+      stopLoudly(watchRootLostMessage(opts.dir))
+      return
+    }
     const rel = path.relative(root, path.join(opts.dir, name.toString()))
     if (rel.startsWith("..") || path.isAbsolute(rel)) return
     clearTimeout(timers.get(rel))
@@ -147,10 +182,11 @@ async function watchLoop(opts: Options) {
       rel,
       setTimeout(() => {
         timers.delete(rel)
-        void scan(rel).catch(() => {})
+        void scan(rel).catch((error) => UI.println(watchScanErrorMessage(rel, error)))
       }, 300),
     )
   })
+  watcher.on("error", (error) => stopLoudly(watchStopMessage(error)))
   UI.println(`Watching ${opts.dir} for AI! and AI? comments (${opts.dryRun ? "dry run, " : ""}mode ${opts.mode}). Press Ctrl+C to stop.`)
   const stop = () => finish()
   process.once("SIGINT", stop)

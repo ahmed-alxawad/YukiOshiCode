@@ -52,3 +52,95 @@ export function promptFor(file: string, trigger: Trigger) {
     return `A comment in ${file} at line ${trigger.line} asks a question: "${trigger.text}". Read the file and answer it briefly in plain text. Do not modify any files; the answer will be written as a comment below the question.`
   return `A comment in ${file} at line ${trigger.line} asks for a change: "${trigger.text}". Make that change in the repository. Leave the comment line itself alone; it is cleaned up afterwards.`
 }
+
+// --- Task bookkeeping: dedupe, retry, and fatal-stop decisions for the watch loop. ---
+
+/** Cooldown before a failed marker task is retried, doubled per consecutive failure. */
+export let WATCH_RETRY_BASE_MS = 30_000
+
+/** Tests only: sets WATCH_RETRY_BASE_MS (to 0, say); returns the previous value so callers can restore it. */
+export function setRetryBaseMsForTest(ms: number): number {
+  const previous = WATCH_RETRY_BASE_MS
+  WATCH_RETRY_BASE_MS = ms
+  return previous
+}
+
+/** Consecutive failed attempts after which a marker task is abandoned (until its text changes). */
+export const WATCH_MAX_ATTEMPTS = 3
+
+export type TaskRecord = {
+  /** `done`: queued, running, or finished with the marker kept — never requeue. `failed`: retry once the cooldown has elapsed. */
+  status: "done" | "failed"
+  /** Consecutive failed attempts so far; survives requeueing. */
+  failures: number
+  /** When the last attempt failed; 0 while the task is queued or running. */
+  lastFailedAt: number
+}
+
+/** Watch-loop state per marker task, keyed by triggerKey. */
+export type TaskLog = Map<string, TaskRecord>
+
+/** Identity of a marker task: file plus logical text. Raw bytes and line numbers are noise, so re-indenting a marker never re-runs it. */
+export function triggerKey(rel: string, trigger: Pick<Trigger, "kind" | "text">): string {
+  return `${rel}:${trigger.kind}:${trigger.text}`
+}
+
+/** Wait before a task that failed `failures` consecutive times is retried again. */
+export function retryCooldownMs(failures: number): number {
+  return WATCH_RETRY_BASE_MS * 2 ** (failures - 1)
+}
+
+/** True when `key` never ran, or the backoff after its last failure has elapsed. Dead tasks (max attempts reached) never requeue. */
+export function shouldRunTask(log: TaskLog, key: string, now: number): boolean {
+  const record = log.get(key)
+  if (!record) return true
+  if (record.status !== "failed") return false
+  if (record.failures >= WATCH_MAX_ATTEMPTS) return false
+  return now - record.lastFailedAt >= retryCooldownMs(record.failures)
+}
+
+/** Reserves `key` for the queued run so repeated scans of the same marker do not queue it twice. */
+export function reserveTask(log: TaskLog, key: string): void {
+  log.set(key, { status: "done", failures: log.get(key)?.failures ?? 0, lastFailedAt: 0 })
+}
+
+/** The triggers of one file that should run now: new tasks plus failed tasks whose backoff has elapsed. Reserves each before returning. */
+export function queueTriggers(log: TaskLog, rel: string, triggers: Trigger[], now: number): Trigger[] {
+  const queued: Trigger[] = []
+  for (const trigger of triggers) {
+    const key = triggerKey(rel, trigger)
+    if (!shouldRunTask(log, key, now)) continue
+    reserveTask(log, key)
+    queued.push(trigger)
+  }
+  return queued
+}
+
+/** Records a failed attempt. Returns true when the task just ran out of attempts — print the giving-up line once. */
+export function markTaskFailed(log: TaskLog, key: string, now: number): boolean {
+  const failures = (log.get(key)?.failures ?? 0) + 1
+  log.set(key, { status: "failed", failures, lastFailedAt: now })
+  return failures >= WATCH_MAX_ATTEMPTS
+}
+
+/** A watcher error (fs.watch gave up): print it and stop instead of going silent. */
+export function watchStopMessage(error: unknown): string {
+  return `watch: ${error instanceof Error ? error.message : String(error)}; stopping`
+}
+
+/** The watch root itself was removed or renamed (branch switch, rm -rf); the watcher can never fire again. */
+export function watchRootLostMessage(dir: string): string {
+  return `watch: ${dir} was removed or renamed; stopping`
+}
+
+/** A scan of one file failed; log one line instead of swallowing it. */
+export function watchScanErrorMessage(rel: string, error: unknown): string {
+  return `watch: scan of ${rel} failed: ${error instanceof Error ? error.message : String(error)}`
+}
+
+/** The one loud stop for a dead watcher: print the reason, flag a non-zero exit, and end the loop. */
+export function fatalWatcherStop(message: string, print: (line: string) => void, stop: () => void): void {
+  print(message)
+  process.exitCode = 1
+  stop()
+}
