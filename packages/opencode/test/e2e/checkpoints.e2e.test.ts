@@ -189,4 +189,59 @@ describe("git checkpoints", () => {
       }),
     120_000,
   )
+
+  cliIt.live(
+    "git.auto_commit commits a changed turn when a git identity exists",
+    ({ home, llm, opencode }) =>
+      Effect.gen(function* () {
+        init(home)
+        globalConfig(home, { git: { auto_commit: true } })
+        const head = git(home, "rev-parse", "HEAD")
+        yield* llm.push(change(path.join(home, "tracked.txt"), "auto commit me"))
+        yield* llm.text("done")
+        const run = yield* opencode.run("auto commit turn", {
+          cwd: home,
+          env: env(home, llm.url),
+          extraArgs: ["--dangerously-skip-permissions"],
+          timeoutMs: 90_000,
+        })
+        expect(run.exitCode).toBe(0)
+        expect(git(home, "rev-parse", "HEAD")).not.toBe(head)
+        expect(git(home, "log", "-1", "--format=%B")).toContain("YukiOshi-Auto-Commit:")
+        expect(git(home, "status", "--porcelain", "--untracked-files=no")).toBe("")
+      }),
+    120_000,
+  )
+
+  cliIt.live(
+    "git.auto_commit warns and leaves the turn uncommitted when git has no identity",
+    ({ home, llm, opencode }) =>
+      Effect.gen(function* () {
+        init(home)
+        git(home, "config", "--unset", "user.email")
+        git(home, "config", "--unset", "user.name")
+        globalConfig(home, { git: { auto_commit: true } })
+        const head = git(home, "rev-parse", "HEAD")
+        yield* llm.push(change(path.join(home, "tracked.txt"), "would be auto committed"))
+        yield* llm.text("done")
+        const run = yield* opencode.run("identity-less turn", {
+          cwd: home,
+          env: {
+            ...env(home, llm.url),
+            YUKIOSHI_PRINT_LOGS: "1",
+            GIT_CONFIG_GLOBAL: "/dev/null",
+            GIT_CONFIG_SYSTEM: "/dev/null",
+          },
+          extraArgs: ["--dangerously-skip-permissions"],
+          timeoutMs: 90_000,
+        })
+        expect(run.exitCode).toBe(0)
+        expect(git(home, "rev-parse", "HEAD")).toBe(head)
+        expect(run.stderr).toContain("git.auto_commit failed; the turn was not committed")
+        const listed = yield* opencode.spawn(["checkpoint", "list"], { cwd: home, env: env(home, llm.url) })
+        expect(listed.exitCode).toBe(0)
+        expect(listed.stderr).toContain("identity-less turn")
+      }),
+    120_000,
+  )
 })

@@ -1,6 +1,6 @@
 import { LayerNode } from "@yukioshi/core/effect/layer-node"
 import type { ConfigCheckpointsV1 } from "@yukioshi/core/v1/config/checkpoints"
-import { Context, Effect, Layer } from "effect"
+import { Cause, Context, Effect, Layer } from "effect"
 import { spawnSync } from "node:child_process"
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -332,7 +332,11 @@ const layer = Layer.effect(
           const created = yield* run(() => createCheckpoint({ directory: root, ...input }))
           if (created && (yield* config.get()).git?.auto_commit === true)
             yield* run(() => autoCommitTurn({ directory: root, checkpointID: created.id, prompt: input.prompt })).pipe(
-              Effect.ignore,
+              // A missing git identity or a dirty-index conflict must not be silent: the config
+              // promised a commit per turn, so say why none happened.
+              Effect.catchCause((cause) =>
+                Effect.logWarning("git.auto_commit failed; the turn was not committed", { error: Cause.squash(cause) }),
+              ),
             )
           return created
         }),
