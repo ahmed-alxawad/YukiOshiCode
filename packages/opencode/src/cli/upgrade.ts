@@ -108,11 +108,16 @@ export async function backgroundUpdate(
     const state = AutoUpdate.readState(stateDir)
     if (!AutoUpdate.isDue(state)) return
     const now = Date.now()
-    AutoUpdate.writeState(stateDir, { ...state, checkedAt: now })
-
     const method = input.method ?? (await Installation.method())
     const latest = await Installation.latest(method).catch(() => undefined)
-    if (!latest) return
+    if (!latest) {
+      // A failed lookup (rate limit, 5xx, offline) must not silence checks for a day: retry in an hour.
+      AutoUpdate.writeState(stateDir, {
+        ...state,
+        checkedAt: now - AutoUpdate.CHECK_INTERVAL_MS + AutoUpdate.RETRY_AFTER_FAILED_CHECK_MS,
+      })
+      return
+    }
     const decision = AutoUpdate.decide({
       current,
       latest,

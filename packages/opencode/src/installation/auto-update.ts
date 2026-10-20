@@ -17,6 +17,10 @@ import type { Method } from "."
 import { checkSums } from "./release-key"
 
 export const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000
+/** After a check that could not learn the latest version, the next one is due this soon instead of in a day. */
+export const RETRY_AFTER_FAILED_CHECK_MS = 60 * 60 * 1000
+/** SHA256SUMS lists a dozen files; anything bigger is not a real one. */
+const MAX_SUMS_BYTES = 1024 * 1024
 export const STATE_FILE = "autoupdate.json"
 export const LOCK_KEY = "autoupdate"
 const GITHUB_REPOSITORY = "ahmed-alxawad/YukiOshiCode"
@@ -429,7 +433,7 @@ export async function installRelease(input: {
       `the release has no SHA256SUMS to verify the download with (${error instanceof Error ? error.message : String(error)})`,
     )
   })
-  const sumsBytes = new Uint8Array(await sumsResponse.arrayBuffer())
+  const sumsBytes = await readLimited(sumsResponse, MAX_SUMS_BYTES, "SHA256SUMS")
   const sigResponse = await fetcher(`${base}/SHA256SUMS.sig`, { signal: AbortSignal.timeout(timeoutMs), redirect: "follow" }).catch(
     (error: unknown) => {
       throw new UpdateError(`could not download ${base}/SHA256SUMS.sig: ${error instanceof Error ? error.message : String(error)}`)

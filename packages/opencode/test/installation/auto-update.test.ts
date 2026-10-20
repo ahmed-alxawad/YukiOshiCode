@@ -192,7 +192,7 @@ describe("automatic update rules", () => {
 
 // A fake GitHub release server: /releases.atom names the latest version and
 // /releases/download/v<version>/<file> serves the archives and SHA256SUMS.
-type Release = { version: string; script?: string; sums?: "ok" | "missing" | "wrong" | "unlisted"; sig?: "valid" | "tampered" | "other-key" | "raw" }
+type Release = { version: string; script?: string; sums?: "ok" | "missing" | "wrong" | "unlisted" | "huge"; sig?: "valid" | "tampered" | "other-key" | "raw" }
 
 const testKey = generateKeyPairSync("ed25519")
 const otherKey = generateKeyPairSync("ed25519")
@@ -231,6 +231,7 @@ function fakeRelease(dir: string, asset: string, release: Release) {
       }
       if (url.pathname === prefix + "SHA256SUMS") {
         if (release.sums === "missing") return new Response("not found", { status: 404 })
+        if (release.sums === "huge") return new Response(new Uint8Array(2 * 1024 * 1024).fill(97))
         if (release.sums === "unlisted") return new Response(`${hash}  yukioshi-other.tar.gz\n`)
         return new Response(`${release.sums === "wrong" ? "0".repeat(64) : hash}  ${asset}\n`)
       }
@@ -336,6 +337,11 @@ describe.skipIf(!unix)("installRelease", () => {
     expect(env.version()).toBe("0.4.1")
   })
 
+  test("refuses a SHA256SUMS larger than 1 MiB", async () => {
+    await using env = await setup({ version: "0.5.0", sums: "huge" })
+    await expect(env.install()).rejects.toThrow("SHA256SUMS is larger")
+    expect(env.version()).toBe("0.4.1")
+  })
   test("refuses an archive that SHA256SUMS does not list", async () => {
     await using env = await setup({ version: "0.5.0", sums: "unlisted" })
     await expect(env.install()).rejects.toThrow("is not listed")
@@ -528,6 +534,16 @@ describe.skipIf(!unix)("background update", () => {
     const notice = AutoUpdate.takeNotice(stateDir)
     expect(notice).toMatchObject({ kind: "failed", version: "0.5.0" })
     expect(AutoUpdate.takeNotice(stateDir)).toBeUndefined()
+  })
+
+  test("a failed latest-version lookup retries in an hour, not in a day", async () => {
+    await using env = await setup({ version: "0.5.0" })
+    process.env.YUKIOSHI_TEST_RELEASE_BASE_URL = "http://127.0.0.1:1"
+    await env.run()
+    const state = AutoUpdate.readState(stateDir)
+    expect(state.checkedAt).toBeDefined()
+    expect(AutoUpdate.isDue(state, Date.now() + 5 * 60_000)).toBe(false)
+    expect(AutoUpdate.isDue(state, Date.now() + AutoUpdate.RETRY_AFTER_FAILED_CHECK_MS + 60_000)).toBe(true)
   })
 
   test("a major version is recorded as available, not installed", async () => {
