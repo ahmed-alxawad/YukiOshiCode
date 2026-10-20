@@ -94,7 +94,7 @@ follow the permission rules like other MCP tools (for example, `"browser_browser
 
 A repository can contain configuration that makes YukiOshi run programs or send
 data elsewhere: hooks, server and TUI plugins, browser automation, local MCP servers, custom LSP and
-formatter commands, agents to delegate to, webhooks, enterprise and auto-sharing,
+formatter commands, agents to delegate to, architect mode, webhooks, enterprise and auto-sharing,
 remote skills and instructions URLs, remote MCP headers, and custom commands
 whose template runs shell commands (`!`…``, which would run when you use the
 command, even one named like a built-in such as `/init`).
@@ -126,8 +126,9 @@ yukioshi trust . --revoke   # take trust back
 
 Trust is stored outside the repository and is tied to its content: YukiOshi
 records a fingerprint of the executable configuration (the `hooks`, `plugin`,
-`mcp`, `lsp`, and `formatter` settings, the files under `.yukioshi/` and
-`.opencode/`, and the scripts those settings point to). If any of that changes,
+`mcp`, `lsp`, `formatter`, `architect`, and `permission` settings, the files under `.yukioshi/` and
+`.opencode/`, the executable frontmatter of agent files, and the scripts those
+settings point to). If any of that changes,
 for example after a `git pull` or when you review a pull request with
 `yukioshi pr`, the repository becomes untrusted again and `--status` reports
 that it changed. Review the change, then run `yukioshi trust .` again. Editing
@@ -305,7 +306,8 @@ YukiOshi masks unmistakable secrets before anything is sent to the model provide
 - **Stripe live keys**: `sk_live_`, `rk_live_` (`[REDACTED:stripe-key]`).
 - **Private keys**: `-----BEGIN ... PRIVATE KEY-----` blocks (`[REDACTED:private-key]`).
 - **JWTs**: JSON Web Tokens with standard headers (`[REDACTED:jwt]`).
-- **Environment variables**: `password=`, `secret=`, `token=` assignments (`[REDACTED:password]`, `[REDACTED:secret]`, `[REDACTED:token]`).
+- **Environment variables**: `password=`, `secret=`, `token=` assignments, and similar names containing `passwd`, `api_key` or `credential` (`[REDACTED:password]`, `[REDACTED:secret]`, `[REDACTED:token]`).
+- **Passwords in URLs** (`scheme://user:password@host`) and `--token`-style command-line flags.
 
 Normal code identifiers (such as `sk-` inside an unrelated word or Stripe test keys) are never matched.
 

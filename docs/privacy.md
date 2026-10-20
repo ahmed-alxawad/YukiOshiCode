@@ -22,8 +22,10 @@ What leaves your machine, and what stays on it. For protections, see the
   installs, the npm registry for npm, yarn, pnpm and bun installs, and the
   `brew` command for Homebrew. Turn it off with `"autoupdate": false` or
   `YUKIOSHI_DISABLE_AUTOUPDATE=1` ([Installation](installation.md#automatic-updates)).
-  A script-install update downloads the release archive and `SHA256SUMS` from
-  GitHub.
+  `api.github.com` is only a fallback when the feed fails. A background
+  script-install update downloads the release archive, `SHA256SUMS` and
+  `SHA256SUMS.sig` from GitHub. The signature is not verified yet, because no
+  release key is built in ([security model](security-model.md#the-automatic-updater)).
 - **Model catalog**: a fetch from `https://models.dev/api.json` (cached for 5
   minutes, 10-second timeout). Turn it off with `YUKIOSHI_DISABLE_MODELS_FETCH`,
   or point it elsewhere with `YUKIOSHI_MODELS_URL`; each release carries an
@@ -34,11 +36,13 @@ What leaves your machine, and what stays on it. For protections, see the
   packages come from the npm registry configured on your machine.
 - **Telemetry export**: only if you set `OTEL_EXPORTER_OTLP_ENDPOINT`, logs and
   traces go to that endpoint. Not set by default.
-- **Code indexing**: if you enable it with a remote embedder (OpenAI-compatible,
-  Voyage), chunks of your code go to that service; Ollama goes to its configured
-  URL. Not verified: whether indexing is on by default; check your config.
+- **Code indexing**: off by default. If you enable it with a remote embedder
+  (OpenAI-compatible, Voyage), chunks of your code go to that service; Ollama
+  goes to its configured URL.
 - **Provider login**: `yukioshi providers login <url>` requests
-  `<url>/.well-known/opencode` from the server you name. Some provider logins
+  `<url>/.well-known/opencode` from the server you name, and a stored login of
+  that kind makes each start fetch the same path again to load remote config.
+  Some provider logins
   (GitHub Copilot, OpenAI device login) contact those providers' auth endpoints.
 - **Tools you use**: `webfetch`, MCP servers, browser automation and commands
   the agent runs contact whatever they are pointed at.

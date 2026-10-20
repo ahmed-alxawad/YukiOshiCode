@@ -139,7 +139,7 @@ Normal `{env:…}` substitution applies to both aliases. If a local MCP server s
 | `repo_map`             | repo map in the system context: `enabled` (off by default; global only), `tokens` (1024) | [Repo map](features.md#repo-map) |
 | `webfetch`             | webfetch options: `allow_private` (off by default; global only) | [Permissions and safety](permissions-and-safety.md#webfetch-and-private-network-protection) |
 | `compaction`           | how long conversations are summarised to stay within context        |                                             |
-| `goal`                 | `/goal`: `enabled` and `max_rounds` (default 20)                    | [Features](features.md)                     |
+| `goal`                 | `/goal` (on by default): `enabled` and `max_rounds` (default 20)                    | [Features](features.md)                     |
 | `loop`                 | `/loop` (on by default): `enabled`, `max_runs` (50), `min_interval` seconds (60) | [Features](features.md#loop) |
 | `fallback`             | backup `models` and API-key rotation when a provider fails (off by default) | [Providers](providers.md#fallback-models-and-key-rotation) |
 | `tool_limits`          | repeated-call note (`repeat_nudge`) and per-tool time limits (`timeout`) | [Tool limits](#tool-limits)                 |
@@ -147,7 +147,7 @@ Normal `{env:…}` substitution applies to both aliases. If a local MCP server s
 | `webhooks`             | optional outgoing notifications for turns, permission asks, and questions | [Webhooks](#webhooks) |
 | `budget`               | optional dollar/token limits for a session, day, or month | [Spending limits](#spending-limits) |
 | `delegate`             | hand tasks to other coding agents over ACP: `enabled`, `agents`, per-agent `timeout` and `handshakeTimeout` (default 60000 ms) (off by default) | [Features](features.md#delegating-to-other-agents) |
-| `browser`              | browser automation via Playwright MCP: `enabled` (off by default), `headless` (default true), `engine` (`chrome`, `chromium`, `firefox`, `webkit`, `msedge`) | [Features](features.md#browser-automation) |
+| `browser`              | browser automation via Playwright MCP: `enabled` (off by default), `headless` (default true), `engine` (`chrome` default, `chromium`, `firefox`, `webkit`, `msedge`) | [Features](features.md#browser-automation) |
 | `checkpoints`          | durable git commits on `refs/yukioshi/checkpoints/*` (off by default) | [Features](features.md#git-checkpoints) |
 | `git`                  | `auto_commit`: commit each completed turn's changes (off by default); `/undo` reverts them | [Features](features.md#undo-and-auto-commit) |
 | `audit`                | local log of tool calls and approvals: `enabled` (off by default; global config only) | [Permissions and safety](permissions-and-safety.md#audit-log) |
@@ -160,12 +160,12 @@ Normal `{env:…}` substitution applies to both aliases. If a local MCP server s
 | `agent_sources`        | extra read-only subagent sources, e.g. `["claude"]` to also read `~/.claude/agents` and project `.claude/agents` (global config only; default none) | [Features](features.md#session-agents-and-claude-agent-folders) |
 | `subagent_depth`       | how deep subagents may nest (default 1: no subagents of subagents) | [Features](features.md#subagents)           |
 | `snapshot`             | file snapshots for undo (default true)                             |                                             |
-| `autoupdate`           | daily background updates: not set or `true` installs newer minor and patch releases, `"notify"` only notifies, `false` never checks (global config only) | [Installation](installation.md#automatic-updates) |
+| `autoupdate`           | daily background updates: not set or `true` installs newer minor and patch releases of script installs (other installs, major and pre-releases are only announced), `"notify"` only notifies, `false` never checks (global config only) | [Installation](installation.md#automatic-updates) |
 | `steer`                | the minimal interface (`--mini`) sends a message typed during a turn into that turn instead of its queue (off by default; the terminal UI and the HTTP API always do) | [Features](features.md#sending-a-message-while-the-agent-works) |
 | `message_mode` (`tui.json`) | what Enter does in the terminal UI while the agent works: `"queue"` (default) holds the message until the turn ends, `"steer"` sends it at once; the command palette toggle overrides it. `steer` above is the same choice for `--mini` | [Features](features.md#sending-a-message-while-the-agent-works) |
 
 In a repository you have not trusted, `hooks`, `plugin`, `delegate`, `webhooks`,
-`browser`, local MCP servers, `lsp` and `formatter` entries with their own command, and
+`browser`, `architect` (when enabled), `shell`, local MCP servers, `lsp` and `formatter` entries with their own command, and
 custom provider endpoints (`api`, `options.baseURL`, `options.headers`, credentials)
 as well as project-only providers (e.g. Ollama, vLLM, LM Studio) are ignored
 until you run `yukioshi trust .`. See
@@ -265,7 +265,7 @@ When search mode is active, the model receives a `tool_search` tool listing avai
 
 ## Webfetch
 
-The `webfetch` tool fetches HTTP and HTTPS URLs for the agent. It inspects the address a URL resolves to and pins the connection to it (see [Webfetch and private network protection](permissions-and-safety.md#webfetch-and-private-network-protection)). A private or local address always asks before it is fetched — even when your rules allow `webfetch` — and unattended runs (`yukioshi run` without `--mini`, scheduled runs, `serve` triggers) refuse it before connecting. `allow_private` turns that protection off:
+The `webfetch` tool fetches HTTP and HTTPS URLs for the agent. It inspects the address a URL resolves to and pins the connection to it (see [Webfetch and private network protection](permissions-and-safety.md#webfetch-and-private-network-protection)). A private or local address always asks before it is fetched — even when your rules allow `webfetch` — and unattended runs (`yukioshi run` without `--mini`, scheduled runs, `serve` triggers) refuse it before connecting. `allow_private` turns that protection off (including the refusal in unattended runs):
 
 ```jsonc
 {

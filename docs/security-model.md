@@ -49,16 +49,18 @@ refuse, such as `cat .env`.
 
 Until you run `yukioshi trust .`, a repository cannot add hooks (including HTTP
 hooks), plugins, local MCP servers, LSP or formatter commands, webhooks, or
-custom endpoints and headers for existing providers. Triggers, `audit` and `webfetch` settings in a repository are always ignored.
+custom endpoints and headers for existing providers. Triggers, `audit`, `webfetch`, `learning`, `repo_map`,
+`agent_sources` and the `shell` backend settings in a repository are always ignored, even when trusted.
 Other settings can only make YukiOshi stricter: its `allow` rules, a higher
 spending limit, turning off redaction, or turning off or widening the sandbox
-are ignored. Also dropped until trusted: the `shell` setting, delegate agents,
+are ignored. Also dropped until trusted: the `shell` setting, enabling `architect`, delegate agents,
 browser, remote skills and instructions, instructions pointing outside the
 project, commands that run shell snippets or attach outside files, unknown
 providers, and provider `baseURL`, keys and npm packages. Trust is tied to
-a SHA-256 fingerprint of the `hooks`, `plugin`, `mcp`, `lsp` and `formatter`
-configuration, so a `git pull` that changes
-it makes the repository untrusted again. Skills from a repository are
+a SHA-256 fingerprint of the `hooks`, `plugin`, `mcp`, `lsp`, `formatter`,
+`architect` and `permission` configuration, the files under `.yukioshi/` and
+`.opencode/`, and the scripts they point to, so a `git pull` that changes
+any of it makes the repository untrusted again. Skills from a repository are
 prefixed `project:`.
 
 ## OS sandbox
@@ -90,8 +92,8 @@ config skips the prompt; a project config cannot set it.
 ## HTTP hooks
 
 An HTTP hook is not sent to loopback, private, link-local or reserved
-addresses unless `allowPrivateAddress: true` is set in the global config (it
-has no effect in a project config). A repository can only add an HTTP hook
+addresses unless the global config lists a hook with the same event and URL
+and `allowPrivateAddress: true` (it has no effect in a project config). A repository can only add an HTTP hook
 after you trust it. Credentials are written as `$NAME` in `headers` and must be
 listed in `allowedEnvVars`; nothing else from the environment is read. The
 sent JSON is secret-masked and warnings show only scheme and host.
@@ -102,9 +104,9 @@ On by default (`redact.enabled`). Known token formats (AWS, GitHub, OpenAI,
 Anthropic, Google, Slack, Stripe live keys, private keys, JWTs, and
 `password=`/`secret=`/`token=` assignments) plus your configured provider
 keys and long `Bearer` tokens are masked in tool results and logs. Also masked: URL passwords, `--token`-style
-CLI flags, AWS secret keys. Not verified here for every place listed in the
-[permissions page](permissions-and-safety.md#secret-redaction): prompts,
-memory, skills, stored errors, audit entries and webhook details. Redaction is
+CLI flags, AWS secret keys. The places are listed on the
+[permissions page](permissions-and-safety.md#secret-redaction): tool results,
+prompts, memory and skills, stored errors, audit entries and webhook details. Redaction is
 pattern based: a secret in an unusual format is not recognised. Add your own
 with `redact.patterns`. Implementation: `packages/core/src/redact.ts`.
 
@@ -123,7 +125,7 @@ for script installs, the npm registry or `brew` for those installs; package
 manager installs are only told, not updated). For script installs, newer minor and patch releases are
 downloaded in the background, checked against the release's `SHA256SUMS`,
 test-started with `--version`, and swapped in, keeping `yukioshi.old`. Major
-releases are never installed automatically. It can be turned off with
+releases and pre-releases are never installed automatically. It can be turned off with
 `"autoupdate": false` or `YUKIOSHI_DISABLE_AUTOUPDATE=1`, and is skipped when
 `CI` is set.
 
@@ -135,9 +137,11 @@ signature, `SHA256SUMS.sig`. When a release public key is built into the binary
 `SHA256SUMS` against it and refuse the update, keeping the current binary, if
 the signature is invalid. A release with no `.sig` is installed with a warning
 unless it is at or above the `SIGNING_REQUIRED_FROM` version. With no key built
-in (the current state: `[TBD owner: release public key]`), nothing is verified
-beyond the checksum. Only the in-binary updater verifies the signature; the
-shell installer (`install`) checks the checksum only.
+in (the current state: `RELEASE_PUBLIC_KEY` is empty, marked
+`[TBD owner: release public key]`), no signature is checked, even if a release
+carries one; only the checksum is verified. Only the background updater verifies
+the signature. `yukioshi upgrade` on a script install runs the shell installer
+(`install`), which checks the checksum only.
 
 ## Shell backends
 
