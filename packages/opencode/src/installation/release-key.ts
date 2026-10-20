@@ -6,6 +6,14 @@ import semver from "semver"
  * (printed by script/release-keygen.ts). Empty means no key is configured: signatures are not checked.
  */
 export const RELEASE_PUBLIC_KEY = "" // [TBD owner: release public key]
+/**
+ * Owner steps to enable signing (do not edit docs):
+ * 1. Run `script/release-keygen.ts` to generate a key pair.
+ * 2. Copy the printed public key (base64 DER) into RELEASE_PUBLIC_KEY above.
+ * 3. Store the private key as a repository secret (e.g., `RELEASE_PRIVATE_KEY`).
+ * 4. In `.github/workflows/release.yml` add a step to run `script/release-sign.ts` using the secret.
+ *    (Do NOT commit the private key.)
+ */
 
 /**
  * First release version that must carry a valid SHA256SUMS.sig when a key is configured. Releases
