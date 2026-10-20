@@ -220,6 +220,8 @@ describe("git checkpoints", () => {
         init(home)
         git(home, "config", "--unset", "user.email")
         git(home, "config", "--unset", "user.name")
+        // macOS guesses an identity from the account name unless git is told not to
+        git(home, "config", "user.useConfigOnly", "true")
         globalConfig(home, { git: { auto_commit: true } })
         const head = git(home, "rev-parse", "HEAD")
         yield* llm.push(change(path.join(home, "tracked.txt"), "would be auto committed"))
