@@ -67,7 +67,8 @@ function decode(value: unknown): Store {
 const CONFIG_NAMES = new Set(["yukioshi.json", "yukioshi.jsonc", "opencode.json", "opencode.jsonc", "tui.json", "tui.jsonc"])
 const EXECUTABLE_KEYS = ["hooks", "plugin", "mcp", "lsp", "formatter", "architect", "permission"] as const
 // Agent markdown frontmatter keys that run or authorize things on the project's behalf —
-// config/agent.ts withholds exactly these from untrusted projects. The prompt body is not
+// config/agent.ts withholds these from untrusted projects (it also drops `project:` skill
+// entries, which only add prompt text, so they are not hashed). The prompt body is not
 // executable, so it is never hashed: editing an agent's prompt must not revoke trust.
 const AGENT_KEYS = ["hooks", "mcpServers", "memory", "background", "fork", "isolation", "permission"] as const
 const CONFIG_DIR = /(^|\/)\.(yukioshi|opencode)\//
