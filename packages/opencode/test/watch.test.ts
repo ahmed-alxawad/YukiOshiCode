@@ -154,6 +154,7 @@ test("fatalWatcherStop prints the reason, sets a non-zero exit, and stops the lo
     expect(process.exitCode).toBe(1)
     expect(stopped).toBe(1)
   } finally {
-    process.exitCode = previous
+    // Bun 1.3.14's runner exits 1 when this test restores exitCode with `undefined`, so restore a concrete value.
+    process.exitCode = previous ?? 0
   }
 })
