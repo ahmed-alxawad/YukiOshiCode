@@ -1,5 +1,5 @@
 // Watch mode: comment lines ending in `AI!` (do it) or `AI?` (answer) become runs.
-// Pure helpers live here so the command stays small and the parsing is testable.
+// Helpers live here so the command stays small and the parsing is testable; all are pure except gitIgnored.
 
 export type Kind = "do" | "ask"
 export type Trigger = { line: number; kind: Kind; text: string; raw: string }
@@ -157,6 +157,57 @@ export function fatalWatcherStop(message: string, print: (line: string) => void,
   print(message)
   process.exitCode = 1
   stop()
+}
+
+/** Most paths sent to one `git check-ignore` process. */
+export const IGNORE_CHECK_CHUNK = 1000
+
+/**
+ * The subset of `rels` (paths relative to `root`) that git ignores, from one `git check-ignore --stdin -z` call.
+ * A git failure (exit other than 0 or 1) counts as nothing ignored, as the single-path check did.
+ */
+export async function gitIgnored(root: string, rels: string[]): Promise<Set<string>> {
+  if (!rels.length) return new Set()
+  // check-ignore treats a leading colon as pathspec magic but accepts and echoes a protective ./ prefix.
+  const safe = (rel: string) => (rel.startsWith(":") ? `./${rel}` : rel)
+  const proc = Bun.spawn(["git", "check-ignore", "--stdin", "-z"], {
+    cwd: root,
+    stdin: new Blob([rels.map((rel) => safe(rel) + "\0").join("")]),
+    stdout: "pipe",
+    stderr: "ignore",
+  })
+  const [out, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
+  if (code !== 0 && code !== 1) return new Set()
+  const echoed = new Set(out.split("\0").filter(Boolean))
+  return new Set(rels.filter((rel) => echoed.has(safe(rel))))
+}
+
+/**
+ * Wraps a many-path ignore check so single-path calls made within `windowMs` of each other share one call per
+ * `chunk` paths. A branch switch fires thousands of scans at once; this keeps it to a few git processes.
+ */
+export function batchIgnoreCheck(
+  check: (rels: string[]) => Promise<Set<string>>,
+  windowMs = 20,
+  chunk = IGNORE_CHECK_CHUNK,
+): (rel: string) => Promise<boolean> {
+  let pending: { rel: string; resolve: (ignored: boolean) => void; reject: (error: unknown) => void }[] = []
+  const flush = () => {
+    const batch = pending
+    pending = []
+    for (let start = 0; start < batch.length; start += chunk) {
+      const slice = batch.slice(start, start + chunk)
+      check([...new Set(slice.map((item) => item.rel))]).then(
+        (ignored) => slice.forEach((item) => item.resolve(ignored.has(item.rel))),
+        (error) => slice.forEach((item) => item.reject(error)),
+      )
+    }
+  }
+  return (rel) =>
+    new Promise((resolve, reject) => {
+      if (!pending.length) setTimeout(flush, windowMs)
+      pending.push({ rel, resolve, reject })
+    })
 }
 
 /** SIGINT/SIGTERM: kill the in-flight run, drop what is still queued, and end the loop. */

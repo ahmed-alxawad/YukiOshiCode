@@ -1,6 +1,11 @@
 import { expect, test } from "bun:test"
+import path from "path"
+import { tmpdir } from "./fixture/fixture"
 import {
+  batchIgnoreCheck,
   commentLines,
+  gitIgnored,
+  IGNORE_CHECK_CHUNK,
   fatalWatcherStop,
   findTriggers,
   markTaskFailed,
@@ -180,4 +185,34 @@ test("stopRun kills the in-flight run, clears the queue and ends the loop", () =
   const queue = [1, 2]
   stopRun({ kill: () => (killed = true) }, queue, () => (finished = true))
   expect([killed, finished, queue.length]).toEqual([true, true, 0])
+})
+
+test("a burst of ignore checks (branch switch) shares a few chunked calls instead of one per file", async () => {
+  const calls: number[] = []
+  const check = batchIgnoreCheck(async (rels) => {
+    calls.push(rels.length)
+    return new Set(rels.filter((rel) => rel.endsWith(".log")))
+  })
+  const rels = Array.from({ length: 4000 }, (_, index) => `f${index}.${index % 2 ? "log" : "ts"}`)
+  const results = await Promise.all(rels.map((rel) => check(rel)))
+  expect(calls).toEqual([IGNORE_CHECK_CHUNK, IGNORE_CHECK_CHUNK, IGNORE_CHECK_CHUNK, IGNORE_CHECK_CHUNK])
+  expect(results.filter(Boolean)).toHaveLength(2000)
+  expect(results[1]).toBe(true)
+  expect(results[0]).toBe(false)
+})
+
+test("a failing batched check rejects every waiting path", async () => {
+  const check = batchIgnoreCheck(async () => {
+    throw new Error("spawn failed")
+  })
+  const results = await Promise.allSettled([check("a"), check("b")])
+  expect(results.map((result) => result.status)).toEqual(["rejected", "rejected"])
+})
+
+test("gitIgnored answers many paths from one git call, including a leading colon", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await Bun.write(path.join(tmp.path, ".gitignore"), "*.log\n:x*\n")
+  const ignored = await gitIgnored(tmp.path, ["a.log", "b.ts", ":xy", "dir/c.log", "dir/d.ts"])
+  expect([...ignored].sort()).toEqual([":xy", "a.log", "dir/c.log"])
+  expect(await gitIgnored(tmp.path, [])).toEqual(new Set())
 })

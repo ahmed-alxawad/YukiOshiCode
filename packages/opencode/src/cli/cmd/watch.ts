@@ -7,8 +7,10 @@ import { effectCmd, fail } from "../effect-cmd"
 import { UI } from "../ui"
 import { ProjectTrust } from "@/project/trust"
 import {
+  batchIgnoreCheck,
   fatalWatcherStop,
   findTriggers,
+  gitIgnored,
   markTaskFailed,
   promptFor,
   queueTriggers,
@@ -102,9 +104,11 @@ async function watchLoop(opts: Options) {
 
   const inside = (file: string) => file === root || file.startsWith(root + path.sep)
 
+  const gitIgnores = batchIgnoreCheck((rels) => gitIgnored(root, rels))
+
   async function ignored(rel: string) {
     if (rel.split(path.sep).some((part) => SKIP.has(part))) return true
-    return (await git(root, ["check-ignore", "-q", "--", rel])).code === 0
+    return gitIgnores(rel)
   }
 
   async function scan(rel: string) {
