@@ -124,8 +124,25 @@ export namespace Flock {
     }
   }
 
+  // A lock whose owner process on this machine is gone is stale at once, so a crash (SIGKILL, OOM, power loss)
+  // does not freeze the next start for staleMs. A reused pid only falls back to the heartbeat check below.
+  async function ownerGone(metaPath: string) {
+    const meta = await readFile(metaPath, "utf8").then(
+      (text) => JSON.parse(text) as { pid?: unknown; hostname?: unknown },
+      () => undefined,
+    )
+    if (!meta || typeof meta.pid !== "number" || meta.hostname !== os.hostname()) return false
+    try {
+      process.kill(meta.pid, 0)
+      return false
+    } catch (err) {
+      return code(err) === "ESRCH"
+    }
+  }
+
   async function stale(lockDir: string, heartbeatPath: string, metaPath: string, staleMs: number) {
     // Stale detection allows automatic recovery after crashed owners.
+    if (await ownerGone(metaPath)) return true
     const now = wall()
     const heartbeat = await stats(heartbeatPath)
     if (heartbeat) {

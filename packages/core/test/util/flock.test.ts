@@ -215,6 +215,22 @@ describe("util.flock", () => {
     expect(hit).toBe(true)
   }, 20_000)
 
+  test("takes over at once when the lock owner process is gone, even with a long stale time", async () => {
+    await using tmp = await tmpdir()
+    const dir = path.join(tmp.path, "locks")
+    const key = "flock:dead-owner"
+    const ready = path.join(tmp.path, "ready")
+    const proc = spawnWorker({ key, dir, ready, holdMs: 20_000, staleMs: 60_000, timeoutMs: 30_000 })
+    await wait(ready, 5_000)
+    await stopWorker(proc)
+
+    const started = Date.now()
+    let hit = false
+    await Flock.withLock(key, async () => { hit = true }, { dir, staleMs: 60_000, timeoutMs: 10_000 })
+    expect(hit).toBe(true)
+    expect(Date.now() - started).toBeLessThan(5_000)
+  }, 20_000)
+
   test("breaks stale lock dirs when heartbeat is missing", async () => {
     await using tmp = await tmpdir()
     const dir = path.join(tmp.path, "locks")
