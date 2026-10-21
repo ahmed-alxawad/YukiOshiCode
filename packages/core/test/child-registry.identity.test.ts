@@ -14,7 +14,8 @@ test("does not signal a registered pid when its identity has changed", async () 
   try {
     ChildRegistry.trackPid(process.pid, false, "stale-process-identity")
     await ChildRegistry.terminateAll(0)
-    expect(calls).toEqual([])
+    // Other tests' groups may still be registered in this process; only signals to this pid matter.
+    expect(calls.filter(([pid]) => Math.abs(pid) === process.pid)).toEqual([])
   } finally {
     process.kill = originalKill
     ChildRegistry.untrack(process.pid)
@@ -32,7 +33,8 @@ test("does not signal a registered process group when its identity has changed",
   try {
     ChildRegistry.trackPid(process.pid, true, "stale-process-identity")
     await ChildRegistry.terminateAll(0)
-    expect(calls).toEqual([])
+    // Other tests' groups may still be registered in this process; only signals to this pid matter.
+    expect(calls.filter(([pid]) => Math.abs(pid) === process.pid)).toEqual([])
   } finally {
     process.kill = originalKill
     ChildRegistry.untrack(process.pid)
@@ -53,7 +55,8 @@ test("does not signal a group whose exited leader's pid now belongs to another p
     ChildRegistry.track(leader as unknown as ChildProcess, true)
     leader.emit("exit")
     await ChildRegistry.terminateAll(0)
-    expect(calls).toEqual([])
+    // Other tests' groups may still be registered in this process; only signals to this pid matter.
+    expect(calls.filter(([pid]) => Math.abs(pid) === process.pid)).toEqual([])
   } finally {
     process.kill = originalKill
     ChildRegistry.untrack(process.pid)
