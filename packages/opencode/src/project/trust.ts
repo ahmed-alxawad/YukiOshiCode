@@ -7,7 +7,8 @@ import { Global } from "@yukioshi/core/global"
 import { ConfigMarkdown } from "@yukioshi/core/config/markdown"
 import { Flock } from "@yukioshi/core/util/flock"
 import { Filesystem } from "@/util/filesystem"
-import type { InstanceContext } from "./instance-context"
+import { which } from "@yukioshi/core/util/which"
+import { containsPath, type InstanceContext } from "./instance-context"
 
 const VERSION = 1 as const
 const FILENAME = "project-trust.json"
@@ -275,6 +276,17 @@ export async function status(directory: string, options?: Options): Promise<Stat
 
 export async function isTrusted(directory: string, options?: Options) {
   return (await status(directory, options)) === "trusted"
+}
+
+/**
+ * The file `command` would run when that file lies inside the project, so a built-in launcher can refuse
+ * it while the project is untrusted. A path resolves against `cwd`; a bare name is looked up on PATH.
+ * YukiOshi's own cache (downloaded servers and npm packages) is never the project's, even under a home project.
+ */
+export function projectProgram(command: string, cwd: string, ctx: Pick<InstanceContext, "directory" | "worktree">) {
+  const file = /[\\/]/.test(command) ? path.resolve(cwd, command) : which(command)
+  if (!file || Filesystem.contains(Global.Path.cache, file)) return undefined
+  return containsPath(file, ctx) ? file : undefined
 }
 
 export async function set(directory: string, trusted: boolean, options?: Options) {

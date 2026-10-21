@@ -8,7 +8,10 @@ import { RuntimeFlags } from "@/effect/runtime-flags"
 import { LSP } from "@/lsp/lsp"
 import * as LSPServer from "@/lsp/server"
 import { CrossSpawnSpawner } from "@yukioshi/core/cross-spawn-spawner"
-import { TestInstance } from "../fixture/fixture"
+import fs from "fs/promises"
+import { Global } from "@yukioshi/core/global"
+import { spawn } from "@/lsp/launch"
+import { TestInstance, tmpdirScoped } from "../fixture/fixture"
 import { awaitWithTimeout, testEffect } from "../lib/effect"
 
 const lspLayer = (flags: Parameters<typeof RuntimeFlags.layer>[0] = {}) =>
@@ -203,6 +206,71 @@ describe("lsp.spawn", () => {
         }),
       ),
     { config: { lsp: true } },
+  )
+
+  // The user turns LSP on globally; the project itself is untrusted.
+  const globalLsp = Effect.gen(function* () {
+    const global = yield* tmpdirScoped()
+    yield* Effect.promise(() => Bun.write(path.join(global, "yukioshi.json"), JSON.stringify({ lsp: true })))
+    const previous = Global.Path.config
+    ;(Global.Path as { config: string }).config = global
+    yield* Effect.addFinalizer(() =>
+      Effect.sync(() => ((Global.Path as { config: string }).config = previous)).pipe(
+        Effect.andThen(Config.use.invalidate()),
+      ),
+    )
+    yield* Config.use.invalidate()
+  })
+
+  it.instance(
+    "an untrusted project's own node_modules/.bin program is never started by a built-in server",
+    () =>
+      Effect.gen(function* () {
+        yield* globalLsp
+        const dir = (yield* TestInstance).directory
+        const marker = path.join(dir, "..", `${path.basename(dir)}-ran`)
+        const bin = path.join(dir, "node_modules", ".bin", "tsserver")
+        yield* Effect.promise(async () => {
+          await fs.mkdir(path.dirname(bin), { recursive: true })
+          await fs.writeFile(bin, `#!/bin/sh\necho ran > "${marker}"\n`, { mode: 0o755 })
+        })
+        const spy = spyOn(LSPServer.Typescript, "spawn").mockImplementation(async (root) => ({
+          process: spawn(bin, ["--stdio"], { cwd: root }),
+        }))
+        try {
+          const lsp = yield* LSP.Service
+          yield* lsp.touchFile(path.join(dir, "inside.ts"))
+          expect(spy).toHaveBeenCalledTimes(1)
+          expect(yield* lsp.status()).toEqual([])
+          yield* Effect.promise(() => Bun.sleep(200))
+          expect(yield* Effect.promise(() => Bun.file(marker).exists())).toBe(false)
+        } finally {
+          spy.mockRestore()
+        }
+      }),
+    { trusted: false },
+  )
+
+  it.instance(
+    "a built-in server is not handed a program from an untrusted project to load",
+    () =>
+      Effect.gen(function* () {
+        yield* globalLsp
+        const dir = (yield* TestInstance).directory
+        const spy = spyOn(LSPServer.Typescript, "spawn").mockImplementation(async (root) => ({
+          process: spawn(process.execPath, [fakeServerPath], { cwd: root }),
+          initialization: { tsserver: { path: path.join(dir, "node_modules", "typescript", "lib", "tsserver.js") } },
+        }))
+        try {
+          const lsp = yield* LSP.Service
+          yield* lsp.touchFile(path.join(dir, "inside.ts"))
+          expect(spy).toHaveBeenCalledTimes(1)
+          expect(yield* lsp.status()).toEqual([])
+        } finally {
+          spy.mockRestore()
+        }
+      }),
+    { trusted: false },
   )
 
   disabledDownloadIt.instance(

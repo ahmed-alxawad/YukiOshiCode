@@ -10,7 +10,7 @@ import { Archive } from "@/util/archive"
 import { Process } from "@/util/process"
 import { which } from "@yukioshi/core/util/which"
 import { Module } from "@yukioshi/core/util/module"
-import { spawn } from "./launch"
+import { refuseProjectFile, spawn } from "./launch"
 import { fetchWithTimeout } from "@/util/fetch-timeout"
 import { Npm } from "@yukioshi/core/npm"
 import type { RuntimeFlags } from "@/effect/runtime-flags"
@@ -178,6 +178,8 @@ export const ESLint: Info = {
   async spawn(root, ctx, flags) {
     const eslint = Module.resolve("eslint", ctx.directory)
     if (!eslint) return
+    // The server loads this eslint (and the plugins it names) into its own process.
+    refuseProjectFile(eslint)
     const serverPath = path.join(Global.Path.bin, "vscode-eslint", "server", "out", "eslintServer.js")
     if (!(await Filesystem.exists(serverPath))) {
       if (flags.disableLspDownload) return

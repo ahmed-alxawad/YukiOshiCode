@@ -114,6 +114,12 @@ what credentials accompany them. Until you trust a repository:
   provider `npm` packages, `shell` (the program every command runs in), turning
   `snapshot` (undo) off, `references` (other repositories to fetch), and
   instruction files outside the project (absolute, `~` or `..` paths) are ignored.
+- A repository cannot turn formatters or LSP servers on (`formatter`/`lsp` set to
+  `true` or to per-language entries); it can only turn off ones your global config
+  turned on. When your global config turns them on, a built-in formatter or LSP
+  server that would run or load a program from inside the repository (such as
+  `vendor/bin/pint`, `node_modules/typescript/lib/tsserver.js` or
+  `node_modules/.bin/*`) is skipped, and the log says why.
 
 YukiOshi loads safe settings (model names, limits, timeouts, local skills) but uses
 none of the restricted or executable features, and reports each skipped entry.

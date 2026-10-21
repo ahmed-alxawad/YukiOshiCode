@@ -657,8 +657,8 @@ const layer = Layer.effect(
               )
             }
           }
-          // Local MCP servers and custom LSP/formatter commands run programs too, so an
-          // untrusted project may only reference remote servers without credentials and disable built-ins.
+          // Local MCP servers run programs too, so an untrusted project may only reference remote servers
+          // without credentials.
           const runsCommand = (entry: unknown) => isRecord(entry) && Array.isArray(entry["command"])
           const withoutCommands = <T,>(label: string, entries: Record<string, T>) =>
             Object.fromEntries(
@@ -679,10 +679,27 @@ const layer = Layer.effect(
                 return [[name, entry]]
               }),
             )
+          // Built-in formatters and LSP servers run programs on the files the agent touches, so an untrusted
+          // project may turn them off but never on. A map of disabled entries is kept only when the user's
+          // own config already turned them on: any map counts as "on", so it would otherwise enable them all.
+          const onlyTurnsOff = (label: string, value: unknown, existing: unknown) => {
+            if (value === false) return false
+            if (isRecord(value) && existing) {
+              const off = Object.entries(value).filter(([, entry]) => isRecord(entry) && entry["disabled"] === true)
+              if (off.length < Object.keys(value).length) blockedExecutables.add(`${source} (${label})`)
+              return off.length ? Object.fromEntries(off.map(([name]) => [name, { disabled: true }])) : undefined
+            }
+            if (value !== undefined) blockedExecutables.add(`${source} (${label})`)
+            return undefined
+          }
           if (safe.command) safe.command = withoutShellCommands(source, safe.command)
           if (safe.mcp) safe.mcp = withoutCommands("MCP server", safe.mcp)
-          if (isRecord(safe.lsp)) safe.lsp = withoutCommands("LSP server", safe.lsp) as typeof safe.lsp
-          if (isRecord(safe.formatter)) safe.formatter = withoutCommands("formatter", safe.formatter) as typeof safe.formatter
+          const lsp = onlyTurnsOff("LSP servers", safe.lsp, result.lsp)
+          if (lsp === undefined) delete safe.lsp
+          else safe.lsp = lsp as typeof safe.lsp
+          const formatter = onlyTurnsOff("formatters", safe.formatter, result.formatter)
+          if (formatter === undefined) delete safe.formatter
+          else safe.formatter = formatter as typeof safe.formatter
 
           if (source !== "YUKIOSHI_CONFIG_CONTENT") {
             const sanitizeProviders = (providersRecord: Record<string, any> | undefined) => {

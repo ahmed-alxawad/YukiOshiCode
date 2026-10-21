@@ -7,10 +7,11 @@ import { pathToFileURL, fileURLToPath } from "url"
 import * as LSPServer from "./server"
 import { Config } from "@/config/config"
 import { Process } from "@/util/process"
-import { spawn as lspspawn } from "./launch"
+import { spawn as lspspawn, ProjectProgramError, withoutProjectPrograms } from "./launch"
+import { ProjectTrust } from "@/project/trust"
 import { Effect, Layer, Context, Schema } from "effect"
 import { InstanceState } from "@/effect/instance-state"
-import { containsPath } from "@/project/instance-context"
+import { containsPath, type InstanceContext } from "@/project/instance-context"
 import { NonNegativeInt } from "@yukioshi/core/schema"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { LspEvent } from "@yukioshi/schema/lsp-event"
@@ -107,6 +108,17 @@ const filterExperimentalServers = (servers: Record<string, LSPServer.Info>, flag
   }
 }
 
+/** The first string in a server's initialization options that names a file inside the project. */
+function projectPathIn(value: unknown, ctx: Pick<InstanceContext, "directory" | "worktree">): string | undefined {
+  if (typeof value === "string") return path.isAbsolute(value) && containsPath(value, ctx) ? value : undefined
+  if (typeof value !== "object" || value === null) return undefined
+  for (const item of Object.values(value)) {
+    const found = projectPathIn(item, ctx)
+    if (found) return found
+  }
+  return undefined
+}
+
 type LocInput = { file: string; line: number; character: number }
 
 interface State {
@@ -114,6 +126,8 @@ interface State {
   servers: Record<string, LSPServer.Info>
   broken: Set<string>
   spawning: Map<string, Promise<LSPClient.Info | undefined>>
+  /** Until the project is trusted, no server may run or load a program from inside it. */
+  trusted: boolean
 }
 
 export interface Interface {
@@ -193,6 +207,7 @@ const layer = Layer.effect(
           servers,
           broken: new Set(),
           spawning: new Map(),
+          trusted: yield* Effect.promise(() => ProjectTrust.isTrusted(ProjectTrust.root(ctx)).catch(() => false)),
         }
 
         yield* Effect.addFinalizer(() =>
@@ -212,21 +227,32 @@ const layer = Layer.effect(
       const clients = yield* Effect.promise(async () => {
         const extension = path.parse(file).ext || file
         const result: LSPClient.Info[] = []
+        const skips: { server: string; program: string }[] = []
+        const skipped = (server: string, program: string) => skips.push({ server, program })
         let updated = 0
 
         async function schedule(server: LSPServer.Info, root: string, key: string) {
-          const handle = await server
-            .spawn(root, ctx, flags)
+          const start = () => server.spawn(root, ctx, flags)
+          const handle = await (s.trusted ? start() : withoutProjectPrograms(ctx, start))
             .then((value) => {
               if (!value) s.broken.add(key)
               return value
             })
-            .catch(() => {
+            .catch((error) => {
               s.broken.add(key)
+              if (error instanceof ProjectProgramError) skipped(server.id, error.program)
               return undefined
             })
 
           if (!handle) return undefined
+          // A server is handed a project path to load (tsserver.path, pythonPath) only once it is initialized.
+          const loads = s.trusted ? undefined : projectPathIn(handle.initialization, ctx)
+          if (loads) {
+            s.broken.add(key)
+            skipped(server.id, loads)
+            await Process.stop(handle.process)
+            return undefined
+          }
           const client = await LSPClient.create({
             serverID: server.id,
             server: handle,
@@ -288,8 +314,14 @@ const layer = Layer.effect(
           updated++
         }
 
-        return { result, updated }
+        return { result, updated, skips }
       })
+      yield* Effect.forEach(clients.skips, (skip) =>
+        Effect.logWarning("skipped LSP server: it would run a program from this untrusted project", {
+          ...skip,
+          command: `yukioshi trust ${JSON.stringify(ProjectTrust.root(ctx))}`,
+        }),
+      )
       yield* Effect.forEach(Array.from({ length: clients.updated }), () => events.publish(Event.Updated, {}), {
         discard: true,
       })

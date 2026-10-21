@@ -1672,6 +1672,49 @@ it.effect("an untrusted project cannot choose the shell or turn snapshots off", 
   ),
 )
 
+it.effect("an untrusted project cannot turn on formatters or LSP servers", () =>
+  Effect.gen(function* () {
+    for (const project of [
+      { formatter: true, lsp: true },
+      {
+        formatter: { pint: { extensions: [".php", ".ts"] } },
+        lsp: { typescript: { command: ["./node_modules/.bin/tsserver"], extensions: [".ts"] } },
+      },
+      { formatter: { gofmt: { disabled: true } }, lsp: { eslint: { disabled: true } } },
+    ]) {
+      const config = yield* withConfigTree({ trusted: false, project }, Config.use.get())
+      expect(config.formatter).toBeUndefined()
+      expect(config.lsp).toBeUndefined()
+    }
+  }),
+)
+
+it.effect("an untrusted project can turn off formatters and LSP servers the user turned on", () =>
+  withConfigTree(
+    {
+      trusted: false,
+      global: { formatter: true, lsp: true },
+      project: { formatter: { gofmt: { disabled: true }, pint: {} }, lsp: false },
+    },
+    Effect.gen(function* () {
+      const config = yield* Config.use.get()
+      expect(config.formatter).toEqual({ gofmt: { disabled: true } })
+      expect(config.lsp).toBe(false)
+    }),
+  ),
+)
+
+it.effect("a trusted project can turn on formatters and LSP servers", () =>
+  withConfigTree(
+    { project: { formatter: true, lsp: true } },
+    Effect.gen(function* () {
+      const config = yield* Config.use.get()
+      expect(config.formatter).toBe(true)
+      expect(config.lsp).toBe(true)
+    }),
+  ),
+)
+
 it.effect("a trusted project can choose its shell and turn snapshots off", () =>
   withConfigTree(
     { project: { shell: "./tools/sh", snapshot: false } },

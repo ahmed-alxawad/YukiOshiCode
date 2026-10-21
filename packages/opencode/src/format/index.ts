@@ -9,6 +9,7 @@ import { mergeDeep } from "remeda"
 import { Config } from "@/config/config"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { errorMessage } from "@/util/error"
+import { ProjectTrust } from "@/project/trust"
 import * as Formatter from "./formatter"
 
 /** A formatter that runs longer than this is killed so one stuck process cannot block every edit. */
@@ -83,10 +84,22 @@ const layer = Layer.effect(
 
             if (!formatters.length) return false
 
+            let ran = false
             for (const { item, cmd } of formatters) {
-              yield* Effect.logInfo("running", { command: cmd })
               const replaced = cmd.map((x) => x.replace("$FILE", filepath))
               const dir = yield* InstanceState.directory
+              // A checkout can ship its own vendor/bin or node_modules/.bin program under a built-in's name.
+              const local = trusted ? undefined : ProjectTrust.projectProgram(replaced[0]!, dir, ctx)
+              if (local) {
+                yield* Effect.logWarning("skipped formatter: it would run a program from this untrusted project", {
+                  formatter: item.name,
+                  program: local,
+                  command: `yukioshi trust ${JSON.stringify(ProjectTrust.root(ctx))}`,
+                })
+                continue
+              }
+              yield* Effect.logInfo("running", { command: cmd })
+              ran = true
               const result = yield* appProcess
                 .run(
                   ChildProcess.make(replaced[0]!, replaced.slice(1), {
@@ -118,11 +131,14 @@ const layer = Layer.effect(
               }
             }
 
-            return true
+            return ran
           })
         }
 
         const cfg = yield* config.get()
+        const trusted = yield* Effect.promise(() =>
+          ProjectTrust.isTrusted(ProjectTrust.root(ctx)).catch(() => false),
+        )
 
         if (!cfg.formatter) {
           yield* Effect.logInfo("all formatters are disabled")

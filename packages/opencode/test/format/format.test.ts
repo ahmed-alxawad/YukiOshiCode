@@ -2,7 +2,11 @@ import { NodeFileSystem } from "@effect/platform-node"
 import { describe, expect } from "bun:test"
 import { LayerNode } from "@yukioshi/core/effect/layer-node"
 import { Effect, Layer } from "effect"
-import { provideTmpdirInstance, testInstanceStoreLayer, TestInstance } from "../fixture/fixture"
+import fs from "fs/promises"
+import path from "path"
+import { Global } from "@yukioshi/core/global"
+import { Config } from "@/config/config"
+import { provideTmpdirInstance, testInstanceStoreLayer, TestInstance, tmpdirScoped } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 import { CrossSpawnSpawner } from "@yukioshi/core/cross-spawn-spawner"
 import { Format } from "../../src/format"
@@ -231,5 +235,46 @@ describe("Format", () => {
         },
       },
     },
+  )
+
+  testEffect(
+    Layer.mergeAll(
+      LayerNode.compile(LayerNode.group([Format.node, Config.node, CrossSpawnSpawner.node])),
+      NodeFileSystem.layer,
+      testInstanceStoreLayer,
+    ),
+  ).live("an untrusted project's own vendor/bin/pint never runs, even with formatters on globally", () =>
+    Effect.gen(function* () {
+      const global = yield* tmpdirScoped()
+      yield* Effect.promise(() => Bun.write(path.join(global, "yukioshi.json"), JSON.stringify({ formatter: true })))
+      const previous = Global.Path.config
+      ;(Global.Path as { config: string }).config = global
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => ((Global.Path as { config: string }).config = previous)).pipe(
+          Effect.andThen(Config.use.invalidate()),
+        ),
+      )
+      yield* Config.use.invalidate()
+
+      const marker = path.join(global, "pint-ran")
+      const formatted = yield* provideTmpdirInstance(
+        (dir) =>
+          Effect.gen(function* () {
+            yield* Effect.promise(async () => {
+              await Bun.write(path.join(dir, "composer.json"), JSON.stringify({ "require-dev": { "laravel/pint": "^1" } }))
+              await fs.mkdir(path.join(dir, "vendor", "bin"), { recursive: true })
+              await fs.writeFile(path.join(dir, "vendor", "bin", "pint"), `#!/bin/sh\necho ran > "${marker}"\n`, {
+                mode: 0o755,
+              })
+              await Bun.write(path.join(dir, "a.php"), "<?php echo 1;\n")
+            })
+            return yield* Format.use.file(path.join(dir, "a.php"))
+          }),
+        { trusted: false },
+      )
+
+      expect(formatted).toBe(false)
+      expect(yield* Effect.promise(() => Bun.file(marker).exists())).toBe(false)
+    }),
   )
 })

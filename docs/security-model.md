@@ -48,8 +48,13 @@ refuse, such as `cat .env`.
 ## Repository trust
 
 Until you run `yukioshi trust .`, a repository cannot add hooks (including HTTP
-hooks), plugins, local MCP servers, LSP or formatter commands, webhooks, or
-custom endpoints and headers for existing providers. Triggers, `audit`, `webfetch`, `learning`, `repo_map`,
+hooks), plugins, local MCP servers, webhooks, or custom endpoints and headers
+for existing providers, and cannot turn formatters or LSP servers on (it may
+turn off ones your global config turned on). Even when your global config turns
+them on, a built-in formatter or LSP server that would run or load a program
+from inside an untrusted repository (`vendor/bin/pint`,
+`node_modules/typescript/lib/tsserver.js`, `node_modules/.bin/*`, a `.venv`
+interpreter) is skipped with a warning. Triggers, `audit`, `webfetch`, `learning`, `repo_map`,
 `agent_sources` and the `shell` backend settings in a repository are always ignored, even when trusted.
 Other settings can only make YukiOshi stricter: its `allow` rules, a higher
 spending limit, turning off redaction, or turning off or widening the sandbox
