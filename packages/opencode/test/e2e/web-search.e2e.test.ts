@@ -2,6 +2,7 @@ import { describe, expect } from "bun:test"
 import { Effect } from "effect"
 import { cliIt } from "../lib/cli-process"
 import { config, requestText, requestToolNames, runtimeEnv } from "./helpers"
+import { userConfig } from "./security/util"
 
 describe("web search and code navigation settings", () => {
   cliIt.live(
@@ -23,11 +24,16 @@ describe("web search and code navigation settings", () => {
         expect(off).not.toContain("websearch")
         expect(off).not.toContain("lsp")
 
-        const on = yield* tools("BOTH-ON", { web_search: { enabled: true }, lsp: true, lsp_tool: true })
+        // Built-in language servers run programs, so only the user's own config may turn them on, not the
+        // (untrusted) project config this run passes in YUKIOSHI_CONFIG_CONTENT; that config's default
+        // `lsp: false` is dropped so the user's setting applies.
+        userConfig(home, { lsp: true })
+        const on = yield* tools("BOTH-ON", { web_search: { enabled: true }, lsp: undefined, lsp_tool: true })
         expect(on).toContain("websearch")
         expect(on).toContain("lsp")
 
         // The lsp tool needs language servers; without them it would only ever fail.
+        userConfig(home, {})
         const noServers = yield* tools("NO-SERVERS", { lsp_tool: true })
         expect(noServers).not.toContain("lsp")
       }),
