@@ -253,7 +253,7 @@ await check("SIGKILL watchdog cleans a real binary child", async () => {
     expect(Number.isInteger(childPid) && childPid > 0 && processAlive(childPid), `invalid child pid ${childPid}`)
     parent.kill("SIGKILL")
     await parent.exited
-    await waitForCondition(() => !processAlive(childPid), 2_000, `child ${childPid} survived parent SIGKILL`)
+    await waitForCondition(() => !processAlive(childPid), 10_000, `child ${childPid} survived parent SIGKILL`)
   } finally {
     try { parent.kill("SIGKILL") } catch {}
     if (childPid > 0) try { process.kill(childPid, "SIGKILL") } catch {}

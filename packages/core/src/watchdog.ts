@@ -43,7 +43,7 @@ export function attachWatchdog(target: Pick<ChildProcess, "pid" | "once"> | numb
           '  rest=${stat##*) }; set -- $rest',
           '  [ "$1" = Z ] && break',
           '  [ -z "$expected" ] || [ "${20}" = "$expected" ] || exit 0',
-          "  sleep 0.1",
+          "  sleep 0.25",
           "done",
           '[ -r "/proc/$target/stat" ] || exit 0',
           'IFS= read -r stat < "/proc/$target/stat" || exit 0',
