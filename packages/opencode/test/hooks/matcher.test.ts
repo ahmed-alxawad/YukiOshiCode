@@ -52,16 +52,19 @@ describe("hook matcher", () => {
       expect(yield* selected("write|edit", "editor")).toBe(false)
     }))
 
+  it("accepts Claude Code style tool names regardless of case", () =>
+    Effect.gen(function* () {
+      expect(yield* selected("Bash", "bash")).toBe(true)
+      expect(yield* selected("Edit|Write", "write")).toBe(true)
+      expect(yield* selected("WebFetch", "webfetch")).toBe(true)
+      expect(yield* selected("Bash", "bash2")).toBe(false)
+    }))
+
   it("supports regular expression syntax", () =>
     Effect.gen(function* () {
       expect(yield* selected("mcp__.*", "mcp__github__create_issue")).toBe(true)
       expect(yield* selected("mcp__.*", "bash")).toBe(false)
       expect(yield* selected("(read|glob)", "glob")).toBe(true)
-    }))
-
-  it("is case sensitive", () =>
-    Effect.gen(function* () {
-      expect(yield* selected("Bash", "bash")).toBe(false)
     }))
 
   it("does not let a '.*' trick match across alternatives into an unrelated tool", () =>

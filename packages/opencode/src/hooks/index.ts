@@ -87,10 +87,13 @@ export interface Interface {
 
 export class Service extends Context.Service<Service, Interface>()("@yukioshi/Hooks") {}
 
-/** Compiles a matcher; undefined when it is not a valid regular expression. */
+/**
+ * Compiles a matcher; undefined when it is not a valid regular expression. Case-insensitive, so matchers
+ * written for Claude Code ("Bash", "Edit|Write") select the same tools as our lowercase ids.
+ */
 function compile(matcher: string): RegExp | undefined {
   try {
-    return new RegExp(`^(?:${matcher})$`)
+    return new RegExp(`^(?:${matcher})$`, "i")
   } catch {
     return undefined
   }

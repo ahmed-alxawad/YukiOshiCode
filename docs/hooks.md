@@ -37,7 +37,7 @@ Each event takes a list of hooks, run one after another:
 | Field       | Meaning                                                                 |
 | ----------- | ----------------------------------------------------------------------- |
 | `command`   | the command line; runs with `$SHELL` (or `/bin/sh`) on macOS and Linux, `cmd.exe` on Windows |
-| `matcher`   | optional regular expression matched against the whole tool id, such as `bash`, `edit`, `write`, `read`, `webfetch`; omit it or use `*` for every tool |
+| `matcher`   | optional regular expression matched against the whole tool id, such as `bash`, `edit`, `write`, `read`, `webfetch`, ignoring case (so Claude Code's `Bash` or `Edit\|Write` work too); omit it or use `*` for every tool |
 | `timeoutMs` | optional; default 60000                                                 |
 
 For an HTTP hook, see [HTTP hooks](#http-hooks) below.
