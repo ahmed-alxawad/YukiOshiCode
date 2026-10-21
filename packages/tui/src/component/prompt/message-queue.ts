@@ -27,10 +27,18 @@ export type Held = { id: number; text: string; send: () => Promise<unknown> | un
  * changes (or a message is added); it sends the next held message when idle
  * and waits for that turn to start and finish before sending the next.
  */
-export function createMessageQueue() {
+/**
+ * Some held messages never start a turn (`/loop status` and other commands answered directly), so no
+ * busy status ever arrives. If none has arrived this long after the send settled, the next message goes.
+ */
+const NO_TURN_GRACE_MS = 2_000
+
+export function createMessageQueue(options: { noTurnGraceMs?: number } = {}) {
+  const grace = options.noTurnGraceMs ?? NO_TURN_GRACE_MS
   const [store, setStore] = createStore<{ held: Record<string, { id: number; text: string }[]> }>({ held: {} })
   const items = new Map<string, Held[]>()
-  const inFlight = new Set<string>()
+  // The send each session is waiting on; cleared once its turn starts (busy) or it turned out to start none.
+  const inFlight = new Map<string, object>()
   let seq = 0
 
   function sync(sessionID: string) {
@@ -64,15 +72,18 @@ export function createMessageQueue() {
       const next = items.get(sessionID)?.shift()
       if (!next) return
       sync(sessionID)
-      inFlight.add(sessionID)
-      const failed = () => {
+      const token = {}
+      inFlight.set(sessionID, token)
+      const release = () => {
+        if (inFlight.get(sessionID) !== token) return
         inFlight.delete(sessionID)
         queueMicrotask(() => api.pump(sessionID, true))
       }
+      const settled = () => setTimeout(release, grace)
       try {
-        Promise.resolve(next.send()).catch(failed)
+        Promise.resolve(next.send()).then(settled, release)
       } catch {
-        failed()
+        release()
       }
     },
     /** Quit/ctrl-c: discard everything held. */

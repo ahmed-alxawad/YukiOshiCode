@@ -63,3 +63,31 @@ test("a failed send frees the queue for the next message; clear discards", async
   expect(q.size("s")).toBe(0)
   expect(q.held("s")).toEqual([])
 })
+
+test("a held message that never starts a turn does not freeze the queue", async () => {
+  const q = createMessageQueue({ noTurnGraceMs: 5 })
+  const sent: string[] = []
+  q.add("s", "/loop status", () => void sent.push("/loop status"))
+  q.add("s", "fix the tests", () => void sent.push("fix the tests"))
+  q.pump("s", true)
+  expect(sent).toEqual(["/loop status"])
+  // The command is answered directly: no busy status arrives.
+  await new Promise((r) => setTimeout(r, 30))
+  expect(sent).toEqual(["/loop status", "fix the tests"])
+  // Nothing is stuck: a new message is not held once the session is idle.
+  expect(q.shouldHold("queue", false, "s")).toBe(false)
+})
+
+test("a turn that starts within the grace period is waited for as before", async () => {
+  const q = createMessageQueue({ noTurnGraceMs: 20 })
+  const sent: string[] = []
+  q.add("s", "a", () => void sent.push("a"))
+  q.add("s", "b", () => void sent.push("b"))
+  q.pump("s", true)
+  await tick()
+  q.pump("s", false) // a's turn started
+  await new Promise((r) => setTimeout(r, 40))
+  expect(sent).toEqual(["a"]) // still running: b waits
+  q.pump("s", true)
+  expect(sent).toEqual(["a", "b"])
+})
