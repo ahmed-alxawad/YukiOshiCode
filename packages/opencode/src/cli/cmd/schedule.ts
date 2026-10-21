@@ -17,14 +17,34 @@ import {
   schedulerWarning,
   syncSystemSchedule,
   runJob,
+  JOBS_LOCK,
   type ScheduleJob,
 } from "../../schedule"
+import { Flock } from "@yukioshi/core/util/flock"
 
 const cliTry = <Value>(message: string, fn: () => PromiseLike<Value>) =>
   Effect.tryPromise({
     try: fn,
     catch: (error) => new CliError({ message: message + errorMessage(error) }),
   })
+
+// Holds the jobs lock from loading jobs.json until the system scheduler is synced, so concurrent schedule
+// commands (and runs recording their result) never write back a list that misses another's change.
+const lockedJobs = <A, E, R>(body: Effect.Effect<A, E, R>) =>
+  Effect.scoped(Effect.andThen(Flock.effect(JOBS_LOCK), body))
+
+const setEnabled = Effect.fnUntraced(function* (id: string, enabled: boolean) {
+  const jobs = yield* cliTry("Failed to load jobs: ", () => loadJobs())
+  const job = jobs.find((j) => j.id === id || (id.length >= 6 && j.id.startsWith(id)))
+  if (!job) {
+    return yield* fail(`Scheduled job not found: ${id}. Run \`yukioshi schedule list\` to see the job IDs.`)
+  }
+
+  job.enabled = enabled
+  yield* cliTry("Failed to save jobs: ", () => saveJobs(jobs))
+  yield* cliTry("Failed to update system scheduler: ", () => syncSystemSchedule(jobs))
+  return job
+})
 
 function generateId(): string {
   return randomBytes(4).toString("hex")
@@ -137,11 +157,14 @@ export const ScheduleAddCommand = effectCmd({
       createdAt: Date.now(),
     }
 
-    const jobs = yield* cliTry("Failed to load jobs: ", () => loadJobs())
-    jobs.push(newJob)
-
-    yield* cliTry("Failed to save scheduled jobs: ", () => saveJobs(jobs))
-    yield* cliTry("Failed to update system scheduler: ", () => syncSystemSchedule(jobs))
+    yield* lockedJobs(
+      Effect.gen(function* () {
+        const jobs = yield* cliTry("Failed to load jobs: ", () => loadJobs())
+        jobs.push(newJob)
+        yield* cliTry("Failed to save scheduled jobs: ", () => saveJobs(jobs))
+        yield* cliTry("Failed to update system scheduler: ", () => syncSystemSchedule(jobs))
+      }),
+    )
 
     const next = localTime(nextRun(parsedCron))
     UI.println(`Added scheduled job ${newJob.id} (${newJob.name})`)
@@ -197,15 +220,22 @@ export const ScheduleRemoveCommand = effectCmd({
       describe: "id of the job to remove",
     }),
   handler: Effect.fn("Cli.schedule.remove")(function* (args: { id: string }) {
-    const jobs = yield* cliTry("Failed to load jobs: ", () => loadJobs())
-    const index = jobs.findIndex((j) => j.id === args.id || (args.id.length >= 6 && j.id.startsWith(args.id)))
-    if (index === -1) {
-      return yield* fail(`Scheduled job not found: ${args.id}. Run \`yukioshi schedule list\` to see the job IDs.`)
-    }
+    const removed = yield* lockedJobs(
+      Effect.gen(function* () {
+        const jobs = yield* cliTry("Failed to load jobs: ", () => loadJobs())
+        const index = jobs.findIndex((j) => j.id === args.id || (args.id.length >= 6 && j.id.startsWith(args.id)))
+        if (index === -1) {
+          return yield* fail(
+            `Scheduled job not found: ${args.id}. Run \`yukioshi schedule list\` to see the job IDs.`,
+          )
+        }
 
-    const removed = jobs.splice(index, 1)[0]
-    yield* cliTry("Failed to save jobs: ", () => saveJobs(jobs))
-    yield* cliTry("Failed to update system scheduler: ", () => syncSystemSchedule(jobs))
+        const removed = jobs.splice(index, 1)[0]
+        yield* cliTry("Failed to save jobs: ", () => saveJobs(jobs))
+        yield* cliTry("Failed to update system scheduler: ", () => syncSystemSchedule(jobs))
+        return removed
+      }),
+    )
 
     UI.println(`Removed scheduled job ${removed.id} (${removed.name}).`)
   }),
@@ -300,15 +330,7 @@ export const ScheduleEnableCommand = effectCmd({
       describe: "id of the job to enable",
     }),
   handler: Effect.fn("Cli.schedule.enable")(function* (args: { id: string }) {
-    const jobs = yield* cliTry("Failed to load jobs: ", () => loadJobs())
-    const job = jobs.find((j) => j.id === args.id || (args.id.length >= 6 && j.id.startsWith(args.id)))
-    if (!job) {
-      return yield* fail(`Scheduled job not found: ${args.id}. Run \`yukioshi schedule list\` to see the job IDs.`)
-    }
-
-    job.enabled = true
-    yield* cliTry("Failed to save jobs: ", () => saveJobs(jobs))
-    yield* cliTry("Failed to update system scheduler: ", () => syncSystemSchedule(jobs))
+    const job = yield* lockedJobs(setEnabled(args.id, true))
 
     UI.println(`Enabled scheduled job ${job.id} (${job.name}).`)
   }),
@@ -325,15 +347,7 @@ export const ScheduleDisableCommand = effectCmd({
       describe: "id of the job to disable",
     }),
   handler: Effect.fn("Cli.schedule.disable")(function* (args: { id: string }) {
-    const jobs = yield* cliTry("Failed to load jobs: ", () => loadJobs())
-    const job = jobs.find((j) => j.id === args.id || (args.id.length >= 6 && j.id.startsWith(args.id)))
-    if (!job) {
-      return yield* fail(`Scheduled job not found: ${args.id}. Run \`yukioshi schedule list\` to see the job IDs.`)
-    }
-
-    job.enabled = false
-    yield* cliTry("Failed to save jobs: ", () => saveJobs(jobs))
-    yield* cliTry("Failed to update system scheduler: ", () => syncSystemSchedule(jobs))
+    const job = yield* lockedJobs(setEnabled(args.id, false))
 
     UI.println(`Disabled scheduled job ${job.id} (${job.name}).`)
   }),

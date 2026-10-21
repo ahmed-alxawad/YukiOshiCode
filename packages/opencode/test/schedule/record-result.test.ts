@@ -26,6 +26,14 @@ describe("scheduled run bookkeeping", () => {
     expect(jobs[1]!.lastResult).toBeUndefined()
   })
 
+  it("keeps every result when several runs record at the same time", async () => {
+    const ids = ["aaaaaaaa", "bbbbbbbb", "cccccccc", "dddddddd", "eeeeeeee"]
+    await saveJobs(ids.map((id) => job(id, id)))
+    await Promise.all(ids.map((id, index) => recordResult(id, index + 1, "success")))
+    const jobs = await loadJobs()
+    expect(jobs.map((j) => j.lastRunAt)).toEqual([1, 2, 3, 4, 5])
+  })
+
   it("does nothing when the job was removed during the run", async () => {
     await saveJobs([job("cccccccc", "other")])
     await recordResult("aaaaaaaa", 5, "success")

@@ -12,6 +12,7 @@ import {
   findJob,
   loadJobs,
   saveJobs,
+  withJobsLock,
   writeRunLog,
   type ScheduleJob,
 } from "./store"
@@ -34,12 +35,14 @@ export function maxRunMs(env: NodeJS.ProcessEnv = process.env) {
  * started: a run can last hours, and jobs added, edited or removed meanwhile must not be undone.
  */
 export async function recordResult(jobId: string, lastRunAt: number, lastResult: string) {
-  const jobs = await loadJobs()
-  const current = jobs.find((j) => j.id === jobId)
-  if (!current) return
-  current.lastRunAt = lastRunAt
-  current.lastResult = lastResult
-  await saveJobs(jobs)
+  await withJobsLock(async () => {
+    const jobs = await loadJobs()
+    const current = jobs.find((j) => j.id === jobId)
+    if (!current) return
+    current.lastRunAt = lastRunAt
+    current.lastResult = lastResult
+    await saveJobs(jobs)
+  })
 }
 
 function pickModel(value?: string) {

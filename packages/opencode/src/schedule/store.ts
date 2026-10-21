@@ -6,6 +6,7 @@ import path from "path"
 import fs from "fs/promises"
 import { existsSync, readFileSync } from "fs"
 import { Global } from "@yukioshi/core/global"
+import { Flock } from "@yukioshi/core/util/flock"
 
 export interface ScheduleJob {
   id: string
@@ -92,6 +93,17 @@ export async function saveJobs(jobs: ScheduleJob[]): Promise<void> {
   const tmpPath = `${targetPath}.${process.pid}.${Date.now()}.tmp`
   await fs.writeFile(tmpPath, JSON.stringify(jobs, null, 2), { encoding: "utf8", mode: 0o600 })
   await renameWithRetry(tmpPath, targetPath)
+}
+
+/**
+ * Lock key held around every read-modify-write of jobs.json and the system scheduler sync that follows it.
+ * saveJobs alone is atomic, but two processes (parallel `schedule add`, or a run recording its result while
+ * `schedule remove` runs) that both load before either saves would otherwise drop one another's change.
+ */
+export const JOBS_LOCK = "schedule-jobs"
+
+export function withJobsLock<T>(fn: () => Promise<T>): Promise<T> {
+  return Flock.withLock(JOBS_LOCK, fn)
 }
 
 export async function findJob(id: string): Promise<ScheduleJob | undefined> {
