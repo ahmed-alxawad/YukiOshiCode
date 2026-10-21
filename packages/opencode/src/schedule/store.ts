@@ -3,6 +3,7 @@
 // and enforces single-instance job execution via file locks.
 
 import path from "path"
+import { randomUUID } from "node:crypto"
 import fs from "fs/promises"
 import { existsSync, readFileSync } from "fs"
 import { Global } from "@yukioshi/core/global"
@@ -90,7 +91,9 @@ export async function saveJobs(jobs: ScheduleJob[]): Promise<void> {
   const scheduleDir = getScheduleDir()
   await fs.mkdir(scheduleDir, { recursive: true })
   const targetPath = getJobsPath()
-  const tmpPath = `${targetPath}.${process.pid}.${Date.now()}.tmp`
+  // pid + time is not unique: two saves in one process in the same millisecond would share the temp file
+  // and rename a half-written one into place.
+  const tmpPath = `${targetPath}.${process.pid}.${randomUUID()}.tmp`
   await fs.writeFile(tmpPath, JSON.stringify(jobs, null, 2), { encoding: "utf8", mode: 0o600 })
   await renameWithRetry(tmpPath, targetPath)
 }

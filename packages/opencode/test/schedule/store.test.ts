@@ -52,3 +52,18 @@ describe("schedule store, logging, and concurrency lock", () => {
     await pruneLogs(jobId, 0)
   })
 })
+
+it("two saves in the same millisecond never leave a half-written jobs.json", async () => {
+  const realNow = Date.now
+  Date.now = () => 1_700_000_000_000
+  try {
+    const big = (tag: string) =>
+      Array.from({ length: 400 }, (_, i) => ({ id: `${tag}${i}`, name: `${tag}-${i}`, prompt: "x".repeat(200) }) as never)
+    await Promise.all([saveJobs(big("a")), saveJobs(big("b")), saveJobs(big("c"))])
+    const jobs = await loadJobs()
+    expect(jobs).toHaveLength(400)
+  } finally {
+    Date.now = realNow
+    await saveJobs([])
+  }
+})
