@@ -72,6 +72,10 @@ describe("windows launcher script", () => {
     expect(script).toContain(`set "XDG_DATA_HOME=${LONG.XDG_DATA_HOME}"`)
     expect(script).toContain(`"${BIN}" schedule run j1`)
     expect(launcherScript("j1", BIN)).toContain(`"${BIN}" schedule run j1`)
+    // cmd.exe must switch to UTF-8 before it reads a non-ASCII binary path.
+    const lines = launcherScript("j1", "C:\\Users\\José\\yukioshi.exe").split("\r\n")
+    expect(lines.indexOf("chcp 65001 >nul")).toBeGreaterThan(0)
+    expect(lines.indexOf("chcp 65001 >nul")).toBeLessThan(lines.findIndex((line) => line.includes("José")))
     expect(() => launcherScript("j1", BIN, { XDG_DATA_HOME: "%PATH%" })).toThrow()
   })
 

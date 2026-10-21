@@ -72,7 +72,9 @@ export function launcherScript(id: string, binary: string, env: Record<string, s
   taskRunCommand(id, binary, env) // validates names and values
   const lines = Object.entries(env).map(([name, value]) => `set "${name}=${value}"`)
   lines.push(`"${binary}" schedule run ${id}`)
-  return `@echo off\r\n${lines.join("\r\n")}\r\nexit /b %ERRORLEVEL%\r\n`
+  // The file is written as UTF-8, but cmd.exe reads batch files in the OEM code page: switch to UTF-8 first,
+  // or a profile path such as C:\Users\José turns into JosÃ© and the job never starts.
+  return `@echo off\r\nchcp 65001 >nul\r\n${lines.join("\r\n")}\r\nexit /b %ERRORLEVEL%\r\n`
 }
 
 /**
