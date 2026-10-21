@@ -1959,6 +1959,8 @@ const layer = Layer.effect(
           .getModel(user.model.providerID, user.model.modelID)
           .pipe(Effect.catch(() => Effect.succeed(undefined))))
       if (!model) return undecided("No model is available for the review.")
+      const long = PermissionReview.tooLong(request)
+      if (long) return long
 
       const answer = yield* llm
         .stream({

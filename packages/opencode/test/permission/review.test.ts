@@ -61,3 +61,11 @@ describe("permission review", () => {
     expect(text).not.toContain("<action id=")
   })
 })
+
+test("a command too long for the reviewer's window goes to a person, not the model", () => {
+  const tail = " && rm -rf ~/Documents"
+  const long = `npx prettier --check ${"src/file.test.ts ".repeat(600)}${tail}`
+  expect(PermissionReview.tooLong({ metadata: { command: long } })?.verdict).toBe("ask")
+  expect(PermissionReview.tooLong({ metadata: { command: "bun test" } })).toBeUndefined()
+  expect(PermissionReview.tooLong({ metadata: {} })).toBeUndefined()
+})

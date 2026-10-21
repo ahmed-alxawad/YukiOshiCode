@@ -58,6 +58,16 @@ export function input(request: Pick<PermissionV1.Request, "permission" | "patter
   ].join("\n")
 }
 
+/**
+ * A command longer than the reviewer's window would be cut off, so its tail (where `&& rm -rf ~` can hide)
+ * would never be reviewed. Such a command goes to a person instead of the model.
+ */
+export function tooLong(request: Pick<PermissionV1.Request, "metadata">): Verdict | undefined {
+  const command = request.metadata?.command
+  if (typeof command !== "string" || command.length <= ACTION_MAX - 500) return undefined
+  return { verdict: "ask", reason: `The command is too long to review (${command.length} characters).` }
+}
+
 /** The first word decides, ALLOW or DENY; any other answer leaves the action to a person. */
 export function parse(answer: string): Verdict {
   const match = answer.trim().match(/^[*_`\s]*(ALLOW|DENY)\b[*_`]*\s*[:\-–—]?\s*(.*)$/is)
