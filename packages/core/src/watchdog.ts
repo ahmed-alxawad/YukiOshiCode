@@ -49,7 +49,7 @@ export function attachWatchdog(target: Pick<ChildProcess, "pid" | "once"> | numb
           'IFS= read -r stat < "/proc/$target/stat" || exit 0',
           'rest=${stat##*) }; set -- $rest',
           '[ "${20}" = "$target_expected" ] || exit 0',
-          'if [ "$group" = 1 ]; then kill -KILL -- -"$target" 2>/dev/null; fi',
+          'if [ "$group" = 1 ]; then kill -KILL -"$target" 2>/dev/null; fi',
           'kill -KILL "$target" 2>/dev/null',
         ].join("\n")
       : [
@@ -63,7 +63,7 @@ export function attachWatchdog(target: Pick<ChildProcess, "pid" | "once"> | numb
           'current=$(/bin/ps -o lstart= -p "$target" 2>/dev/null)',
           'set -- $current; current="$1 $2 $3 $4 $5"',
           '[ "$current" = "$target_expected" ] || exit 0',
-          'if [ "$group" = 1 ]; then kill -KILL -- -"$target" 2>/dev/null; fi',
+          'if [ "$group" = 1 ]; then kill -KILL -"$target" 2>/dev/null; fi',
           'kill -KILL "$target" 2>/dev/null',
         ].join("\n")
   let watcher: ChildProcess | undefined
