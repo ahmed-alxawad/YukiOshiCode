@@ -1,5 +1,6 @@
 import { describe, expect } from "bun:test"
 import { Effect } from "effect"
+import { writeFileSync } from "node:fs"
 import path from "node:path"
 import { cliIt } from "../lib/cli-process"
 import { reply } from "../lib/llm-server"
@@ -15,7 +16,7 @@ function init(directory: string) {
   git(directory, "init", "-q")
   git(directory, "config", "user.email", "e2e@example.invalid")
   git(directory, "config", "user.name", "E2E")
-  Bun.write(path.join(directory, "tracked.txt"), "initial")
+  writeFileSync(path.join(directory, "tracked.txt"), "initial")
   git(directory, "add", "tracked.txt")
   git(directory, "commit", "-qm", "initial")
 }
@@ -52,7 +53,7 @@ describe("git checkpoints", () => {
     ({ home, llm, opencode }) =>
       Effect.gen(function* () {
         init(home)
-        Bun.write(path.join(home, "staged.txt"), "keep staged")
+        writeFileSync(path.join(home, "staged.txt"), "keep staged")
         git(home, "add", "staged.txt")
         const head = git(home, "rev-parse", "HEAD")
         const branch = git(home, "branch", "--show-current")
@@ -113,7 +114,7 @@ describe("git checkpoints", () => {
             timeoutMs: 90_000,
           })).exitCode,
         ).toBe(0)
-        Bun.write(path.join(home, "tracked.txt"), "dirty change")
+        writeFileSync(path.join(home, "tracked.txt"), "dirty change")
 
         const refused = yield* opencode.spawn(["checkpoint", "restore", first], { cwd: home, env: runEnv })
         expect(refused.exitCode).toBe(1)
@@ -218,11 +219,11 @@ describe("git checkpoints", () => {
     ({ home, llm, opencode }) =>
       Effect.gen(function* () {
         init(home)
-        Bun.write(path.join(home, "readme.md"), "readme")
+        writeFileSync(path.join(home, "readme.md"), "readme")
         git(home, "add", "readme.md")
         git(home, "commit", "-qm", "readme")
-        Bun.write(path.join(home, "readme.md"), "readme\nuser work in progress")
-        Bun.write(path.join(home, "notes-secret.txt"), "API_KEY=sk-live-123")
+        writeFileSync(path.join(home, "readme.md"), "readme\nuser work in progress")
+        writeFileSync(path.join(home, "notes-secret.txt"), "API_KEY=sk-live-123")
         globalConfig(home, { git: { auto_commit: true } })
         const runEnv = env(home, llm.url)
         yield* llm.push(change(path.join(home, "tracked.txt"), "agent change"))
