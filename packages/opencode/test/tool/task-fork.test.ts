@@ -17,7 +17,8 @@ import { SessionRunState } from "@/session/run-state"
 import { SessionStatus } from "@/session/status"
 
 import { TaskTool, type TaskPromptOps } from "../../src/tool/task"
-import { forkHistory } from "../../src/tool/task-fork"
+import { FORK_MAX_TOKENS, forkHistory } from "../../src/tool/task-fork"
+import { Token } from "../../src/util/token"
 import { MessageV2 } from "../../src/session/message-v2"
 import { Truncate } from "@/tool/truncate"
 import { ToolRegistry } from "@/tool/registry"
@@ -373,6 +374,24 @@ describe("task fork mode", () => {
       }),
     on,
   )
+
+  it.instance(
+    "fork over the token cap drops the oldest messages and tells the child",
+    () =>
+      Effect.gen(function* () {
+        const { result, msgs, seen } = yield* run(true, (chat) =>
+          addText(chat.id, "long text " + "y".repeat(FORK_MAX_TOKENS * 4)).pipe(Effect.asVoid),
+        )
+        expect(Exit.isSuccess(result)).toBe(true)
+        const all = texts(msgs).join("\n")
+        expect(all).not.toContain("earlier message")
+        expect(all).not.toContain("long text")
+        const input = (seen?.parts ?? []).flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n")
+        expect(input).toContain("left out of this fork")
+        expect(input).toContain("do it")
+      }),
+    on,
+  )
 })
 
 // ---------- forkHistory / copyForkHistory pure fixtures ----------
@@ -446,7 +465,7 @@ describe("forkHistory copy safety", () => {
       // newer than the last finished assistant, so MessageV2.latest would queue it in the child
       const u2 = fuser(FK_BASE + 20, sessionID, (id) => [ftext(id, sessionID, "queued next"), fsubtask(id, sessionID)])
       const a2 = fasst(FK_BASE + 30, u2.info.id, sessionID)
-      const history = forkHistory([u1, a1, u2, a2], a2.info.id)
+      const history = forkHistory([u1, a1, u2, a2], a2.info.id).messages
       expect(MessageV2.latest(history).tasks.some((task) => task.type === "subtask")).toBe(false)
       expect(history.flatMap((msg) => msg.parts).some((part) => part.type === "subtask")).toBe(false)
       expect(texts(history)).toContain("queued next")
@@ -460,7 +479,7 @@ describe("forkHistory copy safety", () => {
       const a1 = fasst(FK_BASE + 10, u1.info.id, sessionID, "stop")
       const u2 = fuser(FK_BASE + 20, sessionID, (id) => [ftext(id, sessionID, "after")])
       const a2 = fasst(FK_BASE + 30, u2.info.id, sessionID)
-      const history = forkHistory([u1, a1, u2, a2], a2.info.id)
+      const history = forkHistory([u1, a1, u2, a2], a2.info.id).messages
       expect(MessageV2.latest(history).tasks.some((task) => task.type === "subtask")).toBe(false)
       expect(history.flatMap((msg) => msg.parts).some((part) => part.type === "subtask")).toBe(true)
     }),
@@ -475,8 +494,33 @@ describe("forkHistory copy safety", () => {
       const u2 = fuser(FK_BASE + 20, sessionID, (id) => [ftext(id, sessionID, "after")])
       const a2 = fasst(FK_BASE + 30, u2.info.id, sessionID)
       const msgs = [u1, a1, u2, a2]
-      expect(forkHistory(msgs, gap).map((msg) => msg.info.id)).toEqual([u1.info.id, a1.info.id])
-      expect(forkHistory(msgs, a2.info.id).map((msg) => msg.info.id)).toEqual([u1.info.id, a1.info.id, u2.info.id])
+      expect(forkHistory(msgs, gap).messages.map((msg) => msg.info.id)).toEqual([u1.info.id, a1.info.id])
+      expect(forkHistory(msgs, a2.info.id).messages.map((msg) => msg.info.id)).toEqual([
+        u1.info.id,
+        a1.info.id,
+        u2.info.id,
+      ])
+    }),
+  )
+
+  it.effect("long text history is cut from the oldest turn to fit the cap", () =>
+    Effect.gen(function* () {
+      const sessionID = SessionID.make("sess_fk_cap")
+      const long = "x".repeat(4_000)
+      const u1 = fuser(FK_BASE, sessionID, (id) => [ftext(id, sessionID, long)])
+      const a1 = fasst(FK_BASE + 10, u1.info.id, sessionID, "stop")
+      a1.parts = [ftext(a1.info.id, sessionID, long)]
+      const u2 = fuser(FK_BASE + 20, sessionID, (id) => [ftext(id, sessionID, "recent")])
+      const a2 = fasst(FK_BASE + 30, u2.info.id, sessionID)
+      const msgs = [u1, a1, u2, a2]
+      // Uncapped, the result is the full history and nothing is dropped.
+      expect(forkHistory(msgs, a2.info.id).dropped).toBe(0)
+      const capped = forkHistory(msgs, a2.info.id, 500)
+      expect(capped.messages.map((msg) => msg.info.id)).toEqual([u2.info.id])
+      expect(capped.dropped).toBe(2)
+      expect(capped.messages.reduce((sum, msg) => sum + Token.estimate(JSON.stringify(msg)), 0)).toBeLessThanOrEqual(
+        500,
+      )
     }),
   )
 })

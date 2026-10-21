@@ -15,7 +15,8 @@ export function forkSubagents(cfg: { readonly subagents?: { readonly fork?: bool
 
 /**
  * Parent messages (oldest first) before the task call, cut at the parent's compaction summary, with the oldest
- * tool outputs marked compacted (the same marker compaction uses) until the history fits the cap.
+ * tool outputs marked compacted (the same marker compaction uses) until the history fits the cap. If that is not
+ * enough (long text rather than tool output), the oldest messages are dropped; `dropped` counts them.
  */
 export function forkHistory(msgs: SessionV1.WithParts[], untilID: MessageID, maxTokens = FORK_MAX_TOKENS) {
   const cut = msgs.findIndex((msg) => msg.info.id === untilID)
@@ -29,18 +30,27 @@ export function forkHistory(msgs: SessionV1.WithParts[], untilID: MessageID, max
     MessageV2.latest(history).tasks.filter((part) => part.type === "subtask"),
   )
   for (const msg of history) msg.parts = msg.parts.filter((part) => !queued.has(part))
-  const size = (msg: SessionV1.WithParts) => Token.estimate(JSON.stringify(msg))
-  let total = history.reduce((sum, msg) => sum + size(msg), 0)
-  for (const msg of history) {
+  const sizes = history.map((msg) => Token.estimate(JSON.stringify(msg)))
+  let total = sizes.reduce((sum, size) => sum + size, 0)
+  history.forEach((msg, index) => {
     for (const part of msg.parts) {
-      if (total <= maxTokens) return history
+      if (total <= maxTokens) return
       if (part.type !== "tool" || part.state.status !== "completed" || part.state.time.compacted) continue
       const before = Token.estimate(part.state.output)
       part.state.time.compacted = Date.now()
       total -= before
+      sizes[index] -= before
     }
-  }
-  return history
+  })
+  // Drop the oldest messages, then any assistant replies left without their user message, so the child starts on a turn.
+  let start = 0
+  while (start < history.length && (total > maxTokens || history[start].info.role !== "user")) total -= sizes[start++]
+  return { messages: history.slice(start), dropped: start }
+}
+
+/** Tells the forked child that the oldest part of the parent conversation was left out. */
+export function forkTruncatedNote(dropped: number) {
+  return `Note: the ${dropped} oldest message(s) of the parent conversation were left out of this fork to stay within ${FORK_MAX_TOKENS} tokens.\n\n`
 }
 
 /** Copies the history into the child session, masking secrets as exports do. */
@@ -53,7 +63,7 @@ export const copyForkHistory = Effect.fn("TaskFork.copy")(function* (
     redact?: Parameters<typeof Redact.maskDeep>[1]
   },
 ) {
-  const history = forkHistory(yield* sessions.messages({ sessionID: input.from }), input.until)
+  const { messages: history, dropped } = forkHistory(yield* sessions.messages({ sessionID: input.from }), input.until)
   const ids = new Map<string, MessageID>()
   for (const msg of history) {
     const id = MessageID.ascending()
@@ -79,4 +89,5 @@ export const copyForkHistory = Effect.fn("TaskFork.copy")(function* (
       yield* sessions.updatePart(copy)
     }
   }
+  return dropped
 })

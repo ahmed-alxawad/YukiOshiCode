@@ -14,7 +14,7 @@ import { Effect, Exit, Schema, Scope } from "effect"
 import { EffectBridge } from "@/effect/bridge"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Database } from "@yukioshi/core/database/database"
-import { copyForkHistory, forkSubagents } from "./task-fork"
+import { copyForkHistory, forkSubagents, forkTruncatedNote } from "./task-fork"
 import { backgroundSubagents, markSubagentReport, parallelSubagents } from "./subagents"
 import { InstanceStore } from "@/project/instance-store"
 import { Worktree } from "../worktree"
@@ -229,13 +229,15 @@ export const TaskTool = Tool.define(
           ],
         }))
 
-      if (fork && !session)
-        yield* copyForkHistory(sessions, {
-          from: ctx.sessionID,
-          to: nextSession.id,
-          until: ctx.messageID,
-          redact: cfg.redact,
-        })
+      const forkDropped =
+        fork && !session
+          ? yield* copyForkHistory(sessions, {
+              from: ctx.sessionID,
+              to: nextSession.id,
+              until: ctx.messageID,
+              redact: cfg.redact,
+            })
+          : 0
 
       const msg = yield* MessageV2.get({ sessionID: ctx.sessionID, messageID: ctx.messageID }).pipe(
         Effect.provideService(Database.Service, database),
@@ -267,8 +269,11 @@ export const TaskTool = Tool.define(
         const resolved = yield* ops.resolvePromptParts(params.prompt, { restrictToProject: true })
         // initialPrompt goes before the task text, only on a fresh subagent session.
         const initial = next.initialPrompt?.trim()
-        const parts =
+        const withInitial =
           initial && !params.task_id ? [{ type: "text" as const, text: initial + "\n\n" }, ...resolved] : resolved
+        const parts = forkDropped
+          ? [{ type: "text" as const, text: forkTruncatedNote(forkDropped) }, ...withInitial]
+          : withInitial
         const result = yield* ops.prompt({
           messageID: MessageID.ascending(),
           sessionID: nextSession.id,
