@@ -35,7 +35,25 @@ describe("undo last turn", () => {
     expect(existsSync(file(dir, "new.txt"))).toBe(false)
     undoLastTurn({ directory: dir, sessionID: "s" })
     expect(readFileSync(file(dir, "a.txt"), "utf8")).toBe("a0")
-    expect(() => undoLastTurn({ directory: dir, sessionID: "s" })).toThrow(/Nothing to undo/)
+    expect(() => undoLastTurn({ directory: dir, sessionID: "s" })).toThrow(/Nothing more to undo in session s/)
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  test("repeated undo steps back one more turn each time, as /undo turns do", () => {
+    const dir = repo()
+    const turn = (content?: string) => {
+      beginTurn({ directory: dir, sessionID: "s" })
+      if (content) writeFileSync(file(dir, "a.txt"), content)
+      else undoLastTurn({ directory: dir, sessionID: "s" })
+      return createCheckpoint({ directory: dir, sessionID: "s", prompt: content ?? "Undo the last turn's file changes" })
+    }
+    turn("turn1")
+    turn("turn2")
+    expect(turn()).toBeUndefined()
+    expect(readFileSync(file(dir, "a.txt"), "utf8")).toBe("turn1")
+    expect(turn()).toBeUndefined()
+    expect(readFileSync(file(dir, "a.txt"), "utf8")).toBe("a0")
+    expect(() => turn()).toThrow(/Nothing more to undo in session s/)
     rmSync(dir, { recursive: true, force: true })
   })
 
@@ -95,7 +113,7 @@ describe("undo last turn", () => {
     expect(readFileSync(file(dir, "a.txt"), "utf8")).toBe("a0")
     expect(readFileSync(file(dir, "readme.md"), "utf8")).toBe("readme\nuser work in progress")
     expect(readFileSync(file(dir, "notes-secret.txt"), "utf8")).toBe("API_KEY=sk-live-123")
-    expect(() => undoLastTurn({ directory: dir, sessionID: "s" })).toThrow(/Nothing to undo/)
+    expect(() => undoLastTurn({ directory: dir, sessionID: "s" })).toThrow(/Nothing more to undo/)
     rmSync(dir, { recursive: true, force: true })
   })
 

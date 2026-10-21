@@ -86,6 +86,10 @@ function isOwnCommit(root: string, id: string) {
   return /^(?:Turn|Baseline): \d+$/m.test(git(root, ["show", "-s", "--format=%B", id]).stdout)
 }
 
+function treeOf(root: string, commit: string) {
+  return git(root, ["rev-parse", `${commit}^{tree}`]).stdout.trim()
+}
+
 function sessionTip(root: string, ref: string) {
   const result = tryGit(root, ["rev-parse", "--verify", "-q", ref])
   return result.status === 0 ? result.stdout.trim() : undefined
@@ -126,7 +130,7 @@ export function beginTurn(input: { directory: string; sessionID: string }) {
   const previous = sessionTip(root, ref)
   const parent = previous ?? currentHead(root)
   const tree = treeOfWorkingDirectory(root, parent)
-  if (parent && tree === git(root, ["rev-parse", `${parent}^{tree}`]).stdout.trim()) return undefined
+  if (parent && tree === treeOf(root, parent)) return undefined
   const turns = previous ? previousTurn(root, previous) : 0
   return commitOnRef({
     root,
@@ -145,6 +149,9 @@ export function createCheckpoint(input: { directory: string; sessionID: string; 
   const previous = sessionTip(root, ref)
   const parent = previous ?? currentHead(root)
   const tree = treeOfWorkingDirectory(root, parent)
+  // A turn that changed no files (the /undo turn itself, for one) must not leave a checkpoint: the next undo
+  // would revert that empty checkpoint instead of stepping back one more turn.
+  if (!input.force && parent && tree === treeOf(root, parent)) return undefined
   const turn = (previous ? previousTurn(root, previous) : 0) + 1
   const id = commitOnRef({
     root,
@@ -317,10 +324,13 @@ export function autoCommitTurn(input: { directory: string; checkpointID: string;
 export function undoLastTurn(input: { directory: string; sessionID?: string }) {
   const root = repositoryRoot(input.directory)
   const latest = listCheckpoints(root, input.sessionID)[0]
+  if (!latest && input.sessionID)
+    throw new Error(
+      `Nothing more to undo in session ${input.sessionID}: every turn that changed files has been undone, or none did.`,
+    )
   if (!latest) throw new Error("Nothing to undo: no checkpoints exist. Turn on `checkpoints.enabled` or `git.auto_commit`.")
   const parent = git(root, ["rev-parse", `${latest.id}^`]).stdout.trim()
-  const checkpointTree = git(root, ["rev-parse", `${latest.id}^{tree}`]).stdout.trim()
-  if (treeOfWorkingDirectory(root, latest.id) !== checkpointTree)
+  if (treeOfWorkingDirectory(root, latest.id) !== treeOf(root, latest.id))
     throw new Error("Files have changed since the last turn, so nothing was undone. Review them with `git status`.")
   const head = currentHead(root)
   let dropped = false
