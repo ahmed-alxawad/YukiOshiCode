@@ -31,10 +31,11 @@ const SAFE_CONFIG = [
 // spawnSync stops a command at 1 MB of output by default; a repository with ~30,000 files exceeds that in `git status`.
 const MAX_OUTPUT = 1024 * 1024 * 1024
 
-function git(cwd: string, args: string[], env?: Record<string, string>): GitResult {
+function git(cwd: string, args: string[], env?: Record<string, string>, input?: string): GitResult {
   const result = spawnSync("git", [...SAFE_CONFIG, ...args], {
     cwd,
     env: { ...process.env, ...env },
+    input,
     encoding: "utf8",
     maxBuffer: MAX_OUTPUT,
   })
@@ -246,7 +247,12 @@ function restoreTree(root: string, targetID: string, sessionID: string, prompt: 
   try {
     const env = { GIT_INDEX_FILE: index }
     git(root, ["read-tree", targetID], env)
-    git(root, ["checkout-index", "-a", "-f"], env)
+    // Write back only files whose content differs from the target. Rewriting every file would touch files the
+    // turn never changed, and on Windows (core.autocrlf) turn their LF line endings into CRLF.
+    const differ = git(root, ["diff", "--name-only", "-z", "--no-renames", safety.id, targetID]).stdout
+      .split("\0")
+      .filter((file) => file && target.has(file))
+    if (differ.length > 0) git(root, ["checkout-index", "-f", "-z", "--stdin"], env, differ.join("\0"))
   } finally {
     rmSync(temp, { recursive: true, force: true })
   }

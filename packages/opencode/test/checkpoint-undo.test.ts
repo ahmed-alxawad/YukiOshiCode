@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { execFileSync } from "node:child_process"
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { autoCommitTurn, beginTurn, createCheckpoint, undoLastTurn } from "../src/checkpoint"
@@ -170,4 +170,24 @@ describe("undo last turn", () => {
     expect(git(dir, "rev-parse", "HEAD")).toBe(head)
     rmSync(dir, { recursive: true, force: true })
   })
+})
+
+test("undo rewrites only the files the turn changed", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "yk-undo-only-"))
+  git(dir, "init", "-q")
+  git(dir, "config", "user.name", "Test")
+  git(dir, "config", "user.email", "test@example.invalid")
+  writeFileSync(path.join(dir, "a.txt"), "a0")
+  writeFileSync(path.join(dir, "untouched.txt"), "keep")
+  git(dir, "add", ".")
+  git(dir, "commit", "-qm", "initial")
+  const before = statSync(path.join(dir, "untouched.txt")).mtimeMs
+  writeFileSync(path.join(dir, "a.txt"), "agent")
+  createCheckpoint({ directory: dir, sessionID: "s", prompt: "turn" })
+  Bun.sleepSync(20)
+  undoLastTurn({ directory: dir, sessionID: "s" })
+  expect(readFileSync(path.join(dir, "a.txt"), "utf8")).toBe("a0")
+  // A file the turn never touched is not written again (on Windows that would also change its line endings).
+  expect(statSync(path.join(dir, "untouched.txt")).mtimeMs).toBe(before)
+  rmSync(dir, { recursive: true, force: true })
 })
