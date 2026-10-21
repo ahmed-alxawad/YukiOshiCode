@@ -84,7 +84,7 @@ describe("ide", () => {
     let exitCode: number | undefined
     let stderr = ""
     const origExit = process.exit.bind(process)
-    const origStderrWrite = process.stderr.write.bind(process)
+    const origStderrWrite = process.stderr.write.bind(process.stderr)
 
     // @ts-ignore
     process.exit = (code?: number) => {
