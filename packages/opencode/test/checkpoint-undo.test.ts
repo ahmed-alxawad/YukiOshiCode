@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process"
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
-import { autoCommitTurn, createCheckpoint, undoLastTurn } from "../src/checkpoint"
+import { autoCommitTurn, beginTurn, createCheckpoint, undoLastTurn } from "../src/checkpoint"
 
 function git(cwd: string, ...args: string[]) {
   return execFileSync("git", args, { cwd, encoding: "utf8" }).trim()
@@ -75,6 +75,43 @@ describe("undo last turn", () => {
     expect(() => undoLastTurn({ directory: dir, sessionID: "s" })).toThrow(/pushed/)
     expect(git(dir, "rev-parse", "HEAD")).toBe(head)
     expect(readFileSync(file(dir, "a.txt"), "utf8")).toBe("a1")
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  test("undoing the first turn keeps the user's uncommitted edits and untracked files", () => {
+    const dir = repo()
+    writeFileSync(file(dir, "readme.md"), "readme")
+    git(dir, "add", "readme.md")
+    git(dir, "commit", "-qm", "readme")
+    writeFileSync(file(dir, "readme.md"), "readme\nuser work in progress")
+    writeFileSync(file(dir, "notes-secret.txt"), "API_KEY=sk-live-123")
+    beginTurn({ directory: dir, sessionID: "s" })
+    writeFileSync(file(dir, "a.txt"), "agent")
+    const cp = createCheckpoint({ directory: dir, sessionID: "s", prompt: "fix a" })!
+    expect(git(dir, "diff-tree", "--no-commit-id", "--name-only", "-r", cp.id)).toBe("a.txt")
+    autoCommitTurn({ directory: dir, checkpointID: cp.id, prompt: "fix a" })
+    expect(git(dir, "show", "--name-only", "--format=", "HEAD")).toBe("a.txt")
+    undoLastTurn({ directory: dir, sessionID: "s" })
+    expect(readFileSync(file(dir, "a.txt"), "utf8")).toBe("a0")
+    expect(readFileSync(file(dir, "readme.md"), "utf8")).toBe("readme\nuser work in progress")
+    expect(readFileSync(file(dir, "notes-secret.txt"), "utf8")).toBe("API_KEY=sk-live-123")
+    expect(() => undoLastTurn({ directory: dir, sessionID: "s" })).toThrow(/Nothing to undo/)
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  test("auto-commit refuses a file that already had the user's uncommitted edits", () => {
+    const dir = repo()
+    writeFileSync(file(dir, "a.txt"), "user edit")
+    beginTurn({ directory: dir, sessionID: "s" })
+    writeFileSync(file(dir, "a.txt"), "user edit\nagent edit")
+    const cp = createCheckpoint({ directory: dir, sessionID: "s", prompt: "turn" })!
+    const head = git(dir, "rev-parse", "HEAD")
+    expect(() => autoCommitTurn({ directory: dir, checkpointID: cp.id, prompt: "turn" })).toThrow(
+      /a\.txt had uncommitted changes before this turn/,
+    )
+    expect(git(dir, "rev-parse", "HEAD")).toBe(head)
+    undoLastTurn({ directory: dir, sessionID: "s" })
+    expect(readFileSync(file(dir, "a.txt"), "utf8")).toBe("user edit")
     rmSync(dir, { recursive: true, force: true })
   })
 

@@ -214,6 +214,39 @@ describe("git checkpoints", () => {
   )
 
   cliIt.live(
+    "undo of the first turn keeps the user's uncommitted work, which auto-commit never commits",
+    ({ home, llm, opencode }) =>
+      Effect.gen(function* () {
+        init(home)
+        Bun.write(path.join(home, "readme.md"), "readme")
+        git(home, "add", "readme.md")
+        git(home, "commit", "-qm", "readme")
+        Bun.write(path.join(home, "readme.md"), "readme\nuser work in progress")
+        Bun.write(path.join(home, "notes-secret.txt"), "API_KEY=sk-live-123")
+        globalConfig(home, { git: { auto_commit: true } })
+        const runEnv = env(home, llm.url)
+        yield* llm.push(change(path.join(home, "tracked.txt"), "agent change"))
+        yield* llm.text("done")
+        const run = yield* opencode.run("change tracked", {
+          cwd: home,
+          env: runEnv,
+          extraArgs: ["--dangerously-skip-permissions"],
+          timeoutMs: 90_000,
+        })
+        expect(run.exitCode).toBe(0)
+        expect(git(home, "show", "--name-only", "--format=", "HEAD")).toBe("tracked.txt")
+
+        const undone = yield* opencode.spawn(["undo"], { cwd: home, env: runEnv })
+        expect(undone.exitCode).toBe(0)
+        const read = (name: string) => Effect.promise(() => Bun.file(path.join(home, name)).text())
+        expect(yield* read("tracked.txt")).toBe("initial")
+        expect(yield* read("readme.md")).toBe("readme\nuser work in progress")
+        expect(yield* read("notes-secret.txt")).toBe("API_KEY=sk-live-123")
+      }),
+    120_000,
+  )
+
+  cliIt.live(
     "git.auto_commit warns and leaves the turn uncommitted when git has no identity",
     ({ home, llm, opencode }) =>
       Effect.gen(function* () {

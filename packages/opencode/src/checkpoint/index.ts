@@ -76,44 +76,85 @@ function checkpointMessage(prompt: string, sessionID: string, turn: number) {
 }
 
 // The turn counts checkpoints of this session only; commits already on the user's branch must not be counted.
+// A baseline records how many turns came before it, so the next checkpoint keeps counting from there.
 function previousTurn(root: string, previous: string) {
   const message = git(root, ["show", "-s", "--format=%B", previous]).stdout
-  return Number(/^Turn: (\d+)$/m.exec(message)?.[1] ?? 0)
+  return Number(/^(?:Turn|Baseline): (\d+)$/m.exec(message)?.[1] ?? 0)
+}
+
+function isOwnCommit(root: string, id: string) {
+  return /^(?:Turn|Baseline): \d+$/m.test(git(root, ["show", "-s", "--format=%B", id]).stdout)
+}
+
+function sessionTip(root: string, ref: string) {
+  const result = tryGit(root, ["rev-parse", "--verify", "-q", ref])
+  return result.status === 0 ? result.stdout.trim() : undefined
+}
+
+function commitOnRef(input: {
+  root: string
+  ref: string
+  tree: string
+  parent?: string
+  previous?: string
+  message: string
+}) {
+  const args = ["commit-tree", input.tree]
+  if (input.parent) args.push("-p", input.parent)
+  args.push("-m", input.message)
+  const hash = git(input.root, args, {
+    GIT_AUTHOR_NAME: "YukiOshi",
+    GIT_AUTHOR_EMAIL: "checkpoint@yukioshi.invalid",
+    GIT_COMMITTER_NAME: "YukiOshi",
+    GIT_COMMITTER_EMAIL: "checkpoint@yukioshi.invalid",
+  }).stdout.trim()
+  const update = ["update-ref", input.ref, hash]
+  if (input.previous) update.push(input.previous)
+  git(input.root, update)
+  return hash
+}
+
+/**
+ * Record the working tree as it is when a turn starts, so the turn's checkpoint holds only what the turn changed.
+ * Without it the first checkpoint of a session is diffed against HEAD, and undo or auto-commit treat the user's
+ * own uncommitted edits and untracked files as the agent's. Nothing is written when the tree already matches the
+ * session's last checkpoint (or HEAD for a new session).
+ */
+export function beginTurn(input: { directory: string; sessionID: string }) {
+  const root = repositoryRoot(input.directory)
+  const ref = checkpointRef(input.sessionID)
+  const previous = sessionTip(root, ref)
+  const parent = previous ?? currentHead(root)
+  const tree = treeOfWorkingDirectory(root, parent)
+  if (parent && tree === git(root, ["rev-parse", `${parent}^{tree}`]).stdout.trim()) return undefined
+  const turns = previous ? previousTurn(root, previous) : 0
+  return commitOnRef({
+    root,
+    ref,
+    tree,
+    parent,
+    previous,
+    message: `YukiOshi baseline before a turn\n\nSession: ${input.sessionID}\nBaseline: ${turns}`,
+  })
 }
 
 export function createCheckpoint(input: { directory: string; sessionID: string; prompt: string; force?: boolean }) {
   const root = repositoryRoot(input.directory)
   if (!input.force && !hasWorkingTreeChanges(root)) return undefined
   const ref = checkpointRef(input.sessionID)
-  const previous =
-    tryGit(root, ["rev-parse", ref]).status === 0 ? git(root, ["rev-parse", ref]).stdout.trim() : undefined
+  const previous = sessionTip(root, ref)
   const parent = previous ?? currentHead(root)
-  const temp = mkdtempSync(path.join(tmpdir(), "yukioshi-checkpoint-"))
-  const index = path.join(temp, "index")
-  try {
-    const env = { GIT_INDEX_FILE: index }
-    if (parent) git(root, ["read-tree", parent], env)
-    git(root, ["add", "-A"], env)
-    const tree = git(root, ["write-tree"], env).stdout.trim()
-    const turn = (previous ? previousTurn(root, previous) : 0) + 1
-    const args = ["commit-tree", tree]
-    if (parent) args.push("-p", parent)
-    args.push("-m", checkpointMessage(input.prompt, input.sessionID, turn))
-    const commit = git(root, args, {
-      ...env,
-      GIT_AUTHOR_NAME: "YukiOshi",
-      GIT_AUTHOR_EMAIL: "checkpoint@yukioshi.invalid",
-      GIT_COMMITTER_NAME: "YukiOshi",
-      GIT_COMMITTER_EMAIL: "checkpoint@yukioshi.invalid",
-    })
-    const hash = commit.stdout.trim()
-    const update = ["update-ref", ref, hash]
-    if (previous) update.push(previous)
-    git(root, update)
-    return { id: hash, ref, turn, root }
-  } finally {
-    rmSync(temp, { recursive: true, force: true })
-  }
+  const tree = treeOfWorkingDirectory(root, parent)
+  const turn = (previous ? previousTurn(root, previous) : 0) + 1
+  const id = commitOnRef({
+    root,
+    ref,
+    tree,
+    parent,
+    previous,
+    message: checkpointMessage(input.prompt, input.sessionID, turn),
+  })
+  return { id, ref, turn, root }
 }
 
 export type CheckpointInfo = {
@@ -206,11 +247,12 @@ function restoreTree(root: string, targetID: string, sessionID: string, prompt: 
 
 const TRAILER = "YukiOshi-Auto-Commit"
 
-function treeOfWorkingDirectory(root: string, base: string) {
+// Built in a throwaway index so the user's own index (their staged changes) is never touched.
+function treeOfWorkingDirectory(root: string, base: string | undefined) {
   const temp = mkdtempSync(path.join(tmpdir(), "yukioshi-checkpoint-"))
   try {
     const env = { GIT_INDEX_FILE: path.join(temp, "index") }
-    git(root, ["read-tree", base], env)
+    if (base) git(root, ["read-tree", base], env)
     git(root, ["add", "-A"], env)
     return git(root, ["write-tree"], env).stdout.trim()
   } finally {
@@ -227,6 +269,18 @@ function commitSubject(root: string, prompt: string) {
   return subject.length > 72 ? `${subject.slice(0, 69)}...` : subject
 }
 
+// The turn's files whose content at the start of the turn already differed from HEAD: committing them whole
+// would also commit the user's own uncommitted edits.
+function filesWithChangesBeforeTurn(root: string, checkpointID: string, files: string[]) {
+  const start = tryGit(root, ["rev-parse", "--verify", "-q", `${checkpointID}^`]).stdout.trim()
+  if (!start) return []
+  const head = currentHead(root)
+  const listed = head
+    ? git(root, ["diff", "--name-only", "-z", "--no-renames", head, start, "--", ...files])
+    : git(root, ["ls-tree", "-r", "-z", "--name-only", start, "--", ...files])
+  return listed.stdout.split("\0").filter(Boolean)
+}
+
 /** Commit only the files this turn's checkpoint changed. The trailer marks the commit as ours for `undoLastTurn`. */
 export function autoCommitTurn(input: { directory: string; checkpointID: string; prompt: string }) {
   const root = repositoryRoot(input.directory)
@@ -234,6 +288,11 @@ export function autoCommitTurn(input: { directory: string; checkpointID: string;
     .stdout.split("\0")
     .filter(Boolean)
   if (files.length === 0) return undefined
+  const mixed = filesWithChangesBeforeTurn(root, input.checkpointID, files)
+  if (mixed.length > 0)
+    throw new Error(
+      `${mixed.join(", ")} had uncommitted changes before this turn, and a commit would include them. Commit or stash them first.`,
+    )
   git(root, ["add", "-A", "--", ...files])
   const staged = tryGit(root, ["diff", "--cached", "--quiet", "--", ...files])
   if (staged.status === 0) return undefined
@@ -276,8 +335,7 @@ export function undoLastTurn(input: { directory: string; sessionID?: string }) {
     }
   }
   restoreTree(root, parent, `${latest.sessionID}-undo`, `Before undoing ${latest.id.slice(0, 12)}`)
-  const parentIsCheckpoint = /^Turn: \d+$/m.test(git(root, ["show", "-s", "--format=%B", parent]).stdout)
-  if (parentIsCheckpoint) git(root, ["update-ref", latest.ref, parent])
+  if (isOwnCommit(root, parent)) git(root, ["update-ref", latest.ref, parent])
   else git(root, ["update-ref", "-d", latest.ref])
   return { root, checkpoint: latest.id, droppedCommit: dropped }
 }
@@ -297,6 +355,7 @@ export function pruneCheckpoints(directory: string, olderThanMs: number) {
 }
 
 export interface Interface {
+  readonly begin: (input: { sessionID: string }) => Effect.Effect<void, Error>
   readonly create: (input: { sessionID: string; prompt: string }) => Effect.Effect<CheckpointCreated | undefined, Error>
   readonly list: (sessionID?: string) => Effect.Effect<CheckpointInfo[], Error>
   readonly show: (id: string) => Effect.Effect<string, Error>
@@ -323,6 +382,11 @@ const layer = Layer.effect(
     const withRoot = <A>(fn: (root: string) => A) =>
       Effect.flatMap(InstanceState.context, (ctx) => run(() => fn(ctx.worktree === "/" ? ctx.directory : ctx.worktree)))
     return {
+      begin: (input) =>
+        Effect.gen(function* () {
+          if (!(yield* enabled)) return
+          yield* withRoot((root) => beginTurn({ directory: root, ...input }))
+        }),
       create: (input) =>
         Effect.gen(function* () {
           const isEnabled = yield* enabled

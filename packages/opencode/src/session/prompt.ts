@@ -1323,6 +1323,9 @@ const layer = Layer.effect(
     const runLoopBody: (sessionID: SessionID) => Effect.Effect<SessionV1.WithParts> = Effect.fn("SessionPrompt.run")(
       function* (sessionID: SessionID) {
         const ctx = yield* InstanceState.context
+        // The turn's checkpoint is diffed against the files as they are now, not against HEAD. Like the
+        // end-of-turn checkpoint, this is a no-op outside git and must never stop the turn.
+        yield* checkpoints.begin({ sessionID }).pipe(Effect.ignore)
         let structured: unknown
         let step = 0
         // Fallback models (fallback.enabled): once a provider fails a step, the rest of this run uses the
