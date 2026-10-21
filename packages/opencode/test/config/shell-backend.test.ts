@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { Effect, Layer } from "effect"
 import { HttpClient, HttpClientResponse } from "effect/unstable/http"
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
 import os from "os"
 import path from "path"
 import { Config } from "@/config/config"
@@ -178,7 +178,8 @@ describe("shell backend env plumbing and limits", () => {
   test.skipIf(process.platform === "win32")("ssh: the command runs in the quoted working directory, and an unsafe cwd is rejected", () => {
     // Run the remote command string locally: it must cd into an existing folder (quotes included) and,
     // when the folder is missing on the remote, warn and still run instead of failing every command.
-    const dir = mkdtempSync(path.join(os.tmpdir(), "yk-ssh-cwd-"))
+    // realpath: on macOS the temp folder is a symlink (/var -> /private/var) and `pwd` prints the real path.
+    const dir = realpathSync(mkdtempSync(path.join(os.tmpdir(), "yk-ssh-cwd-")))
     const quoted = path.join(dir, "it's here")
     mkdirSync(quoted)
     const remote = (cwd: string) =>
