@@ -1,12 +1,27 @@
 import { describe, expect, test } from "bun:test"
-import { spawn } from "node:child_process"
+import { execFileSync, spawn } from "node:child_process"
+import { readFileSync } from "node:fs"
 import path from "node:path"
 
-const unix = process.platform === "linux" ? describe : describe.skip
+// Windows has no POSIX SIGKILL or process groups, so this behavior cannot exist there.
+const unix = process.platform === "linux" || process.platform === "darwin" ? describe : describe.skip
 const alive = (pid: number) => {
-  try { process.kill(pid, 0); return true } catch { return false }
+  try {
+    process.kill(pid, 0)
+    if (process.platform === "linux") {
+      const stat = readFileSync(`/proc/${pid}/stat`, "utf8")
+      if (stat.slice(stat.lastIndexOf(")") + 2).startsWith("Z ")) return false
+    }
+    if (process.platform === "darwin") {
+      const state = execFileSync("/bin/ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" }).trim()
+      if (state.startsWith("Z")) return false
+    }
+    return true
+  } catch {
+    return false
+  }
 }
-const waitFor = async (check: () => boolean, timeout = 3_000) => {
+const waitFor = async (check: () => boolean, timeout = 2_000) => {
   const end = Date.now() + timeout
   while (Date.now() < end) {
     if (check()) return
@@ -16,25 +31,40 @@ const waitFor = async (check: () => boolean, timeout = 3_000) => {
 }
 
 unix("SIGKILL orphan watchdog", () => {
-  test("kills a child after its parent is killed without inheriting fd 3", async () => {
-    const modulePath = path.resolve(import.meta.dir, "../../src/util/watchdog.ts")
+  test("kills 30 children after its parent is killed without breaking later spawns", async () => {
+    const modulePath = path.resolve(import.meta.dir, "../../src/util/process.ts")
     const code = `
-      import { spawnWithWatchdog } from ${JSON.stringify(modulePath)};
-      const child = spawnWithWatchdog(["sleep", "60"]);
-      const probe = spawnWithWatchdog(["true"]);
+      import { Process } from ${JSON.stringify(modulePath)};
+      const children = Array.from({ length: 30 }, () => Process.spawn(["sleep", "60"]));
+      const probe = Process.spawn(["true"]);
       await probe.exited;
-      console.log(JSON.stringify({ parent: process.pid, child: child.pid, watchdog: child.watchdog?.pid }));
+      console.log(JSON.stringify({
+        parent: process.pid,
+        children: children.map((child) => child.pid),
+        watchdogs: children.map((child) => child.watchdog?.pid),
+      }));
       setInterval(() => {}, 1000);
     `
     const parent = spawn(process.execPath, ["-e", code], { stdio: ["ignore", "pipe", "pipe"] })
     let line = ""
     parent.stdout?.on("data", (chunk: Buffer) => { line += chunk.toString() })
-    await waitFor(() => line.includes('"child"'))
-    const info = JSON.parse(line.trim()) as { parent: number; child: number; watchdog?: number }
-    expect(alive(info.child)).toBe(true)
-    process.kill(info.parent, "SIGKILL")
-    await new Promise((resolve) => setTimeout(resolve, 100))
-    await waitFor(() => !alive(info.child))
-    expect(info.watchdog).toBeDefined()
-  }, 10_000)
+    let children: number[] = []
+    let watchdogs: number[] = []
+    try {
+      await waitFor(() => line.includes('"children"'))
+      const record = line.split("\n").find((value) => value.includes('"children"'))
+      const info = JSON.parse(record ?? "") as { parent: number; children: number[]; watchdogs: Array<number | undefined> }
+      children = info.children
+      watchdogs = info.watchdogs.filter((pid): pid is number => pid !== undefined)
+      expect(children).toHaveLength(30)
+      expect(children.every(alive)).toBe(true)
+      expect(watchdogs).toHaveLength(30)
+      process.kill(info.parent, "SIGKILL")
+      await waitFor(() => children.every((pid) => !alive(pid)))
+    } finally {
+      try { parent.kill("SIGKILL") } catch {}
+      for (const pid of children) try { process.kill(pid, "SIGKILL") } catch {}
+      for (const pid of watchdogs) try { process.kill(pid, "SIGKILL") } catch {}
+    }
+  }, 15_000)
 })

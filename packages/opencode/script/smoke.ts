@@ -163,6 +163,32 @@ function expect(condition: unknown, message: string, result?: Result) {
   throw new Error(message + tail)
 }
 
+function processAlive(pid: number) {
+  try {
+    process.kill(pid, 0)
+    if (process.platform === "linux") {
+      const stat = fs.readFileSync(`/proc/${pid}/stat`, "utf8")
+      if (stat.slice(stat.lastIndexOf(")") + 2).startsWith("Z ")) return false
+    }
+    if (process.platform === "darwin") {
+      const state = Bun.spawnSync(["/bin/ps", "-o", "stat=", "-p", String(pid)]).stdout.toString().trim()
+      if (state.startsWith("Z")) return false
+    }
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function waitForCondition(check: () => boolean, timeoutMs: number, message: string) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (check()) return
+    await Bun.sleep(50)
+  }
+  throw new Error(message)
+}
+
 const toolResults = (body: Record<string, any> | undefined) =>
   ((body?.messages ?? []) as { role: string; content: unknown }[])
     .filter((message) => message.role === "tool")
@@ -171,6 +197,68 @@ const toolResults = (body: Record<string, any> | undefined) =>
 await check("--version prints a version", async () => {
   const result = await yk(["--version"])
   expect(result.code === 0 && /\d+\.\d+\.\d+/.test(result.stdout), "no version", result)
+})
+
+await check("SIGKILL watchdog cleans a real binary child", async () => {
+  const pidFile = path.join(root, "watchdog-child.pid")
+  if (process.platform === "win32") {
+    // Windows has no POSIX SIGKILL or process groups; prove the disabled fallback still spawns tools.
+    const output = path.join(root, "watchdog-windows-spawn.txt")
+    queue = [
+      { tool: "bash", args: { command: `echo watchdog > ${JSON.stringify(output)}`, description: "spawn probe" } },
+      { text: "done" },
+    ]
+    const result = await yk(["run", "--dangerously-skip-permissions", "run the spawn probe"])
+    expect(result.code === 0 && fs.existsSync(output), "Windows child spawn fallback failed", result)
+    return
+  }
+
+  const lspFile = path.join(project, "watchdog.repro")
+  fs.writeFileSync(lspFile, "watchdog\n")
+  globalConfig({
+    lsp_tool: true,
+    lsp: {
+      watchdog: {
+        command: ["/bin/sh", "-c", `printf '%s' "$$" > ${JSON.stringify(pidFile)}; sleep 60`],
+        extensions: [".repro"],
+      },
+    },
+  })
+  queue = [
+    {
+      tool: "lsp",
+      args: {
+        operation: "documentSymbol",
+        filePath: lspFile,
+        line: 1,
+        character: 1,
+      },
+    },
+  ]
+  const parent = Bun.spawn([bin!, "run", "--dangerously-skip-permissions", "run the watchdog child"], {
+    cwd: project,
+    env,
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+  })
+  let childPid = 0
+  try {
+    await waitForCondition(
+      () => fs.existsSync(pidFile) && fs.readFileSync(pidFile, "utf8").trim().length > 0,
+      30_000,
+      "real binary did not start the watchdog child",
+    )
+    childPid = Number(fs.readFileSync(pidFile, "utf8").trim())
+    expect(Number.isInteger(childPid) && childPid > 0 && processAlive(childPid), `invalid child pid ${childPid}`)
+    parent.kill("SIGKILL")
+    await parent.exited
+    await waitForCondition(() => !processAlive(childPid), 2_000, `child ${childPid} survived parent SIGKILL`)
+  } finally {
+    try { parent.kill("SIGKILL") } catch {}
+    if (childPid > 0) try { process.kill(childPid, "SIGKILL") } catch {}
+    globalConfig({})
+  }
 })
 
 await check("run prints the model's answer", async () => {
