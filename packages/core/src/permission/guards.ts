@@ -309,7 +309,7 @@ function programName(word: ShellWord | undefined): string | undefined {
 
 const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/
 // Wrappers that run the next word as a program without changing what it does.
-const TRANSPARENT_WRAPPERS = new Set(["env", "command", "nohup", "time", "exec", "nice", "timeout"])
+const TRANSPARENT_WRAPPERS = new Set(["env", "command", "nohup", "time", "exec", "nice", "timeout", "busybox"])
 const TIMEOUT_OPTIONS_WITH_ARGUMENT = new Set(["-k", "-s", "--kill-after", "--signal"])
 
 function executable(command: ShellCommand): { name: string; index: number } | undefined {
@@ -322,7 +322,8 @@ function executable(command: ShellCommand): { name: string; index: number } | un
       continue
     }
     const wrapper = programName(command[index])
-    if (wrapper === "sudo") {
+    // doas takes the same `-u user` form as sudo for the purpose of finding the program.
+    if (wrapper === "sudo" || wrapper === "doas") {
       const sudoIndex = sudoCommandIndex(command.slice(index))
       if (sudoIndex === undefined) return undefined
       index += sudoIndex
@@ -359,10 +360,12 @@ function executable(command: ShellCommand): { name: string; index: number } | un
 
 const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh"])
 const POWER_COMMANDS = new Set(["shutdown", "reboot", "halt", "poweroff"])
-const DANGEROUS_RM_LITERAL_TARGETS = new Set(["/", ".", "./", "..", "../"])
-const DANGEROUS_RM_EXPANDING_TARGETS = new Set(["/*", "~", "~/", "~/*", "$HOME", "${HOME}", "$HOME/", "*"])
+const DANGEROUS_RM_LITERAL_TARGETS = new Set(["/", ".", "./", "..", "../", "../..", "../../"])
+const DANGEROUS_RM_EXPANDING_TARGETS = new Set(["/*", "~", "~/", "~/*", "~/.*", "$HOME", "${HOME}", "$HOME/", "*", "./*", "../*", ".*"])
 // `$HOME` still expands inside double quotes, unlike `~` and globs.
-const DANGEROUS_RM_HOME_TARGETS = new Set(["$HOME", "${HOME}", "$HOME/", "${HOME}/"])
+const DANGEROUS_RM_HOME_TARGETS = new Set(["$HOME", "${HOME}", "$HOME/", "${HOME}/", "$HOME/*", "${HOME}/*"])
+// `"$DIR"/*` or `$DIR/*` becomes `/*` when DIR is empty or unset; `${DIR:?}/*` stops instead, so it is allowed.
+const UNGUARDED_VARIABLE_GLOB = /^\$(?:[A-Za-z_][A-Za-z0-9_]*|\{[A-Za-z_][A-Za-z0-9_]*\})\/\*$/
 
 function catastrophicTarget(target: ShellWord): boolean {
   // `//`, `/.` and `/./` all name the filesystem root.
@@ -370,7 +373,8 @@ function catastrophicTarget(target: ShellWord): boolean {
   return (
     DANGEROUS_RM_LITERAL_TARGETS.has(value) ||
     (target.plain && DANGEROUS_RM_EXPANDING_TARGETS.has(value)) ||
-    (!target.singleQuoted && DANGEROUS_RM_HOME_TARGETS.has(value))
+    (!target.singleQuoted && DANGEROUS_RM_HOME_TARGETS.has(value)) ||
+    (!target.singleQuoted && UNGUARDED_VARIABLE_GLOB.test(value))
   )
 }
 
@@ -549,6 +553,18 @@ function isDestructiveCommand(command: string): boolean {
     if (SHELLS.has(program.name)) {
       const rest = shellCommand.slice(program.index + 1).map((word) => word.value)
       const flag = rest.findIndex((arg) => /^-[a-zA-Z]*c[a-zA-Z]*$/.test(arg))
+      // `bash -c -- 'cmd'` passes the script after the end-of-options marker.
+      const script = rest[flag + 1] === "--" ? rest[flag + 2] : rest[flag + 1]
+      if (flag !== -1 && script !== undefined && isDestructiveCommand(script)) return true
+    }
+    // eval and `su -c` run their argument as a shell command line.
+    if (program.name === "eval") {
+      const line = shellCommand.slice(program.index + 1).map((word) => word.value).join(" ")
+      if (line && isDestructiveCommand(line)) return true
+    }
+    if (program.name === "su") {
+      const rest = shellCommand.slice(program.index + 1).map((word) => word.value)
+      const flag = rest.findIndex((arg) => arg === "-c" || arg === "--command")
       if (flag !== -1 && rest[flag + 1] !== undefined && isDestructiveCommand(rest[flag + 1])) return true
     }
     if (program.name === "rm" && isDangerousRm(shellCommand, program.index)) return true
@@ -557,7 +573,7 @@ function isDestructiveCommand(command: string): boolean {
     if (/^mkfs(?:\.|$)/.test(program.name)) return true
     if (
       program.name === "dd" &&
-      shellCommand.slice(program.index + 1).some((word) => /^of=\/dev\/(?:disk|[sh]d|nvme)/i.test(word.value))
+      shellCommand.slice(program.index + 1).some((word) => /^of=\/dev\/(?:disk|[shv]d|xvd|nvme|mmcblk)/i.test(word.value))
     )
       return true
     if (program.name === "git" && isDestructiveGit(shellCommand, program.index)) return true
@@ -567,7 +583,7 @@ function isDestructiveCommand(command: string): boolean {
   const syntax = unquotedShellText(command)
   const compact = syntax.replace(/\s+/g, "")
   const forkBomb = /([A-Za-z_][A-Za-z0-9_]*|:)\(\)\{\1\|\1&\};\1/.test(compact)
-  return />\s*\/dev\/(?:disk|[sh]d|nvme)/i.test(syntax) || forkBomb
+  return />\s*\/dev\/(?:disk|[shv]d|xvd|nvme|mmcblk)/i.test(syntax) || forkBomb
 }
 
 const PATH_ACTIONS = new Set(["read", "edit", "write", "apply_patch"])

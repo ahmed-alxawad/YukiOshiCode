@@ -265,7 +265,11 @@ mention those words, such as `grep -rn shutdown src`, are allowed.
 The same hard blocks cover download-to-shell pipelines (`curl`/`wget` into
 `sh`/`bash`), recursive chmod of catastrophic roots, `find -delete` and
 `find -exec rm`, destructive `xargs rm`/`timeout rm` wrappers targeting a
-catastrophic path, and attempts to remove `..` or its parent path.
+catastrophic path, and attempts to remove `..` or its parent path. They also see
+through `eval`, `su -c`, `doas`, `busybox` and `bash -c --`, and refuse
+`rm -rf "$DIR"/*` when `DIR` is not guarded: if it is empty that is `rm -rf /*`,
+so write `${DIR:?}/*` instead. A force-push with no branch named is not
+refused, because the current branch is not known when the command is checked.
 
 The shell itself can still read files the file tools refuse (for example
 `cat .env`). Use permission rules and the sandbox to control the shell.
