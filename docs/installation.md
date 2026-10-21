@@ -26,8 +26,8 @@ The installer:
    supports AVX2;
 2. downloads the matching archive from the latest release;
 3. checks the archive against the release's `SHA256SUMS` and stops if it does
-   not match (if the release has no `SHA256SUMS`, it warns and continues
-   without the check);
+   not match. If `SHA256SUMS` cannot be downloaded it stops, except for v0.3.0
+   (published without one) or when `YUKIOSHI_INSTALL_ALLOW_UNVERIFIED=1` is set;
 4. runs the new binary once (`--version`) before installing it;
 5. puts it in `~/.yukioshi/bin`, keeping the previous binary as
    `yukioshi.old`, and adds that folder to your shell's `PATH`.
@@ -56,8 +56,8 @@ In PowerShell (5.1 or later; no administrator rights needed):
 irm https://raw.githubusercontent.com/ahmed-alxawad/YukiOshiCode/main/install.ps1 | iex
 ```
 
-It picks the x64, x64 baseline, or arm64 build, verifies `SHA256SUMS` (with a
-warning and no check if the release has none), checks
+It picks the x64, x64 baseline, or arm64 build, verifies `SHA256SUMS` (and
+stops if it cannot be downloaded, with the same exceptions), checks
 that the new `yukioshi.exe` runs, keeps the previous one as `yukioshi.exe.old`,
 installs to `%USERPROFILE%\.yukioshi\bin`, and adds that folder to your user
 `PATH`. To pass options, run the script as a script block:

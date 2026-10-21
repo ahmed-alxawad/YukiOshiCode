@@ -457,7 +457,13 @@ download_and_install() {
         verify_archive_checksum "$tmp_dir/$filename" "$checksum_path" "$selected_checksum"
     else
         rm -f "$checksum_path"
-        print_message warning "Warning: SHA256SUMS not found for this release (${checksum_url}). Continuing without checksum verification."
+        # Every release since v0.3.1 publishes SHA256SUMS, so a failed fetch is a network or tampering problem.
+        if [ "${specific_version:-}" = "0.3.0" ] || [ "${YUKIOSHI_INSTALL_ALLOW_UNVERIFIED:-}" = "1" ]; then
+            print_message warning "Warning: SHA256SUMS could not be downloaded (${checksum_url}). Continuing without checksum verification."
+        else
+            print_message error "Error: SHA256SUMS could not be downloaded (${checksum_url}); refusing to install an unverified archive. Retry, or set YUKIOSHI_INSTALL_ALLOW_UNVERIFIED=1 to install without verification."
+            exit 1
+        fi
     fi
 
     if [ "$os" = "linux" ]; then

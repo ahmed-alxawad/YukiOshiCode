@@ -168,7 +168,12 @@ try {
         Invoke-WebRequest -Uri $checksumUrl -OutFile $checksumPath -UseBasicParsing -ErrorAction Stop
         $hasChecksum = $true
     } catch {
-        Write-Warning "SHA256SUMS not found for this release ($checksumUrl). Skipping checksum verification."
+        # Every release since v0.3.1 publishes SHA256SUMS, so a failed fetch is a network or tampering problem.
+        if ($cleanVersion -eq "0.3.0" -or $env:YUKIOSHI_INSTALL_ALLOW_UNVERIFIED -eq "1") {
+            Write-Warning "SHA256SUMS could not be downloaded ($checksumUrl). Skipping checksum verification."
+        } else {
+            throw "SHA256SUMS could not be downloaded ($checksumUrl); refusing to install an unverified archive. Retry, or set YUKIOSHI_INSTALL_ALLOW_UNVERIFIED=1 to install without verification."
+        }
     }
 
     if ($hasChecksum -and (Test-Path -Path $checksumPath)) {
