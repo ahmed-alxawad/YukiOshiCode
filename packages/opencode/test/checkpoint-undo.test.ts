@@ -57,6 +57,32 @@ describe("undo last turn", () => {
     rmSync(dir, { recursive: true, force: true })
   })
 
+  test("undoes the given session, and without one the newest session but never a safety checkpoint", async () => {
+    const dir = repo()
+    writeFileSync(file(dir, "a.txt"), "mine")
+    createCheckpoint({ directory: dir, sessionID: "ses_mine", prompt: "my turn" })
+    await Bun.sleep(1100) // checkpoint times are in seconds
+    beginTurn({ directory: dir, sessionID: "ses_other" })
+    writeFileSync(file(dir, "b.txt"), "other")
+    createCheckpoint({ directory: dir, sessionID: "ses_other", prompt: "other turn" })
+    await Bun.sleep(1100)
+    writeFileSync(file(dir, "b.txt"), "other 2")
+    createCheckpoint({ directory: dir, sessionID: "ses_other", prompt: "other turn 2" })
+    await Bun.sleep(1100)
+    const undone = undoLastTurn({ directory: dir, sessionID: "ses_other" })
+    expect(undone.sessionID).toBe("ses_other")
+    expect(readFileSync(file(dir, "b.txt"), "utf8")).toBe("other")
+    expect(readFileSync(file(dir, "a.txt"), "utf8")).toBe("mine")
+    // The newest checkpoint now is the `ses_other-undo` safety one; the default must skip it.
+    const fallback = undoLastTurn({ directory: dir })
+    expect(fallback.sessionID).toBe("ses_other")
+    expect(existsSync(file(dir, "b.txt"))).toBe(false)
+    expect(readFileSync(file(dir, "a.txt"), "utf8")).toBe("mine")
+    undoLastTurn({ directory: dir, sessionID: "ses_mine" })
+    expect(readFileSync(file(dir, "a.txt"), "utf8")).toBe("a0")
+    rmSync(dir, { recursive: true, force: true })
+  })
+
   test("refuses when files changed since the turn", () => {
     const dir = repo()
     writeFileSync(file(dir, "a.txt"), "a1")

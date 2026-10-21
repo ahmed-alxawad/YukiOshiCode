@@ -323,7 +323,9 @@ export function autoCommitTurn(input: { directory: string; checkpointID: string;
  */
 export function undoLastTurn(input: { directory: string; sessionID?: string }) {
   const root = repositoryRoot(input.directory)
-  const latest = listCheckpoints(root, input.sessionID)[0]
+  const latest = input.sessionID
+    ? listCheckpoints(root, input.sessionID)[0]
+    : listCheckpoints(root).find((item) => !isSafetySession(item.sessionID))
   if (!latest && input.sessionID)
     throw new Error(
       `Nothing more to undo in session ${input.sessionID}: every turn that changed files has been undone, or none did.`,
@@ -347,7 +349,13 @@ export function undoLastTurn(input: { directory: string; sessionID?: string }) {
   restoreTree(root, parent, `${latest.sessionID}-undo`, `Before undoing ${latest.id.slice(0, 12)}`)
   if (isOwnCommit(root, parent)) git(root, ["update-ref", latest.ref, parent])
   else git(root, ["update-ref", "-d", latest.ref])
-  return { root, checkpoint: latest.id, droppedCommit: dropped }
+  return { root, checkpoint: latest.id, sessionID: latest.sessionID, droppedCommit: dropped }
+}
+
+// Safety checkpoints taken before an undo (`<session>-undo`) or a manual restore (`manual`, the CLI default)
+// are not turns of a session, so undo without a session must never pick one.
+function isSafetySession(sessionID: string) {
+  return sessionID.endsWith("-undo") || sessionID === "manual"
 }
 
 export function pruneCheckpoints(directory: string, olderThanMs: number) {
@@ -370,7 +378,9 @@ export interface Interface {
   readonly list: (sessionID?: string) => Effect.Effect<CheckpointInfo[], Error>
   readonly show: (id: string) => Effect.Effect<string, Error>
   readonly restore: (input: { id: string; yes?: boolean; sessionID: string }) => Effect.Effect<string, Error>
-  readonly undo: (input: { sessionID?: string }) => Effect.Effect<{ root: string; checkpoint: string; droppedCommit: boolean }, Error>
+  readonly undo: (input: {
+    sessionID?: string
+  }) => Effect.Effect<{ root: string; checkpoint: string; sessionID: string; droppedCommit: boolean }, Error>
   readonly prune: (olderThanMs: number) => Effect.Effect<number, Error>
 }
 

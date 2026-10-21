@@ -2384,7 +2384,10 @@ const layer = Layer.effect(
 
       const raw = input.arguments.match(argsRegex) ?? []
       const args = raw.map((arg) => arg.replace(quoteTrimRegex, ""))
-      const templateCommand = yield* Effect.promise(async () => cmd.template)
+      const rawTemplate = yield* Effect.promise(async () => cmd.template)
+      // /undo must undo this session, not whichever session in the repository made the newest checkpoint.
+      const templateCommand =
+        cmd.name === Command.Default.UNDO ? rawTemplate.replaceAll("${sessionID}", input.sessionID) : rawTemplate
 
       const placeholders = templateCommand.match(placeholderRegex) ?? []
       let last = 0

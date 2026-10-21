@@ -247,6 +247,62 @@ describe("git checkpoints", () => {
   )
 
   cliIt.live(
+    "/undo and `undo --session` undo their own session, not the newest one in the repo",
+    ({ home, llm, opencode }) =>
+      Effect.gen(function* () {
+        init(home)
+        globalConfig(home, { checkpoints: { enabled: true } })
+        const runEnv = env(home, llm.url)
+        const turn = (file: string, content: string, prompt: string) =>
+          Effect.gen(function* () {
+            yield* llm.reset
+            yield* llm.push(change(path.join(home, file), content))
+            yield* llm.text("done")
+            const run = yield* opencode.run(prompt, {
+              cwd: home,
+              env: runEnv,
+              extraArgs: ["--dangerously-skip-permissions"],
+              timeoutMs: 90_000,
+            })
+            expect(run.exitCode).toBe(0)
+          })
+        yield* turn("tracked.txt", "session a", "session a turn")
+        const listed = yield* opencode.spawn(["checkpoint", "list"], { cwd: home, env: runEnv })
+        const sessionA = listed.stderr.split("\n").find((line) => line.includes("session a turn"))?.split(/\s+/)[2]
+        expect(sessionA).toMatch(/^ses_/)
+        yield* Effect.sleep("1100 millis") // checkpoint times are in seconds
+        yield* turn("other.txt", "session b", "session b turn")
+
+        yield* llm.reset
+        yield* llm.text("ok")
+        const slash = yield* opencode.run("", {
+          cwd: home,
+          env: runEnv,
+          extraArgs: ["--command", "undo", "--session", sessionA!, "--dangerously-skip-permissions"],
+          timeoutMs: 90_000,
+        })
+        expect(slash.exitCode).toBe(0)
+        expect(JSON.stringify(yield* llm.inputs)).toContain(`yukioshi undo --session ${sessionA}`)
+
+        // Session b changed files after session a's turn, so a's undo must refuse rather than revert b's work.
+        const read = (name: string) => Effect.promise(() => Bun.file(path.join(home, name)).text())
+        const refused = yield* opencode.spawn(["undo", "--session", sessionA!], { cwd: home, env: runEnv })
+        expect(refused.exitCode).toBe(1)
+        expect(refused.stderr).toContain("Files have changed since the last turn")
+        expect(yield* read("tracked.txt")).toBe("session a")
+        expect(yield* read("other.txt")).toBe("session b")
+
+        const latest = yield* opencode.spawn(["undo"], { cwd: home, env: runEnv })
+        expect(latest.exitCode).toBe(0)
+        expect(latest.stderr).toMatch(/Undid the last turn of session ses_\S+ \(the most recent; pass --session/)
+        expect(latest.stderr).not.toContain(sessionA!)
+        expect(yield* read("tracked.txt")).toBe("session a")
+        expect(yield* Effect.promise(() => Bun.file(path.join(home, "other.txt")).exists())).toBe(false)
+      }),
+    120_000,
+  )
+
+  cliIt.live(
     "git.auto_commit warns and leaves the turn uncommitted when git has no identity",
     ({ home, llm, opencode }) =>
       Effect.gen(function* () {
