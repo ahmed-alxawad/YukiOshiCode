@@ -16,7 +16,7 @@ export interface RedactionResult {
 }
 
 const QUICK_HINT =
-  /(?:gh[posur]_|github_pat_|A[KS]IA|AWS_SECRET|aws_secret|sk-|AIza|xox|_live_|-----BEGIN|eyJ|password|passwd|secret|token|api[_-]?key|credential|:\/\/)/i
+  /(?:gh[posur]_|github_pat_|A[KS]IA|AWS_SECRET|aws_secret|sk-|AIza|xox|xapp-|_live_|glpat-|hf_|npm_|SG\.|-----BEGIN|eyJ|password|passwd|pass|pwd|secret|token|api[_-]?key|apikey|credential|private[_-]?key|access[_-]?key|accountkey|authorization|:\/\/|\s-[up])/i
 
 const PLACEHOLDER_PREFIX = "[REDACTED:"
 const PLACEHOLDER_REGEX = /\[REDACTED:([a-zA-Z0-9_-]+)\]/g
@@ -34,6 +34,11 @@ function secretKind(keyStr: string): string {
   if (lower.includes("token")) return "token"
   return "env-secret"
 }
+
+// Key names whose value is a secret. Used for quoted JSON keys and for maskDeep's object keys.
+const SECRET_KEY_WORDS =
+  "[A-Za-z0-9_-]{0,60}(?:password|passwd|pwd|secret|token|api[_-]?key|apikey|credential|private[_-]?key|access[_-]?key|accountkey|authorization)[A-Za-z0-9_-]{0,60}"
+const SECRET_KEY = new RegExp(`^(?:${SECRET_KEY_WORDS})$`, "i")
 
 const RULES: PatternRule[] = [
   // GitHub tokens
@@ -88,7 +93,7 @@ const RULES: PatternRule[] = [
   {
     kind: "private-key",
     // A block with no END line (truncated output) is masked through the end of the input.
-    regex: /(-----BEGIN [A-Z0-9 ]{0,40}PRIVATE KEY-----(?:[\s\S]*?-----END [A-Z0-9 ]{0,40}PRIVATE KEY-----|[\s\S]*))/g,
+    regex: /(-----BEGIN [A-Z0-9 ]{0,40}PRIVATE KEY(?: BLOCK)?-----(?:[\s\S]*?-----END [A-Z0-9 ]{0,40}PRIVATE KEY(?: BLOCK)?-----|[\s\S]*))/g,
   },
   // Credentials embedded in URLs (scheme://user:password@host): mask the password only
   {
@@ -111,7 +116,7 @@ const RULES: PatternRule[] = [
       return "env-secret"
     },
     regex:
-      /(?<=^|[\r\n])([ \t]*(?:export[ \t]+)?([A-Za-z0-9_]{0,60}(?:password|passwd|secret|token|api[_-]?key|credential)[A-Za-z0-9_]{0,60})\s*[:=]\s*["']?)(?![\[]REDACTED:)([^#\r\n"'\s]{4,})(["']?)/gi,
+      /(?<=^|[\r\n])([ \t]*(?:export[ \t]+)?([A-Za-z0-9_]{0,60}(?:password|passwd|_pass|pwd|secret|token|api[_-]?key|credential|private[_-]?key)[A-Za-z0-9_]{0,60})\s*[:=]\s*["']?)(?![\[]REDACTED:)([^#\r\n"'\s]{4,})(["']?)/gi,
     extractValue: (m) => ({
       value: m[3]!,
       fullMatch: m[0]!,
@@ -124,7 +129,7 @@ const RULES: PatternRule[] = [
   {
     kind: (keyStr: string) => secretKind(keyStr),
     regex:
-      /(?<![A-Za-z0-9_.-])(([A-Za-z0-9_]{0,60}(?:password|passwd|secret|token|api[_-]?key|credential)[A-Za-z0-9_]{0,60})[ \t]*=[ \t]*)(?:"(?![$]|\[REDACTED:)([^"\r\n]{4,})"|'(?![$]|\[REDACTED:)([^'\r\n]{4,})'|(?![$"'`]|\[REDACTED:)([^\s"'`#;&|<>]{4,}))/gi,
+      /(?<![A-Za-z0-9_.-])(([A-Za-z0-9_]{0,60}(?:password|passwd|_pass|pwd|secret|token|api[_-]?key|credential|private[_-]?key)[A-Za-z0-9_]{0,60})[ \t]*=[ \t]*)(?:"(?![$]|\[REDACTED:)([^"\r\n]{4,})"|'(?![$]|\[REDACTED:)([^'\r\n]{4,})'|(?![$"'`]|\[REDACTED:)([^\s"'`#;&|<>]{4,}))/gi,
     extractValue: (m) => {
       const quote = m[3] !== undefined ? '"' : m[4] !== undefined ? "'" : ""
       return { value: (m[3] ?? m[4] ?? m[5])!, fullMatch: m[0]!, prefix: m[1]! + quote, suffix: quote }
@@ -136,6 +141,51 @@ const RULES: PatternRule[] = [
     regex:
       /(?<![A-Za-z0-9_-])(--([a-z0-9-]{0,40}(?:password|passwd|secret|token|api-?key|credential)[a-z0-9-]{0,40})(?:=|[ \t]+)["']?)(?![$-]|\[REDACTED:)([^\s"'`#;&|<>]{4,})(["']?)/gi,
     extractValue: (m) => ({ value: m[3]!, fullMatch: m[0]!, prefix: m[1]!, suffix: m[4]! }),
+  },
+  // More provider token formats: GitLab, Hugging Face, npm, SendGrid, Slack app tokens
+  {
+    kind: "token",
+    regex:
+      /(?<![A-Za-z0-9_-])(glpat-[0-9A-Za-z_-]{20,}|hf_[A-Za-z0-9]{30,}|npm_[A-Za-z0-9]{36}|SG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}|xapp-[0-9A-Za-z-]{20,})(?![A-Za-z0-9_-])/g,
+  },
+  // JSON-style quoted keys: "password": "...", "SecretAccessKey": "...", "api_key":"..."
+  {
+    kind: (keyStr: string) => secretKind(keyStr),
+    regex: new RegExp(
+      `("(${SECRET_KEY_WORDS})"\\s*:\\s*")(?!\\[REDACTED:)((?:[^"\\\\\\r\\n]|\\\\.){4,})(")`,
+      "gi",
+    ),
+    extractValue: (m) => ({ value: m[3]!, fullMatch: m[0]!, prefix: m[1]!, suffix: m[4]! }),
+  },
+  // HTTP auth headers: Authorization: Basic/Bearer/Token <x>, X-Api-Key: <x>, X-Auth-Token: <x>
+  {
+    kind: "token",
+    regex:
+      /\b((?:authorization|proxy-authorization)[ \t]*:[ \t]*(?:basic|bearer|token|digest)?[ \t]*|x-[a-z0-9-]{0,30}(?:key|token|secret)[ \t]*:[ \t]*)(?!\[REDACTED:)([A-Za-z0-9._~+/=:-]{8,})/gi,
+    extractValue: (m) => ({ value: m[2]!, fullMatch: m[0]!, prefix: m[1]! }),
+  },
+  // Passwords on command lines: curl -u user:pw, sshpass -p pw, mysql -ppw, docker login -p pw
+  {
+    kind: "password",
+    regex:
+      /((?:^|[\s;&|(])(?:-u|--user)[ \t=]+["']?[^\s:"']{1,100}:)(?!\[REDACTED:)([^\s"']{3,})/g,
+    extractValue: (m) => ({ value: m[2]!, fullMatch: m[0]!, prefix: m[1]! }),
+  },
+  {
+    kind: "password",
+    regex: /(\b(?:sshpass|docker[ \t]+login|podman[ \t]+login)\b[^\r\n]{0,200}?[ \t]-p[ \t]*["']?)(?![-$]|\[REDACTED:)([^\s"']{3,})/g,
+    extractValue: (m) => ({ value: m[2]!, fullMatch: m[0]!, prefix: m[1]! }),
+  },
+  {
+    kind: "password",
+    regex: /(\b(?:mysql|mysqldump|mariadb|mysqladmin)\b[^\r\n]{0,200}?[ \t]-p)(?![ \t-]|\[REDACTED:)([^\s"']{3,})/g,
+    extractValue: (m) => ({ value: m[2]!, fullMatch: m[0]!, prefix: m[1]! }),
+  },
+  // Azure storage connection strings: AccountKey=...
+  {
+    kind: "secret",
+    regex: /(\bAccountKey=)(?!\[REDACTED:)([A-Za-z0-9+/=]{20,})/g,
+    extractValue: (m) => ({ value: m[2]!, fullMatch: m[0]!, prefix: m[1]! }),
   },
 ]
 
@@ -249,12 +299,24 @@ export function mask(text: string, options?: ConfigRedactV1.Info): string {
  * Mask secrets in every string of a JSON-like value (objects, arrays, strings), returning a copy.
  * Keys, numbers and other values are left alone. Used for payloads that leave the machine or reach disk.
  */
+function allowed(value: string, options?: ConfigRedactV1.Info) {
+  return options?.enabled === false || (options?.allow?.includes(value) ?? false) || value.startsWith(PLACEHOLDER_PREFIX)
+}
+
 export function maskDeep<T>(value: T, options?: ConfigRedactV1.Info): T {
   const walk = (item: unknown): unknown => {
     if (typeof item === "string") return scrubKnown(mask(item, options))
     if (Array.isArray(item)) return item.map(walk)
     if (item && typeof item === "object" && [Object.prototype, null].includes(Object.getPrototypeOf(item)))
-      return Object.fromEntries(Object.entries(item).map(([key, entry]) => [key, walk(entry)]))
+      return Object.fromEntries(
+        Object.entries(item).map(([key, entry]) => [
+          key,
+          // A string under a secret-looking key is a secret whatever its shape ({ password: "hunter2" }).
+          typeof entry === "string" && entry.length >= 4 && SECRET_KEY.test(key) && !allowed(entry, options)
+            ? `${PLACEHOLDER_PREFIX}${secretKind(key)}]`
+            : walk(entry),
+        ]),
+      )
     return item
   }
   return walk(value) as T

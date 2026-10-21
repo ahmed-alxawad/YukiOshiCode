@@ -306,8 +306,12 @@ YukiOshi masks unmistakable secrets before anything is sent to the model provide
 - **Stripe live keys**: `sk_live_`, `rk_live_` (`[REDACTED:stripe-key]`).
 - **Private keys**: `-----BEGIN ... PRIVATE KEY-----` blocks (`[REDACTED:private-key]`).
 - **JWTs**: JSON Web Tokens with standard headers (`[REDACTED:jwt]`).
-- **Environment variables**: `password=`, `secret=`, `token=` assignments, and similar names containing `passwd`, `api_key` or `credential` (`[REDACTED:password]`, `[REDACTED:secret]`, `[REDACTED:token]`).
+- **Environment variables**: `password=`, `secret=`, `token=` assignments, and similar names containing `passwd`, `_pass`, `pwd`, `api_key`, `private_key` or `credential` (`[REDACTED:password]`, `[REDACTED:secret]`, `[REDACTED:token]`).
 - **Passwords in URLs** (`scheme://user:password@host`) and `--token`-style command-line flags.
+- **Quoted keys in JSON**: `"password": "..."`, `"api_key": "..."`, `"SecretAccessKey"`, `"SessionToken"` and similar; in hook, webhook and audit payloads any string under such a key is masked.
+- **HTTP auth headers**: `Authorization: Basic/Bearer/Token ...` and `X-...-Key`, `X-...-Token`, `X-...-Secret` headers.
+- **Command-line passwords**: `curl -u user:password`, `mysql -p<password>`, `sshpass -p`, `docker login -p`.
+- **More token formats**: GitLab `glpat-`, Hugging Face `hf_`, npm `npm_`, SendGrid `SG.`, Slack app `xapp-`, Azure `AccountKey=`, and PGP private key blocks.
 
 Normal code identifiers (such as `sk-` inside an unrelated word or Stripe test keys) are never matched.
 
