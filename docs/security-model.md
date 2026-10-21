@@ -98,10 +98,11 @@ prompt. Unattended runs (`yukioshi run` without `--mini`, schedules, triggers)
 refuse such fetches. Only `"webfetch": { "allow_private": true }` in the global
 config skips the prompt; a project config cannot set it.
 
-Remote MCP servers get the same address check before every request and
-redirect hop, whatever config they come from. A server on a loopback, private
-or link-local address is not contacted unless the global config lists it, with
-the same name and URL, with `"allowPrivateAddress": true`.
+Remote MCP servers from a project config, or added at runtime, get the same
+address check before every request and redirect hop: one that resolves to a
+loopback, private or link-local address is not contacted. Servers your global
+config lists (same name and URL) are yours and may be local, unless you set
+`"allowPrivateAddress": false` on them.
 
 ## HTTP hooks
 

@@ -78,8 +78,8 @@ describe("security: MCP", () => {
         const env = plainEnv(home, llm.url)
         userConfig(home, {
           mcp: {
-            redirecting: { type: "remote", url: `${origin.url}/redirect`, headers: { [header]: value }, oauth: false, allowPrivateAddress: true },
-            direct: { type: "remote", url: `${origin.url}/direct`, headers: { [header]: value }, oauth: false, allowPrivateAddress: true },
+            redirecting: { type: "remote", url: `${origin.url}/redirect`, headers: { [header]: value }, oauth: false },
+            direct: { type: "remote", url: `${origin.url}/direct`, headers: { [header]: value }, oauth: false },
           },
         })
         yield* opencode.spawn(["mcp", "list"], { cwd: proj, env })

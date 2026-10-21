@@ -252,13 +252,14 @@ const layer = Layer.effect(
     const DISABLED_RESULT: CreateResult = { status: { status: "disabled" } }
 
     /**
-     * The fetch a remote server is contacted with. A private or local address is refused unless the user's
-     * global config lists the same server and URL with allowPrivateAddress: a repository cannot opt itself in.
+     * The fetch a remote server is contacted with. A server the user's global config lists with the same URL is
+     * their own and may be local (unless it sets allowPrivateAddress: false). Servers from a project config or
+     * added at runtime may not reach a private or local address: a repository cannot point one at cloud metadata.
      */
     const remoteFetch = Effect.fnUntraced(function* (key: string, url: string) {
       const own = (yield* cfgSvc.getGlobal()).mcp?.[key]
       const allowPrivate =
-        own !== undefined && "type" in own && own.type === "remote" && own.url === url && own.allowPrivateAddress === true
+        own !== undefined && "type" in own && own.type === "remote" && own.url === url && own.allowPrivateAddress !== false
       return McpGuard.sameOriginFetch(allowPrivate ? fetch : McpGuard.publicOnlyFetch())
     })
 

@@ -58,7 +58,7 @@ export function publicOnlyFetch(base: typeof fetch = fetch, resolver?: PrivateAd
     if (target.risks.length > 0)
       throw new Error(
         `MCP server ${url.host} resolves to ${target.risks.map((risk) => `${risk.address} (${risk.reason})`).join(", ")} ` +
-          `and was not contacted. To allow it, add "allowPrivateAddress": true to this server in your global config.`,
+          `and was not contacted. To allow it, define this server (same name and URL) in your global config.`,
       )
     return base(input, init)
   }) as typeof fetch

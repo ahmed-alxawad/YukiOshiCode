@@ -244,7 +244,7 @@ What `webfetch` does:
 - **DNS pinning**: the transport connects only to the addresses that were inspected, and each redirect is inspected again.
 - **Mandatory prompt**: a private target asks even when your rules (or a saved "always") allow `webfetch`; the prompt names the resolved addresses and its answer cannot be saved as "always". The auto, auto-all and review permission modes do not answer it either. Only `"webfetch": { "allow_private": true }` in your global config skips the prompt; a project-level config cannot set it (it is stripped on load).
 - **Unattended refusal**: `yukioshi run` without `--mini`, scheduled runs and `serve` triggers have no one to answer the prompt, so a private-address fetch is refused before any connection is made. The refusal message tells the model the resolved addresses and how private fetches can be allowed globally.
-- **Remote MCP servers**: every remote MCP URL, from any config, gets the same address check before each request and redirect hop. A server on a loopback, private or link-local address is not contacted unless your global config lists it (same name and URL) with `"allowPrivateAddress": true`; a project config cannot opt itself in.
+- **Remote MCP servers**: every remote MCP URL, from any config, gets the same address check before each request and redirect hop. A server your global config lists (same name and URL) is yours and may be on a loopback, private or local address (`"allowPrivateAddress": false` refuses that). A server from a project config, or one added at runtime, is not contacted when it resolves to such an address; a project config cannot opt itself in.
 
 ## Hard blocks
 

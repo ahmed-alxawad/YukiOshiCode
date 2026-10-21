@@ -103,7 +103,7 @@ export const Remote = Schema.Struct({
   }),
   allowPrivateAddress: Schema.optional(Schema.Boolean).annotate({
     description:
-      "Allow this server's URL to resolve to a loopback, private or link-local address. Only honored in the global config.",
+      "Servers in your global config may use a loopback, private or link-local address; set false to refuse that. Servers from a project config never may.",
   }),
 }).annotate({ identifier: "McpRemoteConfig" })
 export type Remote = Schema.Schema.Type<typeof Remote>
