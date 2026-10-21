@@ -101,6 +101,10 @@ export const Remote = Schema.Struct({
   timeout: Schema.optional(PositiveInt).annotate({
     description: "Timeout in ms for MCP server requests. Defaults to 5000 (5 seconds) if not specified.",
   }),
+  allowPrivateAddress: Schema.optional(Schema.Boolean).annotate({
+    description:
+      "Allow this server's URL to resolve to a loopback, private or link-local address. Only honored in the global config.",
+  }),
 }).annotate({ identifier: "McpRemoteConfig" })
 export type Remote = Schema.Schema.Type<typeof Remote>
 

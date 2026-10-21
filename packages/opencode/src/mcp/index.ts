@@ -223,6 +223,7 @@ const layer = Layer.effect(
   Effect.gen(function* () {
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
     const auth = yield* McpAuth.Service
+    const cfgSvc = yield* Config.Service
     const events = yield* EventV2Bridge.Service
     const browser = yield* McpBrowser.Service
 
@@ -250,6 +251,17 @@ const layer = Layer.effect(
 
     const DISABLED_RESULT: CreateResult = { status: { status: "disabled" } }
 
+    /**
+     * The fetch a remote server is contacted with. A private or local address is refused unless the user's
+     * global config lists the same server and URL with allowPrivateAddress: a repository cannot opt itself in.
+     */
+    const remoteFetch = Effect.fnUntraced(function* (key: string, url: string) {
+      const own = (yield* cfgSvc.getGlobal()).mcp?.[key]
+      const allowPrivate =
+        own !== undefined && "type" in own && own.type === "remote" && own.url === url && own.allowPrivateAddress === true
+      return McpGuard.sameOriginFetch(allowPrivate ? fetch : McpGuard.publicOnlyFetch())
+    })
+
     const connectRemote = Effect.fn("MCP.connectRemote")(function* (key: string, mcp: ConfigMCPV1.Remote) {
       const oauthDisabled = mcp.oauth === false
       const oauthConfig = typeof mcp.oauth === "object" ? mcp.oauth : undefined
@@ -266,6 +278,7 @@ const layer = Layer.effect(
           host: url.host,
         })
       let authProvider: McpOAuthProvider | undefined
+      const guardedFetch = yield* remoteFetch(key, mcp.url)
 
       if (!oauthDisabled) {
         authProvider = new McpOAuthProvider(
@@ -291,7 +304,7 @@ const layer = Layer.effect(
           transport: new StreamableHTTPClientTransport(url, {
             authProvider,
             requestInit: mcp.headers ? { headers: mcp.headers } : undefined,
-            fetch: McpGuard.sameOriginFetch(),
+            fetch: guardedFetch,
           }),
         },
         {
@@ -299,7 +312,7 @@ const layer = Layer.effect(
           transport: new SSEClientTransport(url, {
             authProvider,
             requestInit: mcp.headers ? { headers: mcp.headers } : undefined,
-            fetch: McpGuard.sameOriginFetch(),
+            fetch: guardedFetch,
           }),
         },
       ]
@@ -437,8 +450,6 @@ const layer = Layer.effect(
         })
       }),
     )
-    const cfgSvc = yield* Config.Service
-
     const descendants = Effect.fnUntraced(
       function* (pid: number) {
         if (process.platform === "win32") return [] as number[]
@@ -970,7 +981,7 @@ const layer = Layer.effect(
       const transport = new StreamableHTTPClientTransport(url, {
         authProvider,
         requestInit: mcpConfig.headers ? { headers: mcpConfig.headers } : undefined,
-        fetch: McpGuard.sameOriginFetch(),
+        fetch: yield* remoteFetch(mcpName, mcpConfig.url),
       })
       const directory = yield* InstanceState.directory
 

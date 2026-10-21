@@ -657,26 +657,15 @@ const layer = Layer.effect(
               )
             }
           }
-          // Local MCP servers run programs too, so an untrusted project may only reference remote servers
-          // without credentials.
-          const runsCommand = (entry: unknown) => isRecord(entry) && Array.isArray(entry["command"])
-          const withoutCommands = <T,>(label: string, entries: Record<string, T>) =>
+          // Local MCP servers run programs, and remote ones are contacted as soon as the project opens (a
+          // repository could point one at cloud metadata or a local admin page), so an untrusted project
+          // may only switch the user's own servers on or off.
+          const withoutServers = <T,>(entries: Record<string, T>) =>
             Object.fromEntries(
-              Object.entries(entries).flatMap(([name, entry]) => {
-                if (runsCommand(entry)) {
-                  blockedExecutables.add(`${source} (${label} ${name})`)
-                  return []
-                }
-                if (
-                  label === "MCP server" &&
-                  isRecord(entry) &&
-                  isRecord(entry["headers"]) &&
-                  Object.keys(entry["headers"]).length > 0
-                ) {
-                  blockedExecutables.add(`${source} (${label} ${name} headers)`)
-                  return [[name, { ...(entry as any), headers: undefined } as T]]
-                }
-                return [[name, entry]]
+              Object.entries(entries).filter(([name, entry]) => {
+                if (!isRecord(entry) || (!Array.isArray(entry["command"]) && entry["url"] === undefined)) return true
+                blockedExecutables.add(`${source} (MCP server ${name})`)
+                return false
               }),
             )
           // Built-in formatters and LSP servers run programs on the files the agent touches, so an untrusted
@@ -693,7 +682,7 @@ const layer = Layer.effect(
             return undefined
           }
           if (safe.command) safe.command = withoutShellCommands(source, safe.command)
-          if (safe.mcp) safe.mcp = withoutCommands("MCP server", safe.mcp)
+          if (safe.mcp) safe.mcp = withoutServers(safe.mcp)
           const lsp = onlyTurnsOff("LSP servers", safe.lsp, result.lsp)
           if (lsp === undefined) delete safe.lsp
           else safe.lsp = lsp as typeof safe.lsp

@@ -1538,7 +1538,7 @@ it.effect("ignores project browser config until the project is trusted", () =>
 )
 
 
-it.effect("ignores remote skills, instructions URLs, enterprise, auto-share, and MCP headers until trusted", () =>
+it.effect("ignores remote skills, instructions URLs, enterprise, auto-share, and remote MCP servers until trusted", () =>
   withConfigTree(
     {
       trusted: false,
@@ -1550,6 +1550,8 @@ it.effect("ignores remote skills, instructions URLs, enterprise, auto-share, and
         share: "auto",
         mcp: {
           remote: { type: "remote", url: "https://remote.example", headers: { Authorization: "secret" } },
+          metadata: { type: "remote", url: "http://169.254.169.254/latest/meta-data/" },
+          admin: { type: "remote", url: "http://127.0.0.1:8080/admin" },
         },
       },
     },
@@ -1560,8 +1562,7 @@ it.effect("ignores remote skills, instructions URLs, enterprise, auto-share, and
       expect(config.instructions).toEqual(["global.md", "./project.md"])
       expect(config.enterprise).toBeUndefined()
       expect(config.share).toBeUndefined()
-      expect((config.mcp?.remote as any)?.headers).toBeUndefined()
-      expect((config.mcp?.remote as any)?.url).toBe("https://remote.example")
+      expect(config.mcp).toEqual({})
     }),
   ),
 )
@@ -2229,6 +2230,8 @@ it.instance("project config can override MCP server enabled status", () =>
       },
       "opencode.jsonc",
     )
+    // Writing the config changed what trust was granted for; a remote server needs a trusted project.
+    yield* Effect.promise(() => ProjectTrust.set(test.directory, true))
 
     const config = yield* Config.use.get()
     expect(config.mcp?.jira).toEqual({
@@ -2317,6 +2320,8 @@ it.instance("local .opencode config can override MCP from project config", () =>
       },
       "opencode.json",
     )
+    // Writing the config changed what trust was granted for; a remote server needs a trusted project.
+    yield* Effect.promise(() => ProjectTrust.set(test.directory, true))
 
     const config = yield* Config.use.get()
     expect(config.mcp?.docs?.enabled).toBe(true)

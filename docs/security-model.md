@@ -48,7 +48,7 @@ refuse, such as `cat .env`.
 ## Repository trust
 
 Until you run `yukioshi trust .`, a repository cannot add hooks (including HTTP
-hooks), plugins, local MCP servers, webhooks, or custom endpoints and headers
+hooks), plugins, MCP servers (local or remote), webhooks, or custom endpoints and headers
 for existing providers, and cannot turn formatters or LSP servers on (it may
 turn off ones your global config turned on). Even when your global config turns
 them on, a built-in formatter or LSP server that would run or load a program
@@ -93,6 +93,11 @@ redirects. A private target asks even when rules or a saved "always" allow
 prompt. Unattended runs (`yukioshi run` without `--mini`, schedules, triggers)
 refuse such fetches. Only `"webfetch": { "allow_private": true }` in the global
 config skips the prompt; a project config cannot set it.
+
+Remote MCP servers get the same address check before every request and
+redirect hop, whatever config they come from. A server on a loopback, private
+or link-local address is not contacted unless the global config lists it, with
+the same name and URL, with `"allowPrivateAddress": true`.
 
 ## HTTP hooks
 

@@ -11,6 +11,9 @@ import { McpBrowser } from "../../src/mcp/browser"
 import { MCP } from "../../src/mcp/index"
 import { McpOAuthCallback } from "../../src/mcp/oauth-callback"
 import { awaitWithTimeout, testEffect } from "../lib/effect"
+import { allowLocalMcpServers } from "../fixture/mcp-local"
+
+allowLocalMcpServers()
 
 const browsers = new Map<string, { opened: Deferred.Deferred<string>; fail: boolean }>()
 

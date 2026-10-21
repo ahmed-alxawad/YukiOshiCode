@@ -1,3 +1,5 @@
+import * as PrivateAddress from "@/tool/webfetch-private"
+
 const MAX_REDIRECTS = 5
 
 /**
@@ -42,6 +44,23 @@ export function sameOriginFetch(base: typeof fetch = fetch): typeof fetch {
       if (toGet) options = { ...options, method: "GET", body: undefined }
     }
     throw new Error("MCP server redirected too many times")
+  }) as typeof fetch
+}
+
+/**
+ * A fetch that refuses a host resolving to a loopback, private, link-local or reserved address, checked
+ * before every request (sameOriginFetch calls it again for each redirect hop), as webfetch and HTTP hooks do.
+ */
+export function publicOnlyFetch(base: typeof fetch = fetch, resolver?: PrivateAddress.Resolver): typeof fetch {
+  return (async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+    const url = input instanceof Request ? new URL(input.url) : new URL(String(input))
+    const target = await PrivateAddress.inspect(url, resolver)
+    if (target.risks.length > 0)
+      throw new Error(
+        `MCP server ${url.host} resolves to ${target.risks.map((risk) => `${risk.address} (${risk.reason})`).join(", ")} ` +
+          `and was not contacted. To allow it, add "allowPrivateAddress": true to this server in your global config.`,
+      )
+    return base(input, init)
   }) as typeof fetch
 }
 

@@ -6,6 +6,9 @@ import { LayerNode } from "@yukioshi/core/effect/layer-node"
 import { Effect } from "effect"
 import { testEffect } from "../lib/effect"
 import { MCP } from "../../src/mcp/index"
+import { allowLocalMcpServers } from "../fixture/mcp-local"
+
+allowLocalMcpServers()
 
 const it = testEffect(LayerNode.compile(MCP.node))
 

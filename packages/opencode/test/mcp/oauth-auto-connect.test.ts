@@ -13,6 +13,9 @@ import { MCP } from "../../src/mcp/index"
 import { McpOAuthCallback } from "../../src/mcp/oauth-callback"
 import { McpOAuthPendingProvider, McpOAuthProvider } from "../../src/mcp/oauth-provider"
 import { testEffect } from "../lib/effect"
+import { allowLocalMcpServers } from "../fixture/mcp-local"
+
+allowLocalMcpServers()
 
 const mcpTest = testEffect(
   LayerNode.compile(
