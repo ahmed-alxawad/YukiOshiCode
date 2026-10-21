@@ -452,6 +452,9 @@ export const ShellTool = Tool.define(
 
         if (tokens.length && (!cmd || !CWD.has(cmd))) {
           scan.patterns.add(source(node))
+          // Also check the plain form, so `command rm`, `\\rm` or `git -C . push` meet the same deny rules.
+          const plain = BashArity.normalize(tokens)
+          if (plain) scan.patterns.add(plain)
           scan.always.add(BashArity.always(tokens))
         }
       }

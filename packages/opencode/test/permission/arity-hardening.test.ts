@@ -50,3 +50,16 @@ test("always allow never widens a command runner into a wildcard", () => {
   expect(BashArity.always(["npm", "run", "dev"])).toBe("npm run dev *")
   expect(BashArity.always(["git", "status"])).toBe("git status *")
 })
+
+test("normalize removes wrappers and spellings that would dodge a deny rule", () => {
+  expect(BashArity.normalize(["command", "rm", "-rf", "build"])).toBe("rm -rf build")
+  expect(BashArity.normalize(["\\rm", "-rf", "build"])).toBe("rm -rf build")
+  expect(BashArity.normalize(["/bin/rm", "-rf", "build"])).toBe("rm -rf build")
+  expect(BashArity.normalize(["env", "FOO=1", "rm", "x"])).toBe("rm x")
+  expect(BashArity.normalize(["sudo", "-u", "root", "rm", "x"])).toBe("rm x")
+  expect(BashArity.normalize(["timeout", "9", "git", "push"])).toBe("git push")
+  expect(BashArity.normalize(["git", "-C", ".", "push", "origin", "main"])).toBe("git push origin main")
+  expect(BashArity.normalize(["FOO=1", "npm", "test"])).toBe("npm test")
+  expect(BashArity.normalize(["rm", "-rf", "build"])).toBeUndefined()
+  expect(BashArity.normalize(["git", "push"])).toBeUndefined()
+})

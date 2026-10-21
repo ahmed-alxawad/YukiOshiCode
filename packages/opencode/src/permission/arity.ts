@@ -6,6 +6,47 @@ const RUNNERS = new Set([
   "npx", "bunx", "pnpx", "uvx", "python", "python3", "node", "deno", "perl", "ruby", "php",
 ])
 
+const WRAPPERS = new Set(["env", "command", "exec", "nohup", "time", "nice", "timeout", "sudo", "doas", "busybox"])
+const GIT_GLOBAL_WITH_VALUE = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace"])
+
+/**
+ * The command as rules should see it: leading `VAR=x`, wrappers (`env`, `command`, `timeout 9`, `sudo -u x`),
+ * a `\` or path before the program name and git's global options removed. `\rm`, `/bin/rm`, `env rm` and
+ * `git -C . push` all become `rm …` / `git push …`, so a deny rule cannot be dodged by spelling.
+ * Undefined when nothing changes.
+ */
+export function normalize(tokens: string[]): string | undefined {
+  const words = tokens.map((token) => token.replace(/^["']|["']$/g, ""))
+  let index = 0
+  for (let guard = 0; guard < 16 && index < words.length; guard++) {
+    const word = words[index]!
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(word)) {
+      index++
+      continue
+    }
+    const name = word.replace(/^\\/, "").split("/").pop()!
+    if (!WRAPPERS.has(name)) break
+    index++
+    // Options of the wrapper, plus the one value they take (`-u root`, `-n 5`, `-s KILL`) and timeout's duration.
+    while (index < words.length && (words[index]!.startsWith("-") || /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[index]!))) {
+      const option = words[index]!
+      index++
+      if (/^-[unsgCkD]$/.test(option) && index < words.length) index++
+    }
+    if (name === "timeout" && index < words.length && /^\d/.test(words[index]!)) index++
+  }
+  const rest = words.slice(index)
+  if (rest.length === 0) return undefined
+  rest[0] = rest[0]!.replace(/^\\/, "").split("/").pop()!
+  if (rest[0] === "git") {
+    let at = 1
+    while (at < rest.length && rest[at]!.startsWith("-")) at += GIT_GLOBAL_WITH_VALUE.has(rest[at]!) ? 2 : 1
+    rest.splice(1, at - 1)
+  }
+  const normalized = rest.join(" ")
+  return normalized === tokens.join(" ") ? undefined : normalized
+}
+
 /** The pattern saved by "always allow": the command's prefix plus ` *`, or the exact command for runners. */
 export function always(tokens: string[]) {
   const first = tokens[0]?.replace(/\\/g, "/").split("/").pop()?.toLowerCase().replace(/\.exe$/, "")

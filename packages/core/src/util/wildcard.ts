@@ -1,6 +1,7 @@
 export * as Wildcard from "./wildcard"
 
-const ignoreCase = process.platform === "win32"
+// Windows and macOS file systems are case-insensitive, so "Secrets/x" and "*.PEM" must hit "secrets/*" and "*.pem" rules.
+const ignoreCase = process.platform === "win32" || process.platform === "darwin"
 
 // Linear-space glob matcher. A regex built from "*a*a*a*b" backtracks polynomially on long
 // non-matching input, and patterns come from user config, so match with two pointers instead.
