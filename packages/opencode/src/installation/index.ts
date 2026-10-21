@@ -14,7 +14,7 @@ import semver from "semver"
 import { InstallationChannel, InstallationVersion } from "@yukioshi/core/installation/version"
 import { NpmConfig } from "@yukioshi/core/npm-config"
 import { InstallationEvent } from "@yukioshi/schema/installation-event"
-import { releaseBaseUrl } from "./auto-update"
+import { releaseBaseUrl, testReleaseBaseUrl } from "./auto-update"
 
 export type Method = "curl" | "npm" | "yarn" | "pnpm" | "bun" | "brew" | "scoop" | "choco" | "unknown"
 
@@ -257,7 +257,7 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
           Effect.orElseSucceed(() => undefined),
         )
         if (fromFeed) return fromFeed
-        if (process.env.YUKIOSHI_TEST_RELEASE_BASE_URL)
+        if (testReleaseBaseUrl())
           return yield* Effect.die(new Error("no release in the test feed"))
 
         const response = yield* httpOk.execute(

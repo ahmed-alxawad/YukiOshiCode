@@ -101,6 +101,8 @@ export async function backgroundUpdate(
   const autoupdate = await setting()
   if (blockedReason(autoupdate, current)) return
   const stateDir = Global.Path.state
+  // This process started and is running: if it is the binary the last update installed, it is verified.
+  AutoUpdate.markVerified(Global.Path.cache, execPath, current)
   // Another yukioshi process is already checking or installing: leave it to that one.
   const lock = await Flock.acquire(AutoUpdate.LOCK_KEY, { timeoutMs: 0, staleMs: 2 * 60_000 }).catch(() => undefined)
   if (!lock) return

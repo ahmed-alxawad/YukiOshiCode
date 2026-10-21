@@ -356,6 +356,88 @@ describe.skipIf(!unix)("installRelease", () => {
   })
 })
 
+describe.skipIf(!unix)("update safety", () => {
+  const asset = "yukioshi-linux-x64.tar.gz"
+  const good = (v: string) => `#!/bin/sh\necho ${v}\n`
+
+  async function setup() {
+    const tmp = await tmpdir()
+    const binDir = path.join(tmp.path, "bin")
+    fs.mkdirSync(binDir)
+    const execPath = path.join(binDir, "yukioshi")
+    fs.writeFileSync(execPath, good("0.4.1"), { mode: 0o755 })
+    const servers: { stop: (force: boolean) => unknown }[] = []
+    const install = async (version: string, script?: string) => {
+      const fake = fakeRelease(tmp.path, asset, { version, script })
+      servers.push(fake.server)
+      await AutoUpdate.installRelease({
+        version,
+        asset,
+        execPath,
+        workDir: path.join(tmp.path, "work"),
+        baseUrl: fake.url,
+      })
+    }
+    return {
+      tmp,
+      binDir,
+      execPath,
+      install,
+      [Symbol.asyncDispose]: async () => {
+        for (const server of servers) void server.stop(true)
+        await tmp[Symbol.asyncDispose]()
+      },
+    }
+  }
+
+  test("rejects a binary that prints its version but fails a real command", async () => {
+    await using env = await setup()
+    const script = `#!/bin/sh\nif [ "$1" = "--version" ]; then echo 0.5.0; else echo boom >&2; exit 99; fi\n`
+    await expect(env.install("0.5.0", script)).rejects.toThrow("failed a real command")
+    expect(fs.readFileSync(env.execPath, "utf8")).toContain("echo 0.4.1")
+  })
+
+  test("a second install does not overwrite the backup with an unverified binary", async () => {
+    await using env = await setup()
+    await env.install("0.5.0")
+    await env.install("0.6.0")
+    expect(fs.readFileSync(env.execPath + ".old", "utf8")).toContain("echo 0.4.1")
+    expect(fs.readFileSync(env.execPath, "utf8")).toContain("echo 0.6.0")
+  })
+
+  test("once the installed binary has run, the next install backs it up", async () => {
+    await using env = await setup()
+    await env.install("0.5.0")
+    AutoUpdate.markVerified(path.join(env.tmp.path, "work"), env.execPath, "0.5.0")
+    await env.install("0.6.0")
+    expect(fs.readFileSync(env.execPath + ".old", "utf8")).toContain("echo 0.5.0")
+  })
+
+  test("sweeps staged binaries left by crashed updates", async () => {
+    await using env = await setup()
+    fs.writeFileSync(path.join(env.binDir, ".yukioshi.new.99999"), "stale")
+    await env.install("0.5.0")
+    expect(fs.readdirSync(env.binDir).sort()).toEqual(["yukioshi", "yukioshi.old"])
+  })
+
+  test("the test release URL is ignored outside tests unless the unsafe flag is set", () => {
+    const url = "http://127.0.0.1:9"
+    const write = process.stderr.write.bind(process.stderr)
+    const logged: string[] = []
+    process.stderr.write = ((chunk: string) => (logged.push(String(chunk)), true)) as typeof process.stderr.write
+    try {
+      expect(AutoUpdate.testReleaseBaseUrl({ YUKIOSHI_TEST_RELEASE_BASE_URL: url, NODE_ENV: "production" })).toBeUndefined()
+      expect(AutoUpdate.testReleaseBaseUrl({ YUKIOSHI_TEST_RELEASE_BASE_URL: url, NODE_ENV: "test" })).toBe(url)
+      expect(
+        AutoUpdate.testReleaseBaseUrl({ YUKIOSHI_TEST_RELEASE_BASE_URL: url, YUKIOSHI_UNSAFE_DEV_RELEASE_URL: "1" }),
+      ).toBe(url)
+    } finally {
+      process.stderr.write = write
+    }
+    expect(logged.join("")).toContain("ignoring YUKIOSHI_TEST_RELEASE_BASE_URL")
+  })
+})
+
 describe.skipIf(!unix)("binary swap", () => {
   async function setup() {
     const tmp = await tmpdir()
@@ -404,6 +486,20 @@ describe.skipIf(!unix)("binary swap", () => {
         staged: env.staged,
         windows: true,
         ops: { rename: async (a, b) => (++calls === 2 ? boom() : fs.renameSync(a, b)) },
+      }),
+    ).rejects.toThrow("could not put the new binary in place")
+    expect(env.run()).toBe("old")
+  })
+
+  test("Windows: a restore that fails once is retried, so the old binary comes back", async () => {
+    await using env = await setup()
+    let calls = 0
+    await expect(
+      AutoUpdate.swapBinary({
+        execPath: env.execPath,
+        staged: env.staged,
+        windows: true,
+        ops: { rename: async (a, b) => (++calls === 2 || calls === 3 ? boom() : fs.renameSync(a, b)) },
       }),
     ).rejects.toThrow("could not put the new binary in place")
     expect(env.run()).toBe("old")

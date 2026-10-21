@@ -27,13 +27,33 @@ const GITHUB_REPOSITORY = "ahmed-alxawad/YukiOshiCode"
 const INSTALL_SCRIPT = `https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/install`
 const INSTALL_SCRIPT_PS1 = `https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/install.ps1`
 
+let warnedTestUrl = false
+
 /**
- * Base URL of the GitHub release pages (`<base>/releases/download/v<version>/<asset>`).
- * Test-only: YUKIOSHI_TEST_RELEASE_BASE_URL points release lookups and downloads at a local fake
- * release server. It is ignored unless set; never set it outside tests.
+ * The test release server URL (YUKIOSHI_TEST_RELEASE_BASE_URL), or undefined. It is honoured only
+ * under `bun test` (NODE_ENV=test) or with YUKIOSHI_UNSAFE_DEV_RELEASE_URL=1, and a production build
+ * that ignores it says so on stderr once, so a stray variable cannot redirect updates silently.
  */
+export function testReleaseBaseUrl(env: Record<string, string | undefined> = process.env) {
+  const url = env.YUKIOSHI_TEST_RELEASE_BASE_URL
+  if (!url) return undefined
+  if (env.NODE_ENV === "test" || env.YUKIOSHI_UNSAFE_DEV_RELEASE_URL === "1") {
+    if (env.NODE_ENV !== "test" && !warnedTestUrl) {
+      warnedTestUrl = true
+      process.stderr.write(`warning: using ${url} as the release server (YUKIOSHI_UNSAFE_DEV_RELEASE_URL is set)\n`)
+    }
+    return url
+  }
+  if (!warnedTestUrl) {
+    warnedTestUrl = true
+    process.stderr.write("warning: ignoring YUKIOSHI_TEST_RELEASE_BASE_URL; it only works in tests\n")
+  }
+  return undefined
+}
+
+/** Base URL of the GitHub release pages (`<base>/releases/download/v<version>/<asset>`). */
 export function releaseBaseUrl() {
-  return (process.env.YUKIOSHI_TEST_RELEASE_BASE_URL || `https://github.com/${GITHUB_REPOSITORY}`).replace(/\/+$/, "")
+  return (testReleaseBaseUrl() || `https://github.com/${GITHUB_REPOSITORY}`).replace(/\/+$/, "")
 }
 
 export type AvailableReason = "major" | "notify" | "package-manager" | "unknown-method" | "not-writable" | "prerelease"
@@ -350,13 +370,37 @@ const realOps: SwapOps = {
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error))
 
-/** Removes backups a running Windows process kept from being deleted earlier; failures are ignored. */
+const STAGED_PREFIX = ".yukioshi.new."
+
+/**
+ * Removes backups a running Windows process kept from being deleted earlier, and staged binaries
+ * (`.yukioshi.new.<pid>`) left by an update that crashed; failures are ignored.
+ */
 export async function cleanStaleBackups(execPath: string, ops: Partial<SwapOps> = {}) {
   const rm = ops.rm ?? realOps.rm
   const dir = path.dirname(execPath)
   const prefix = `${path.basename(execPath)}.old.`
   const names = await fsp.readdir(dir).catch(() => [] as string[])
-  for (const name of names) if (name.startsWith(prefix)) await rm(path.join(dir, name)).catch(() => {})
+  for (const name of names)
+    if (name.startsWith(prefix) || name.startsWith(STAGED_PREFIX)) await rm(path.join(dir, name)).catch(() => {})
+}
+
+/** Marker for a binary that was installed but has not run yet: `<workDir>/unverified-install.json`. */
+const unverifiedFile = (workDir: string) => path.join(workDir, "unverified-install.json")
+
+function readUnverified(workDir: string, execPath: string) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(unverifiedFile(workDir), "utf8"))
+    return parsed?.execPath === execPath && typeof parsed.version === "string" ? (parsed.version as string) : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** Called by a running binary: if it is the one the last update installed, it has proven it starts. */
+export function markVerified(workDir: string, execPath: string, runningVersion: string) {
+  if (readUnverified(workDir, execPath) !== runningVersion) return
+  fs.rmSync(unverifiedFile(workDir), { force: true })
 }
 
 /**
@@ -366,15 +410,24 @@ export async function cleanStaleBackups(execPath: string, ops: Partial<SwapOps> 
  * Windows cannot rename over a running exe, so the old one is moved aside first; if putting the new
  * one in place fails it is moved back, and if that fails too the error says how to restore it.
  */
-export async function swapBinary(input: { execPath: string; staged: string; windows: boolean; ops?: Partial<SwapOps> }) {
+export async function swapBinary(input: {
+  execPath: string
+  staged: string
+  windows: boolean
+  /** Leave the existing `<execPath>.old` alone: the binary being replaced was never verified. */
+  keepBackup?: boolean
+  ops?: Partial<SwapOps>
+}) {
   const ops = { ...realOps, ...input.ops }
   const { execPath, staged } = input
   let backup = `${execPath}.old`
   if (!input.windows) {
-    await ops.rm(backup).catch(() => {})
-    await ops.link(execPath, backup).catch(() => ops.copyFile(execPath, backup)).catch((error: unknown) => {
-      throw new UpdateError(`could not keep a backup of the current binary: ${message(error)}`)
-    })
+    if (!input.keepBackup) {
+      await ops.rm(backup).catch(() => {})
+      await ops.link(execPath, backup).catch(() => ops.copyFile(execPath, backup)).catch((error: unknown) => {
+        throw new UpdateError(`could not keep a backup of the current binary: ${message(error)}`)
+      })
+    }
     await ops.rename(staged, execPath).catch((error: unknown) => {
       throw new UpdateError(`could not put the new binary in place: ${message(error)}`)
     })
@@ -383,23 +436,31 @@ export async function swapBinary(input: { execPath: string; staged: string; wind
   // The old backup may be a binary that is still running; Windows then refuses to delete it. Skip it
   // (it is cleaned up at the next update) and use a name of its own.
   let stuck = false
-  await ops.rm(backup).catch(() => {
-    stuck = true
-  })
-  if (stuck || fs.existsSync(backup)) backup = `${execPath}.old.${process.pid}`
+  if (!input.keepBackup)
+    await ops.rm(backup).catch(() => {
+      stuck = true
+    })
+  if (input.keepBackup || stuck || fs.existsSync(backup)) backup = `${execPath}.old.${process.pid}`
   await ops.rename(execPath, backup).catch((error: unknown) => {
     throw new UpdateError(`could not move the current binary aside: ${message(error)}`)
   })
-  await ops.rename(staged, execPath).catch(async (error: unknown) => {
-    const restored = await ops.rename(backup, execPath).then(
-      () => true,
-      () => false,
-    )
+  // Between the two renames nothing is at execPath: any failure here must put the old binary back.
+  try {
+    await ops.rename(staged, execPath)
+  } catch (error) {
+    let restored = false
+    for (let attempt = 0; attempt < 3 && !restored; attempt++) {
+      if (attempt) await new Promise((resolve) => setTimeout(resolve, 100 * attempt))
+      restored = await ops.rename(backup, execPath).then(
+        () => true,
+        () => false,
+      )
+    }
     throw new UpdateError(
       `could not put the new binary in place: ${message(error)}` +
         (restored ? "" : `; to go back, rename ${backup} to ${execPath}`),
     )
-  })
+  }
 }
 
 /**
@@ -467,7 +528,7 @@ export async function installRelease(input: {
   await fsp.mkdir(input.workDir, { recursive: true })
   const tmp = await fsp.mkdtemp(path.join(input.workDir, "update-"))
   const binDir = path.dirname(input.execPath)
-  const staged = path.join(binDir, `.yukioshi.new.${process.pid}${windows ? ".exe" : ""}`)
+  const staged = path.join(binDir, `${STAGED_PREFIX}${process.pid}${windows ? ".exe" : ""}`)
   try {
     const archivePath = path.join(tmp, input.asset)
     await fsp.writeFile(archivePath, archive)
@@ -491,8 +552,20 @@ export async function installRelease(input: {
       throw new UpdateError(
         `the new binary failed its start check (expected ${input.version}, got ${JSON.stringify(reported || check.error?.message || `exit ${check.status}`)})`,
       )
+    // --version can work in a binary that is broken at runtime; `debug config` loads the whole app
+    // (config, runtime layers) without the network, so a crash there means the update is unusable.
+    const smoke = spawnSync(staged, ["debug", "config"], { encoding: "utf8", timeout: 60_000, cwd: tmp })
+    if (smoke.error || smoke.status !== 0)
+      throw new UpdateError(
+        `the new binary starts but failed a real command (\`debug config\`: ${smoke.error?.message ?? `exit ${smoke.status}`}${smoke.stderr ? `, ${smoke.stderr.trim().slice(-300)}` : ""})`,
+      )
 
-    await swapBinary({ execPath: input.execPath, staged, windows, ops: input.ops })
+    // A binary installed by an earlier update that has not run since is not a known-good fallback.
+    const keepBackup = readUnverified(input.workDir, input.execPath) !== undefined && fs.existsSync(`${input.execPath}.old`)
+    await swapBinary({ execPath: input.execPath, staged, windows, keepBackup, ops: input.ops })
+    await fsp
+      .writeFile(unverifiedFile(input.workDir), JSON.stringify({ execPath: input.execPath, version: input.version }))
+      .catch(() => {})
   } finally {
     await fsp.rm(staged, { force: true }).catch(() => {})
     await fsp.rm(tmp, { recursive: true, force: true }).catch(() => {})
