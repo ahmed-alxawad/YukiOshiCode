@@ -305,9 +305,9 @@ export const TaskTool = Tool.define(
         const tools = worktreeTools(gitService.value, worktreeService.value)
         // createReady checks the files out before returning, so the subagent never starts in an empty folder.
         const info = yield* worktreeService.value.createReady({ name: params.description })
-        const base = yield* tools.output(["rev-parse", "HEAD"], info.directory)
+        const from = yield* tools.start(info.directory)
         const outcome = yield* storeService.value.provide({ directory: info.directory }, runTask()).pipe(Effect.exit)
-        const kept = yield* tools.settle(info, base, "task")
+        const kept = yield* tools.settle(info, from, "task")
         if (Exit.isFailure(outcome)) return yield* Effect.failCause(outcome.cause)
         if (!kept) return outcome.value
         const counts = [

@@ -12,7 +12,7 @@ import { InstanceStore } from "@/project/instance-store"
 import { Worktree } from "../worktree"
 import * as Tool from "./tool"
 import { TaskTool } from "./task"
-import { worktreeTools, type Kept } from "./task-worktree"
+import { worktreeTools, type Kept, type Start } from "./task-worktree"
 
 const DESCRIPTION =
   "Run multiple subagent tasks concurrently. Each task runs like the task tool, but set worktree=true on a task to give it its own isolated git worktree so it can edit files without colliding with other parallel tasks or the current session (requires a git repository). A worktree task's changes stay in its worktree, on its own branch, and the result says where; they are not applied to the current checkout. Use this instead of sequential task calls when the tasks are independent of each other."
@@ -64,7 +64,7 @@ export const TaskParallelTool = Tool.define(
     const store = yield* InstanceStore.Service
     const git = yield* Git.Service
 
-    const { output, settle } = worktreeTools(git, worktree)
+    const { start, settle } = worktreeTools(git, worktree)
 
     return {
       description: DESCRIPTION,
@@ -86,7 +86,7 @@ export const TaskParallelTool = Tool.define(
 
           // Track worktrees that were successfully created so each one is looked at afterwards,
           // even when the task itself fails (the outcome won't carry .worktree in that case).
-          const createdWorktrees = new Map<number, { info: Worktree.Info; base?: string }>()
+          const createdWorktrees = new Map<number, { info: Worktree.Info; from: Start }>()
 
           const run = Effect.fn("TaskParallelTool.run")(function* (
             task: Schema.Schema.Type<typeof TaskSpec>,
@@ -100,7 +100,7 @@ export const TaskParallelTool = Tool.define(
             if (!task.worktree) return { index, worktree: undefined as string | undefined, result: yield* invoke() }
             // createReady checks the files out before returning, so the subagent never starts in an empty folder.
             const info = yield* worktree.createReady({ name: task.description })
-            createdWorktrees.set(index, { info, base: yield* output(["rev-parse", "HEAD"], info.directory) })
+            createdWorktrees.set(index, { info, from: yield* start(info.directory) })
             const result = yield* store.provide({ directory: info.directory }, invoke())
             return { index, worktree: info.directory, result }
           })
@@ -119,8 +119,8 @@ export const TaskParallelTool = Tool.define(
           // A cleanup failure must not mask or replace the task's own result, so it is only logged.
           const kept = new Map<number, Kept>()
           yield* Effect.all(
-            Array.from(createdWorktrees.entries()).map(([index, { info, base }]) =>
-              settle(info, base, "task_parallel").pipe(
+            Array.from(createdWorktrees.entries()).map(([index, { info, from }]) =>
+              settle(info, from, "task_parallel").pipe(
                 Effect.map((left) => {
                   if (left) kept.set(index, left)
                 }),

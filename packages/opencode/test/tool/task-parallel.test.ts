@@ -1,5 +1,5 @@
 import { afterEach, describe, expect } from "bun:test"
-import { existsSync, readFileSync, writeFileSync } from "fs"
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs"
 import path from "path"
 import { SessionV1 } from "@yukioshi/core/v1/session"
 import { Database } from "@yukioshi/core/database/database"
@@ -138,7 +138,7 @@ function git(directory: string, ...args: string[]) {
 
 // A subagent stub that works in the folder its session runs in: it records whether the project's files were
 // there when it started, then makes (and optionally commits) a change.
-function editingOps(seen: string[], options: { commit?: boolean } = {}): TaskPromptOps {
+function editingOps(seen: string[], options: { commit?: boolean; file?: string } = {}): TaskPromptOps {
   return {
     cancel: () => Effect.void,
     resolvePromptParts: (template) => Effect.succeed([{ type: "text" as const, text: template }]),
@@ -146,7 +146,9 @@ function editingOps(seen: string[], options: { commit?: boolean } = {}): TaskPro
       Effect.gen(function* () {
         const directory = yield* InstanceState.directory
         seen.push(existsSync(path.join(directory, "base.txt")) ? "checked out" : "empty")
-        writeFileSync(path.join(directory, "made.txt"), "work")
+        const file = path.join(directory, options.file ?? "made.txt")
+        mkdirSync(path.dirname(file), { recursive: true })
+        writeFileSync(file, "work")
         if (options.commit) {
           git(directory, "add", "made.txt")
           git(directory, "commit", "-qm", "subagent work")
@@ -340,6 +342,40 @@ describe("tool.task_parallel", () => {
         expect(result.output).toContain("yukioshi worktree remove keep-me")
         expect(result.metadata.kept).toBe(1)
         expect(existsSync(path.join(directory, "made.txt"))).toBe(false)
+      }),
+    { git: true },
+  )
+
+  it.instance(
+    "keeps a worktree whose task only wrote gitignored files",
+    () =>
+      Effect.gen(function* () {
+        const directory = yield* commitBase()
+        writeFileSync(path.join(directory, ".gitignore"), "reports/\n")
+        git(directory, "add", ".gitignore")
+        git(directory, "commit", "-qm", "ignore reports")
+        const { chat, assistant } = yield* seed()
+        const def = yield* (yield* TaskParallelTool).init()
+
+        const result = yield* def.execute(
+          { tasks: [{ description: "write report", prompt: "audit", subagent_type: "general", worktree: true }] },
+          {
+            sessionID: chat.id,
+            messageID: assistant.id,
+            agent: "build",
+            abort: new AbortController().signal,
+            extra: { promptOps: editingOps([], { file: "reports/audit.md" }) },
+            messages: [],
+            metadata: () => Effect.void,
+            ask: () => Effect.void,
+          },
+        )
+
+        const worktreeDir = result.output.match(/worktree="([^"]+)"/)![1]!
+        expect(readFileSync(path.join(worktreeDir, "reports", "audit.md"), "utf8")).toBe("work")
+        expect(result.output).toContain('kept="true"')
+        expect(result.output).toContain("1 changed file")
+        expect(result.metadata.kept).toBe(1)
       }),
     { git: true },
   )
