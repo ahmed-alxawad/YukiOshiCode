@@ -1,3 +1,18 @@
+// Programs whose arguments are themselves a command or a script: "always allow `timeout 60 npm test`"
+// must not become `timeout *`, which would allow any command at all.
+const RUNNERS = new Set([
+  "env", "sudo", "doas", "su", "timeout", "nice", "nohup", "time", "command", "exec", "xargs", "eval", "watch",
+  "busybox", "sh", "bash", "zsh", "dash", "ksh", "fish", "pwsh", "powershell", "cmd", "ssh",
+  "npx", "bunx", "pnpx", "uvx", "python", "python3", "node", "deno", "perl", "ruby", "php",
+])
+
+/** The pattern saved by "always allow": the command's prefix plus ` *`, or the exact command for runners. */
+export function always(tokens: string[]) {
+  const first = tokens[0]?.replace(/\\/g, "/").split("/").pop()?.toLowerCase().replace(/\.exe$/, "")
+  if (first !== undefined && (RUNNERS.has(first) || /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[0]!))) return tokens.join(" ")
+  return prefix(tokens).join(" ") + " *"
+}
+
 export function prefix(tokens: string[]) {
   // No ARITY key has more than 3 words; avoid O(n^2) joins on huge argument lists.
   for (let len = Math.min(tokens.length, 3); len > 0; len--) {
