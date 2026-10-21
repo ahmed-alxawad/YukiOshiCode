@@ -25,6 +25,7 @@ import * as NodeChildProcess from "node:child_process"
 import { PassThrough } from "node:stream"
 import launch from "cross-spawn"
 import { ChildRegistry } from "./child-registry"
+import { attachWatchdog } from "./watchdog"
 import { makeGlobalNode } from "./effect/app-node"
 import { filesystem, path } from "./effect/app-node-platform"
 
@@ -270,7 +271,10 @@ export const make = Effect.gen(function* () {
     Effect.callback<readonly [NodeChildProcess.ChildProcess, ExitSignal], PlatformError.PlatformError>((resume) => {
       const signal = Deferred.makeUnsafe<readonly [code: number | null, signal: NodeJS.Signals | null]>()
       const proc = launch(command.command, command.args, opts)
-      ChildRegistry.track(proc, opts.detached === true && process.platform !== "win32", opts.killOnExit)
+      const leader = opts.detached === true && process.platform !== "win32"
+      ChildRegistry.track(proc, leader, opts.killOnExit)
+      // SIGKILL of this process runs no exit hooks; the watchdog reaps the child (and its group) afterwards.
+      if (leader) attachWatchdog(proc, { group: true })
       // Defensive: a process that exits without ever reading stdin closes its end of the pipe,
       // and writing to it afterward (setupStdin's own listener, attached later via Effect's Sink
       // machinery, loses this race for processes that exit immediately) raises EPIPE with zero

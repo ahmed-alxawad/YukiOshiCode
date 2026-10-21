@@ -261,6 +261,37 @@ await check("SIGKILL watchdog cleans a real binary child", async () => {
   }
 })
 
+await check("SIGKILL watchdog cleans a bash tool child and its background job", async () => {
+  if (process.platform === "win32") return
+  const pidFile = path.join(root, "bash-watchdog.pids")
+  queue = [
+    {
+      tool: "bash",
+      args: { command: `echo $$ > ${JSON.stringify(pidFile)}; sleep 300 & echo $! >> ${JSON.stringify(pidFile)}; wait`, description: "orphan probe" },
+    },
+  ]
+  const parent = Bun.spawn([bin!, "run", "--dangerously-skip-permissions", "run the orphan probe"], {
+    cwd: project,
+    env,
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+  })
+  let pids: number[] = []
+  const read = () => (fs.existsSync(pidFile) ? fs.readFileSync(pidFile, "utf8").split("\n").map(Number).filter((n) => n > 0) : [])
+  try {
+    await waitForCondition(() => read().length === 2, 30_000, "bash tool did not start its background job")
+    pids = read()
+    expect(pids.every(processAlive), `bash tool pids ${pids} are not alive`)
+    parent.kill("SIGKILL")
+    await parent.exited
+    await waitForCondition(() => pids.every((pid) => !processAlive(pid)), 10_000, `bash tool pids ${pids} survived parent SIGKILL`)
+  } finally {
+    try { parent.kill("SIGKILL") } catch {}
+    for (const pid of pids) try { process.kill(pid, "SIGKILL") } catch {}
+  }
+})
+
 await check("run prints the model's answer", async () => {
   queue = [{ text: "SMOKE-ANSWER" }]
   const result = await yk(["run", "say something"])
