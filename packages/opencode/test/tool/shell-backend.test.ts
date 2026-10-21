@@ -168,7 +168,7 @@ describe("shell backend plan", () => {
     expect(plan.args).toEqual([
       "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "StrictHostKeyChecking=yes", "-o", "ClearAllForwardings=yes",
       "-p", "2222", "-i", "/home/me/my key", "-o", "IdentitiesOnly=yes",
-      "dev@box.example", "--", "sh -c 'echo hi'",
+      "dev@box.example", "--", "cd '/proj/sub dir' && sh -c 'echo hi'",
     ])
     expect(plan.env.OPENAI_API_KEY).toBeUndefined()
   })
@@ -199,7 +199,7 @@ describe("shell backend argv without executing anything", () => {
         command: `printf %s ${ShellBackend.quote(text)}`, cwd: "/p", env: {}, root: "/p",
       })
       expect(plan.args.indexOf("--")).toBe(plan.args.length - 2)
-      expect(plan.args.at(-1)).toStartWith("sh -c ")
+      expect(plan.args.at(-1)).toStartWith("cd '/p' && sh -c ")
     }
   })
   test("quote() wraps in single quotes and escapes embedded quotes", () => {
@@ -229,7 +229,7 @@ describe("shell backend execution with fake docker and ssh", () => {
     for (const text of nasty) {
       reset()
       const plan = ShellBackend.plan({ backend: "ssh", ssh: ssh.ssh }, {
-        command: `printf %s ${ShellBackend.quote(text)}`, cwd: "/p", env: process.env, root: "/p",
+        command: `printf %s ${ShellBackend.quote(text)}`, cwd: FAKE, env: process.env, root: FAKE,
       })
       const out = Bun.spawnSync([plan.file, ...plan.args], { env: plan.env, cwd: FAKE })
       if (out.stdout.toString() !== text) console.log(out.stderr.toString(), out.exitCode)

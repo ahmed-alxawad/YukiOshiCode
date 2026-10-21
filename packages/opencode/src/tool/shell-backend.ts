@@ -82,6 +82,7 @@ export function plan(
     const rel = path.relative(input.root, input.cwd)
     const inside = rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel))
     const workdir = inside && rel ? path.posix.join("/work", ...rel.split(path.sep)) : "/work"
+    if (!inside) console.warn(`[shell] ${input.cwd} is outside the project root ${input.root}, which is the only folder mounted into docker; running in /work instead`)
     const container = `yukioshi-${randomBytes(6).toString("hex")}`
     const pass = Object.keys(env).filter((name) => !HOST_ONLY.has(name) && /^[A-Za-z_][A-Za-z0-9_]*$/.test(name))
     // The client itself needs the daemon selection; added after `pass` so `-e` never forwards it into the container.
@@ -108,6 +109,7 @@ export function plan(
   if (ssh.user !== undefined && !USER.test(ssh.user)) throw new Error("shell.ssh.user is invalid")
   if (ssh.port !== undefined && !(Number.isInteger(ssh.port) && ssh.port > 0 && ssh.port < 65536))
     throw new Error("shell.ssh.port is invalid")
+  if (/[\0\r\n]/.test(input.cwd)) throw new Error("the working directory cannot contain NUL or newline characters")
   addClientEnv(env, input.env, "ssh")
   return {
     file: "ssh",
@@ -122,7 +124,8 @@ export function plan(
       ssh.user ? `${ssh.user}@${ssh.host}` : ssh.host,
       "--",
       // ssh joins its arguments with spaces and hands them to the remote login shell, so quote once.
-      `sh -c ${quote(input.command)}`,
+      // Without the cd the command would run in the remote home, not in the project folder.
+      `cd ${quote(input.cwd)} && sh -c ${quote(input.command)}`,
     ],
     env,
   }

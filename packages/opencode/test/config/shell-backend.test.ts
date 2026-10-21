@@ -175,6 +175,29 @@ describe("shell backend env plumbing and limits", () => {
       expect(() => ShellBackend.plan(cfg, { ...base, command: "echo a\u0000b", env: { PATH: "/bin" } })).toThrow(/NUL/)
   })
 
+  test("ssh: the command runs in the quoted working directory, and an unsafe cwd is rejected", () => {
+    const plan = ShellBackend.plan(sshCfg, { ...base, cwd: "/p/it's here", env: { PATH: "/bin" } })
+    expect(plan.args.at(-1)).toBe(`cd '/p/it'\\''s here' && sh -c 'echo hi'`)
+    for (const cwd of ["/p\nrm -rf /", "/p\u0000x"])
+      expect(() => ShellBackend.plan(sshCfg, { ...base, cwd, env: { PATH: "/bin" } })).toThrow(/working directory/)
+  })
+
+  test("docker: a cwd outside the mounted root warns that /work is used; inside it stays quiet", () => {
+    const warnings: string[] = []
+    const original = console.warn
+    console.warn = (...args: unknown[]) => warnings.push(args.join(" "))
+    try {
+      const outside = ShellBackend.plan(dockerCfg, { ...base, cwd: "/elsewhere", env: { PATH: "/bin" } })
+      expect(outside.args[outside.args.indexOf("-w") + 1]).toBe("/work")
+      expect(warnings.length).toBe(1)
+      expect(warnings[0]).toContain("/elsewhere")
+      ShellBackend.plan(dockerCfg, { ...base, cwd: "/p/sub", env: { PATH: "/bin" } })
+      expect(warnings.length).toBe(1)
+    } finally {
+      console.warn = original
+    }
+  })
+
   test("ssh plans carry a ConnectTimeout option", () => {
     const plan = ShellBackend.plan(sshCfg, { ...base, env: { PATH: "/bin" } })
     expect(plan.args.indexOf("ConnectTimeout=10")).toBeGreaterThan(-1)
