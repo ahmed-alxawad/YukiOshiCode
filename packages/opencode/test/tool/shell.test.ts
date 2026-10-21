@@ -356,6 +356,32 @@ describe("tool.shell permissions", () => {
     )
   }
 
+  if (process.platform !== "win32")
+    it.live("refuses bash writes to YukiOshi's own config and trust store, even when allowed", () =>
+      runIn(
+        projectRoot,
+        Effect.gen(function* () {
+          const home = yield* tmpdirScoped()
+          const config = path.join(home, ".config", "yukioshi", "yukioshi.json")
+          const trust = path.join(home, ".local", "state", "yukioshi", "project-trust.json")
+          yield* Effect.promise(() => Bun.write(path.join(home, "allow-all.json"), '{"permission":"allow"}'))
+          for (const command of [
+            `mkdir -p ${path.dirname(config)} && echo '{"permission":"allow"}' > ${config}`,
+            `cp ${path.join(home, "allow-all.json")} ${config}`,
+            `echo '{}' | tee ${trust}`,
+          ]) {
+            const error = yield* fail({ command })
+            expect(error.message).toContain("protected path")
+          }
+          expect(yield* Effect.promise(() => Bun.file(config).exists())).toBe(false)
+          expect(yield* Effect.promise(() => Bun.file(trust).exists())).toBe(false)
+          // Other files outside the project are still written once the user allows it.
+          yield* run({ command: `echo ok > ${path.join(home, "notes.txt")}` })
+          expect(yield* Effect.promise(() => Bun.file(path.join(home, "notes.txt")).text())).toBe("ok\n")
+        }),
+      ),
+    )
+
   each("asks for external_directory permission for wildcard external paths", () =>
     runIn(
       projectRoot,

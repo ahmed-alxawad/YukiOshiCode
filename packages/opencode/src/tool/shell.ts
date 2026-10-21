@@ -25,6 +25,7 @@ import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner
 import { ShellPrompt, type Parameters } from "./shell/prompt"
 import { BashArity } from "@/permission/arity"
 import { Redact } from "@yukioshi/core/redact"
+import { SafetyGuards } from "@yukioshi/core/permission/guards"
 import { BackgroundShell } from "@/background/shell"
 import { auditJob, backgroundShell } from "./background-shell"
 
@@ -41,6 +42,7 @@ const FILES = new Set([
   "touch",
   "chmod",
   "chown",
+  "tee",
   "cat",
   // Leave PowerShell aliases out for now. Common ones like cat/cp/mv/rm/mkdir
   // already hit the entries above, and alias normalization should happen in one
@@ -54,6 +56,8 @@ const FILES = new Set([
   "new-item",
   "rename-item",
 ])
+// File commands above that only read or change directory.
+const READS = new Set([...CWD, "cat", "get-content", "dir", "type"])
 const CMD_FILES = new Set([
   "copy",
   "del",
@@ -80,6 +84,8 @@ type Scan = {
   dirs: Set<string>
   patterns: Set<string>
   always: Set<string>
+  /** Files outside the project the command may change: redirect targets and file-command operands. */
+  writes: Set<string>
 }
 
 type Chunk = {
@@ -272,6 +278,10 @@ const ask = Effect.fn("ShellTool.ask")(function* (
   input: { command: string },
   background = false,
 ) {
+  // The same protected paths the file tools refuse (YukiOshi's own config and trust store, ~/.ssh, ...).
+  const refused = SafetyGuards.check("write", Array.from(scan.writes))
+  if (refused) return yield* Effect.die(new Error(refused.reason))
+
   if (scan.dirs.size > 0) {
     const directories = Array.from(scan.dirs)
     const globs = directories.map((dir) => {
@@ -432,6 +442,7 @@ export const ShellTool = Tool.define(
         dirs: new Set<string>(),
         patterns: new Set<string>(),
         always: new Set<string>(),
+        writes: new Set<string>(),
       }
       const shellKind = ShellID.toKind(Shell.name(shell))
 
@@ -445,6 +456,7 @@ export const ShellTool = Tool.define(
             const resolved = yield* argPath(arg, cwd, ps, shell)
             yield* Effect.logInfo("resolved path", { arg, resolved })
             if (!resolved || containsPath(resolved, instance)) continue
+            if (!READS.has(cmd)) scan.writes.add(resolved)
             const dir = (yield* fs.isDir(resolved)) ? resolved : path.dirname(resolved)
             scan.dirs.add(dir)
           }
@@ -456,6 +468,15 @@ export const ShellTool = Tool.define(
           const plain = BashArity.normalize(tokens)
           if (plain) scan.patterns.add(plain)
           scan.always.add(BashArity.always(tokens))
+        }
+      }
+
+      if (!ps) {
+        for (const redirect of root.descendantsOfType("file_redirect")) {
+          const target = redirect?.childForFieldName("destination")
+          if (!target || !redirect!.text.includes(">")) continue
+          const resolved = yield* argPath(target.text, cwd, ps, shell)
+          if (resolved && !containsPath(resolved, instance)) scan.writes.add(resolved)
         }
       }
 

@@ -261,9 +261,15 @@ your rules.
 - Google Cloud sign-in files (`application_default_credentials.json` and
   gcloud's stored credentials);
 - shell startup files such as `~/.bashrc`, `~/.zshrc`, and `~/.profile` when
-  they are outside the project.
+  they are outside the project;
+- YukiOshi's own global config (`~/.config/yukioshi`, except its `skills`), its
+  trust store (`project-trust.json`) and its sign-ins (`auth.json`), so the agent
+  cannot rewrite your rules or trust a repository for you. `yukioshi trust` run by
+  you is unaffected.
 
-**Shell commands** are refused only for catastrophic patterns: recursive
+**Shell commands** that write one of these protected paths outside the project
+(a `>` redirect, `tee`, `cp`, `mv`, `touch`, `rm` and the like) are refused too.
+Otherwise shell commands are refused only for catastrophic patterns: recursive
 deletion of `/`, `~`, `$HOME`, `*`, or `.`; formatting or overwriting a disk;
 fork bombs; force-pushing or deleting `main`, `master`, or `trunk`; and running
 `shutdown`, `reboot`, `halt`, or `poweroff`. Ordinary commands that merely

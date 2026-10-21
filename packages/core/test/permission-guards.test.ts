@@ -38,6 +38,24 @@ describe("SafetyGuards", () => {
     expect(SafetyGuards.check("apply_patch", ["config/.env.production.dist"])).toBeUndefined()
   })
 
+  test("blocks YukiOshi's own global config, trust store and sign-ins, but not its global skills", () => {
+    for (const resource of [
+      "/home/me/.config/yukioshi/yukioshi.json",
+      "/home/me/.config/yukioshi/yukioshi.jsonc",
+      "/home/me/.config/yukioshi/plugin/evil.ts",
+      "../../../.config/yukioshi/opencode.json",
+      "home/me/.config/YukiOshi/yukioshi.json",
+      "/home/me/.local/state/yukioshi/project-trust.json",
+      "/home/me/.local/share/yukioshi/auth.json",
+    ]) {
+      for (const action of ["edit", "write", "apply_patch"])
+        expect(SafetyGuards.check(action, [resource])?.reason).toMatch(/protected path/)
+    }
+    expect(SafetyGuards.check("read", ["/home/me/.config/yukioshi/skills/review/checklist.md"])).toBeUndefined()
+    expect(SafetyGuards.check("edit", ["/project/.yukioshi/yukioshi.json"])).toBeUndefined()
+    expect(SafetyGuards.check("edit", ["/project/docs/project-trust.json"])).toBeUndefined()
+  })
+
   test("blocks shell startup files only when their permission resource is outside the project", () => {
     const outside = [
       "/home/user/.bashrc",

@@ -77,6 +77,16 @@ function isGcloudCredentialPath(segments: string[]): boolean {
   return rest.length === 1 && /^(?:credentials|access_tokens)\.db$/.test(rest[0]!)
 }
 
+// YukiOshi's own global config (hooks, permissions, MCP servers), its trust store and its sign-ins decide
+// what runs unasked, so the agent must not change them. `yukioshi trust` writes the store itself. Global
+// skills stay readable: a loaded skill points the agent at the files beside it.
+function isOwnConfigPath(segments: string[]): boolean {
+  const config = segments.findIndex((segment, index) => segment === "yukioshi" && segments[index - 1] === ".config")
+  if (config !== -1) return !["skill", "skills"].includes(segments[config + 1] ?? "")
+  const base = segments[segments.length - 1]
+  return segments[segments.length - 2] === "yukioshi" && (base === "project-trust.json" || base === "auth.json")
+}
+
 // Windows and macOS resolve names case-insensitively, and Windows drops trailing dots and
 // spaces (`.ssh.` and `.SSH ` are `.ssh`), so compare on a canonical form of each segment.
 function canonicalSegment(segment: string): string {
@@ -92,6 +102,7 @@ function isProtectedPath(resource: string): boolean {
   if (ENV_FILE.test(base)) return !ENV_TEMPLATE.test(base)
   if (PROTECTED_FILE_NAMES.some((pattern) => pattern.test(base))) return true
   if (isGcloudCredentialPath(segments)) return true
+  if (isOwnConfigPath(segments)) return true
   return isShellStartupPath(normalized, segments)
 }
 

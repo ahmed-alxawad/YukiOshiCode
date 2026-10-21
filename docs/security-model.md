@@ -39,7 +39,11 @@ unattended jobs. The review model can be wrong or be misled by what it reads.
 
 Refused in every mode, whatever the rules say: file tools reading or writing
 secret files (`.env`, SSH keys, `.npmrc`, credentials, anything under `.git`,
-`.ssh`, `.gnupg`, `.aws`, `.kube`, and similar), and a short list of
+`.ssh`, `.gnupg`, `.aws`, `.kube`, and similar) or YukiOshi's own global
+config, trust store and sign-ins (`~/.config/yukioshi`, except its skills,
+`project-trust.json`, `auth.json`), shell commands writing those protected
+paths outside the project (a redirect, `tee`, `cp`, `mv` and the like), and a
+short list of
 catastrophic shell patterns (recursive delete of `/` or `~`, disk overwrite,
 fork bombs, force-push or deletion of `main`, shutdown, download-to-shell
 pipes). This is a backstop. The shell can still read files the file tools
