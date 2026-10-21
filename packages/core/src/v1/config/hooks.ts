@@ -9,6 +9,10 @@ export const HookCommand = Schema.Struct({
     description: "Shell command line. Runs with $SHELL (or /bin/sh) on macOS/Linux, cmd.exe on Windows.",
   }),
   timeoutMs: Schema.optional(Schema.Number).annotate({ description: "Default 60000." }),
+  failClosed: Schema.optional(Schema.Boolean).annotate({
+    description:
+      "preToolUse/userPromptSubmit only: block the call when this hook cannot run, times out or fails, instead of warning and continuing. Default false.",
+  }),
 }).annotate({ identifier: "HookCommand" })
 export type HookCommand = Schema.Schema.Type<typeof HookCommand>
 
@@ -38,6 +42,10 @@ export const HookHttp = Schema.Struct({
     description: "Regex matched against the whole tool/permission id. Omit, or use '*', to match every tool.",
   }),
   timeoutMs: Schema.optional(Schema.Number).annotate({ description: "Default 5000." }),
+  failClosed: Schema.optional(Schema.Boolean).annotate({
+    description:
+      "preToolUse/userPromptSubmit only: block the call when this hook cannot run, times out or fails, instead of warning and continuing. Default false.",
+  }),
 }).annotate({ identifier: "HookHttp" })
 export type HookHttp = Schema.Schema.Type<typeof HookHttp>
 

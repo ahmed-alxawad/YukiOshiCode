@@ -283,6 +283,16 @@ const layer = Layer.effect(
         const context: string[] = []
         const warnings: string[] = []
         let blocked: string | undefined
+        // A hook that could not give an answer warns and the call goes on (Claude Code's behaviour),
+        // unless it is a blocking event's hook with failClosed set: then it blocks.
+        const failed = (hook: ConfigHooksV1.Hook, message: string) => {
+          if (hook.failClosed !== true || (input.event !== "PreToolUse" && input.event !== "UserPromptSubmit")) {
+            warnings.push(message)
+            return false
+          }
+          blocked = `${message}; the hook has failClosed set, so the call is blocked.`
+          return true
+        }
 
         for (const hook of commands) {
           if (HttpHook.isHook(hook)) {
@@ -294,11 +304,11 @@ const layer = Layer.effect(
             })
             if (sent.kind === "abort") break
             if (sent.kind === "timeout") {
-              warnings.push(`${target} timed out`)
+              if (failed(hook, `${target} timed out`)) break
               continue
             }
             if (sent.kind === "error") {
-              warnings.push(`${target} failed: ${sent.message}`)
+              if (failed(hook, `${target} failed: ${sent.message}`)) break
               continue
             }
             // A 2xx response body is read exactly like a command hook's standard output on exit code 0.
@@ -322,11 +332,11 @@ const layer = Layer.effect(
           })
 
           if (outcome.kind === "error") {
-            warnings.push(`${input.event} hook could not start: ${hook.command}`)
+            if (failed(hook, `${input.event} hook could not start: ${hook.command}`)) break
             continue
           }
           if (outcome.kind === "timeout") {
-            warnings.push(`${input.event} hook timed out: ${hook.command}`)
+            if (failed(hook, `${input.event} hook timed out: ${hook.command}`)) break
             continue
           }
           if (outcome.kind === "abort") break
@@ -338,7 +348,7 @@ const layer = Layer.effect(
             break
           }
           if (outcome.code !== 0) {
-            warnings.push(`${input.event} hook exited with code ${outcome.code}: ${stderr.split("\n")[0] ?? hook.command}`)
+            if (failed(hook, `${input.event} hook exited with code ${outcome.code}: ${stderr.split("\n")[0] ?? hook.command}`)) break
             continue
           }
           const verdict = decide(input.event, stdout)

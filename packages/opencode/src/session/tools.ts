@@ -156,6 +156,11 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
               toolName: item.id,
               signal: ctx.abort,
             })
+            if (pre.warnings.length > 0)
+              yield* Effect.logWarning("PreToolUse hook did not give an answer; the tool call goes ahead", {
+                tool: item.id,
+                warnings: pre.warnings,
+              })
             if (pre.blocked) {
               const output = {
                 title: `Blocked by a PreToolUse hook`,

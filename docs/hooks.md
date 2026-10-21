@@ -39,6 +39,7 @@ Each event takes a list of hooks, run one after another:
 | `command`   | the command line; runs with `$SHELL` (or `/bin/sh`) on macOS and Linux, `cmd.exe` on Windows |
 | `matcher`   | optional regular expression matched against the whole tool id, such as `bash`, `edit`, `write`, `read`, `webfetch`, ignoring case (so Claude Code's `Bash` or `Edit\|Write` work too); omit it or use `*` for every tool |
 | `timeoutMs` | optional; default 60000                                                 |
+| `failClosed` | optional, `preToolUse` and `userPromptSubmit` only: when the hook cannot start, times out or exits with a code other than 0 or 2, block the call instead of warning and continuing. Default `false` (Claude Code's behaviour); the warning is written to the log either way |
 
 For an HTTP hook, see [HTTP hooks](#http-hooks) below.
 
