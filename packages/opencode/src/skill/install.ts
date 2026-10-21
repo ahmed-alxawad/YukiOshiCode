@@ -138,6 +138,33 @@ const TAR = (() => {
   return existsSync(bsd) ? bsd : "tar"
 })()
 
+// zipinfo (`unzip -Z`) puts the size in the 4th column: "-rw-r--r--  3.0 unx  200000 bx defN 26-Oct-21 12:43 name".
+// tar listings (GNU tar, bsdtar, including bsdtar reading a .zip on Windows) put the size right before the date.
+export function listedSize(line: string, zipinfo: boolean) {
+  const match = zipinfo
+    ? /^\S+\s+\S+\s+\S+\s+(\d+)\s/.exec(line)
+    : /\s(\d+)\s+(?:[A-Z][a-z]{2}\s+\d|\d{4}-\d\d-\d\d|\d{2}-[A-Z][a-z]{2}-)/.exec(line)
+  return Number(match?.[1] ?? 0)
+}
+
+// Sizes in an archive's listing are only what its headers claim. Decompressing to a pipe and counting
+// writes nothing to disk, so the real size is known (and capped) before extraction starts.
+async function checkStreamedSize(cmd: string[], cwd: string) {
+  const proc = Bun.spawn(cmd, { cwd, stdout: "pipe", stderr: "ignore", stdin: "ignore" })
+  const reader = proc.stdout.getReader()
+  let total = 0
+  for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
+    total += chunk.value.byteLength
+    if (total > MAX_REPO_SIZE) {
+      proc.kill()
+      await proc.exited
+      throw new Error("Archive is too large (max 50 MB)")
+    }
+  }
+  const code = await proc.exited
+  if (code !== 0) throw new Error(`Could not read archive: exit ${code}`)
+}
+
 async function extractArchive(fullPath: string, dest: string) {
   const file = path.basename(fullPath)
   const home = path.dirname(fullPath)
@@ -153,11 +180,11 @@ async function extractArchive(fullPath: string, dest: string) {
   const detail = verbose.out.split(/\r?\n/).filter((l) => /^[-dlhrwxsc?][-rwxsStTl]{9}/.test(l))
   const lines: { type: string; size: number; name: string }[] = nameList.map((name, i) => {
     const d = detail[i]
-    const size = d ? Number(/\s(\d+)\s+(?:[A-Z][a-z]{2}\s+\d|\d{4}-\d\d-\d\d|\d{2}-[A-Z][a-z]{2}-)/.exec(d)?.[1] ?? 0) : 0
-    return { type: d?.[0] ?? "-", size, name }
+    return { type: d?.[0] ?? "-", size: d ? listedSize(d, useUnzip) : 0, name }
   })
   for (const d of detail) if (/^[lh]/.test(d)) throw new Error(`Archive contains a link, which is not allowed: ${d}`)
   checkArchiveListing(lines)
+  await checkStreamedSize(useUnzip ? ["unzip", "-p", "--", file] : [TAR, zip ? "-xOf" : "-xzOf", file], home)
   const out = path.join(dest, "repo")
   await fs.mkdir(out)
   const x = useUnzip
