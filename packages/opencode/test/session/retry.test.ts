@@ -251,6 +251,19 @@ describe("session.retry.retryable", () => {
     expect(SessionRetry.retryable(error, retryProvider)).toEqual({ message: "Request failed" })
   })
 
+  test("does not retry a 400 whose text only contains 500 inside another number or id", () => {
+    for (const responseBody of ["max_tokens: 4500 > 4096", JSON.stringify({ error: { message: "bad input", request_id: "req_A500b" } })]) {
+      const error = Schema.decodeUnknownSync(SessionV1.APIError.Schema)(
+        new SessionV1.APIError({ message: "Bad Request", isRetryable: false, statusCode: 400, responseBody }).toObject(),
+      )
+      expect(SessionRetry.retryable(error, retryProvider)).toBeUndefined()
+    }
+    const gateway = Schema.decodeUnknownSync(SessionV1.APIError.Schema)(
+      new SessionV1.APIError({ message: "upstream returned HTTP 503", isRetryable: false, statusCode: 400 }).toObject(),
+    )
+    expect(SessionRetry.retryable(gateway, retryProvider)).toEqual({ message: "upstream returned HTTP 503" })
+  })
+
   test("retries transport timeout errors", () => {
     const request = MessageV2.fromError(new ProviderError.HeaderTimeoutError(10000), { providerID })
     expect(SessionV1.APIError.isInstance(request)).toBe(true)

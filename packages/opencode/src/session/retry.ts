@@ -32,7 +32,8 @@ export const RETRY_MAX_RETRIES = 2
 export const PROVIDER_OVERLOADED_MESSAGE = "Provider is overloaded. Try another model or provider if this continues."
 
 const RETRYABLE_MESSAGE_PATTERNS = [
-  /429|500|502|503|504|524/i,
+  // Status codes only as whole tokens, so "max_tokens: 4500" or a request id containing 500 is not retried.
+  /(?<![\w.])(?:429|500|502|503|504|524)(?![\w.])/,
   /rate increased too quickly|rate limit|rate-limit|rate_limit|too many requests/i,
   /overloaded|service unavailable|service_unavailable|service-unavailable|internal error|internal_error|internal server error|server error|server_error|server-error|provider returned error|provider_returned_error|provider-returned-error/i,
   /terminated|fetch failed|failed to fetch|network[-_\s]error|upstream connect|connection error|connection refused|connection lost|socket connection was closed|socket hang up|reset before headers|getaddrinfo|enotfound|eai_again|econnrefused|econnreset|etimedout/i,
