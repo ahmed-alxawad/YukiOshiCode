@@ -13,6 +13,7 @@ import {
   promptFor,
   queueTriggers,
   removeMarker,
+  stopRun,
   triggerKey,
   watchRootLostMessage,
   watchScanErrorMessage,
@@ -88,6 +89,7 @@ async function watchLoop(opts: Options) {
   const timers = new Map<string, ReturnType<typeof setTimeout>>()
   let running = false
   let stopping = false
+  let current: ReturnType<typeof Bun.spawn> | undefined
   let finish: () => void = () => {}
   const done = new Promise<void>((resolve) => (finish = resolve))
 
@@ -114,7 +116,7 @@ async function watchLoop(opts: Options) {
     if (await ignored(rel)) return
     const content = await fs.readFile(real, "utf8").catch(() => undefined)
     if (content === undefined || content.includes("\0")) return
-    queue.push(...queueTriggers(seen, rel, findTriggers(content), Date.now()).map((trigger) => ({ file: rel, trigger })))
+    queue.push(...queueTriggers(seen, rel, findTriggers(content, rel), Date.now()).map((trigger) => ({ file: rel, trigger })))
     void next()
   }
 
@@ -150,7 +152,10 @@ async function watchLoop(opts: Options) {
       promptFor(file, trigger),
     ]
     const proc = Bun.spawn(cmd, { cwd: root, stdout: "pipe", stderr: "inherit", stdin: "ignore" })
+    current = proc
     const [out, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
+    current = undefined
+    if (stopping) return "kept"
     if (code !== 0) {
       UI.println(`watch: run exited with code ${code}; marker left in place`)
       return "failed"
@@ -188,7 +193,10 @@ async function watchLoop(opts: Options) {
   })
   watcher.on("error", (error) => stopLoudly(watchStopMessage(error)))
   UI.println(`Watching ${opts.dir} for AI! and AI? comments (${opts.dryRun ? "dry run, " : ""}mode ${opts.mode}). Press Ctrl+C to stop.`)
-  const stop = () => finish()
+  const stop = () => {
+    stopping = true
+    stopRun(current, queue, finish)
+  }
   process.once("SIGINT", stop)
   process.once("SIGTERM", stop)
   await done

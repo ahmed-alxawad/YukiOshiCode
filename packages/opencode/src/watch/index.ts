@@ -7,12 +7,25 @@ export type Trigger = { line: number; kind: Kind; text: string; raw: string }
 const OPEN = /^(\s*)(\/\/+|#+|--+|\/\*+|<!--)\s?(.*)$/
 const CLOSE = /\s*(\*\/|-->)\s*$/
 
-/** Comment-only lines (slash-slash, hash, double dash, c-style block, html comment) whose text ends in AI! or AI?. */
-export function findTriggers(content: string): Trigger[] {
+const MARKUP = new Set([".md", ".mdx", ".markdown"])
+const PROSE = new Set([".txt", ".rst", ".adoc", ".org"])
+
+/** Markdown headings (`# What is AI?`) are not comments: markup files only take html comments, prose files none. */
+function allowsOpener(file: string | undefined, open: string): boolean {
+  const dot = file?.lastIndexOf(".") ?? -1
+  const ext = file && dot >= 0 ? file.slice(dot).toLowerCase() : ""
+  if (PROSE.has(ext)) return false
+  if (MARKUP.has(ext)) return open === "<!--"
+  return true
+}
+
+/** Comment-only lines (slash-slash, hash, double dash, c-style block, html comment) whose text ends in AI! or AI?. `file` (optional) limits the comment syntax by extension. */
+export function findTriggers(content: string, file?: string): Trigger[] {
   const result: Trigger[] = []
-  content.split("\n").forEach((raw, index) => {
-    const match = OPEN.exec(raw.replace(/\r$/, ""))
-    if (!match) return
+  content.split("\n").forEach((line, index) => {
+    const raw = line.replace(/\r$/, "")
+    const match = OPEN.exec(raw)
+    if (!match || !allowsOpener(file, match[2])) return
     const body = match[3].replace(CLOSE, "").trimEnd()
     const marker = /(?:^|\s)AI([!?])$/.exec(body)
     if (!marker) return
@@ -27,10 +40,11 @@ export function removeMarker(content: string, trigger: Trigger, answer?: string)
   const lines = content.split("\n")
   const stripped = trigger.raw.replace(/\s*AI[!?](\s*(\*\/|-->))?\s*$/, (_m, close) => (close ? " " + close.trim() : ""))
   const near = [trigger.line - 1, ...lines.keys()]
-  const index = near.find((i) => lines[i] === trigger.raw)
+  const index = near.find((i) => lines[i].replace(/\r$/, "") === trigger.raw)
   if (index === undefined) return undefined
-  lines[index] = stripped.trimEnd()
-  if (answer) lines.splice(index + 1, 0, ...commentLines(trigger.raw, answer))
+  const cr = lines[index].endsWith("\r") ? "\r" : ""
+  lines[index] = stripped.trimEnd() + cr
+  if (answer) lines.splice(index + 1, 0, ...commentLines(trigger.raw, answer).map((l) => l + cr))
   return lines.join("\n")
 }
 
@@ -143,4 +157,11 @@ export function fatalWatcherStop(message: string, print: (line: string) => void,
   print(message)
   process.exitCode = 1
   stop()
+}
+
+/** SIGINT/SIGTERM: kill the in-flight run, drop what is still queued, and end the loop. */
+export function stopRun(current: { kill: () => void } | undefined, queue: unknown[], finish: () => void): void {
+  current?.kill()
+  queue.length = 0
+  finish()
 }

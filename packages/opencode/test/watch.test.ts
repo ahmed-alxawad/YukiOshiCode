@@ -9,6 +9,7 @@ import {
   retryCooldownMs,
   setRetryBaseMsForTest,
   shouldRunTask,
+  stopRun,
   triggerKey,
   watchRootLostMessage,
   watchScanErrorMessage,
@@ -157,4 +158,26 @@ test("fatalWatcherStop prints the reason, sets a non-zero exit, and stops the lo
     // Bun 1.3.14's runner exits 1 when this test restores exitCode with `undefined`, so restore a concrete value.
     process.exitCode = previous ?? 0
   }
+})
+
+test("CRLF file: an AI? marker is removed, the answer written, and line endings stay CRLF", () => {
+  const src = "const a = 1\r\n// why is this slow AI?\r\nconst b = 2\r\n"
+  const [t] = findTriggers(src, "a.ts")
+  expect(t.raw).toBe("// why is this slow AI?")
+  expect(removeMarker(src, t, "cache miss")).toBe("const a = 1\r\n// why is this slow\r\n// cache miss\r\nconst b = 2\r\n")
+})
+
+test("Markdown headings are not comments; code files and html comments keep working", () => {
+  const md = "# What is AI?\n## Why we love AI!\n<!-- real AI? -->\n"
+  expect(findTriggers(md, "README.md").map((t) => t.text)).toEqual(["real"])
+  expect(findTriggers("# What is AI?\n", "notes.txt")).toEqual([])
+  expect(findTriggers("# what is this AI?\n", "script.py")).toHaveLength(1)
+})
+
+test("stopRun kills the in-flight run, clears the queue and ends the loop", () => {
+  let killed = false
+  let finished = false
+  const queue = [1, 2]
+  stopRun({ kill: () => (killed = true) }, queue, () => (finished = true))
+  expect([killed, finished, queue.length]).toEqual([true, true, 0])
 })

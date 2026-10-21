@@ -198,6 +198,8 @@ On a change (debounced), the agent runs once per comment with the file, line and
 - `--dry-run` prints what would run and runs nothing.
 - `--once` exits after the first comment has been handled.
 - The repository must be trusted (`yukioshi trust`), otherwise watch refuses to start.
+- `--mode auto` runs instructions without asking: any comment ending in `AI!` in a changed file is executed with your permissions, including text that arrived through `git pull`, a branch switch or an unpacked dependency. Use `review` or `plan` on repositories whose changes you do not fully trust. Filtering out files that were not edited locally is not implemented yet.
+- Markdown (`.md`, `.mdx`) files only take `<!-- -->` comments and `.txt`/`.rst` files none, so headings like `# What is AI?` never trigger a run.
 
 ## Usage
 
