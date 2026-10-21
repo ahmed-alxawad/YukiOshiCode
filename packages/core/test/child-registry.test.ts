@@ -25,6 +25,27 @@ test("terminateAll stops a registered child and its grandchild", async () => {
   expect(alive(child.pid!)).toBe(false)
 })
 
+test("terminateAll still stops a grandchild after its group leader has exited", async () => {
+  // The grandchild drops the pipe, so the leader's "close" fires right after its "exit".
+  const child = spawn("sh", ["-c", "sleep 300 >/dev/null 2>&1 & echo $! ; exit 0"], {
+    detached: true,
+    stdio: ["ignore", "pipe", "ignore"],
+  })
+  ChildRegistry.track(child, true)
+  let output = ""
+  child.stdout!.on("data", (data) => (output += data))
+  await new Promise((resolve) => child.once("close", resolve))
+  const grandchild = Number(output.trim())
+  try {
+    expect(alive(grandchild)).toBe(true)
+    await ChildRegistry.terminateAll(1000)
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(alive(grandchild)).toBe(false)
+  } finally {
+    if (alive(grandchild)) process.kill(grandchild, "SIGKILL")
+  }
+})
+
 test("SIGTERM to a process using stopOnSignals leaves no child behind", async () => {
   const script = path.join(__dirname, "child-registry.fixture.ts")
   const host = spawn(process.execPath, [script], { stdio: ["ignore", "pipe", "ignore"] })

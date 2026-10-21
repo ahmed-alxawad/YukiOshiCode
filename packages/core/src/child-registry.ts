@@ -5,7 +5,8 @@ import type { ChildProcess } from "node:child_process"
 import { readFileSync } from "node:fs"
 import { isMainThread } from "node:worker_threads"
 
-type Entry = { pid: number; group: boolean; killOnExit: boolean; identity?: string }
+// `leaderGone` marks a group whose leader has exited and been reaped while other members may live on.
+type Entry = { pid: number; group: boolean; killOnExit: boolean; identity?: string; leaderGone?: boolean }
 
 const live = new Map<number, Entry>()
 const hooks = new Set<() => Promise<unknown> | unknown>()
@@ -15,7 +16,10 @@ let guarded = false
 // therefore reports every child it starts or releases to the main thread, which keeps the list that
 // the signal handlers act on. The channel is separate from the worker's own message port, so it cannot
 // disturb any protocol spoken over that.
-type Report = { op: "track"; pid: number; group: boolean; killOnExit: boolean } | { op: "untrack"; pid: number }
+type Report =
+  | { op: "track"; pid: number; group: boolean; killOnExit: boolean }
+  | { op: "untrack"; pid: number }
+  | { op: "leaderGone"; pid: number }
 let channel: BroadcastChannel | undefined
 function reports() {
   if (channel) return channel
@@ -27,6 +31,10 @@ function reports() {
         if (report?.op === "track" && typeof report.pid === "number")
           live.set(report.pid, { pid: report.pid, group: report.group, killOnExit: report.killOnExit, identity: processIdentity(report.pid) })
         else if (report?.op === "untrack" && typeof report.pid === "number") live.delete(report.pid)
+        else if (report?.op === "leaderGone" && typeof report.pid === "number") {
+          const entry = live.get(report.pid)
+          if (entry) entry.leaderGone = true
+        }
       }
     }
     ;(channel as unknown as { unref?: () => void }).unref?.()
@@ -57,6 +65,9 @@ function processIdentity(pid: number) {
 function isSameProcess(entry: Entry) {
   if (process.platform !== "linux") return true
   const current = processIdentity(entry.pid)
+  // The kernel does not hand out a pid that is still some group's id, so while the group lives on no
+  // process may hold the old leader's pid. One that does means the group emptied and the pid was reused.
+  if (entry.leaderGone) return entry.identity !== undefined && current === undefined
   return entry.identity !== undefined && current !== undefined && current === entry.identity
 }
 
@@ -94,21 +105,29 @@ export function track(proc: Pick<ChildProcess, "pid" | "once">, group: boolean, 
   const pid = proc.pid
   if (typeof pid !== "number") return
   guard()
+  prune()
   live.set(pid, { pid, group, killOnExit, identity: processIdentity(pid) })
   report({ op: "track", pid, group, killOnExit })
-  proc.once("close", () => {
+  // A group leader that exited may have left grandchildren behind; the group stays registered until it
+  // is empty (or released with `untrack`) so a later stop still reaches them.
+  const settle = () => {
+    const entry = live.get(pid)
+    if (!entry) return
+    if (entry.group) {
+      entry.leaderGone = true
+      report({ op: "leaderGone", pid })
+      if (alive(entry)) return
+    }
     live.delete(pid)
     report({ op: "untrack", pid })
-  })
-  proc.once("exit", () => {
-    // A group leader that exited may have left grandchildren behind; they stay registered until the
-    // group is empty so a later stop still reaches them.
-    const entry = live.get(pid)
-    if (entry && !alive(entry)) {
-      live.delete(pid)
-      report({ op: "untrack", pid })
-    }
-  })
+  }
+  proc.once("exit", settle)
+  proc.once("close", settle)
+}
+
+// Forgets groups whose leader is gone and whose last member has since exited.
+function prune() {
+  for (const entry of live.values()) if (entry.leaderGone && !alive(entry)) live.delete(entry.pid)
 }
 
 /** Registers a process id started elsewhere. */
