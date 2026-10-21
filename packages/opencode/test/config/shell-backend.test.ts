@@ -175,9 +175,21 @@ describe("shell backend env plumbing and limits", () => {
       expect(() => ShellBackend.plan(cfg, { ...base, command: "echo a\u0000b", env: { PATH: "/bin" } })).toThrow(/NUL/)
   })
 
-  test("ssh: the command runs in the quoted working directory, and an unsafe cwd is rejected", () => {
-    const plan = ShellBackend.plan(sshCfg, { ...base, cwd: "/p/it's here", env: { PATH: "/bin" } })
-    expect(plan.args.at(-1)).toBe(`cd '/p/it'\\''s here' && sh -c 'echo hi'`)
+  test.skipIf(process.platform === "win32")("ssh: the command runs in the quoted working directory, and an unsafe cwd is rejected", () => {
+    // Run the remote command string locally: it must cd into an existing folder (quotes included) and,
+    // when the folder is missing on the remote, warn and still run instead of failing every command.
+    const dir = mkdtempSync(path.join(os.tmpdir(), "yk-ssh-cwd-"))
+    const quoted = path.join(dir, "it's here")
+    mkdirSync(quoted)
+    const remote = (cwd: string) =>
+      Bun.spawnSync(["sh", "-c", ShellBackend.plan(sshCfg, { ...base, command: "pwd", cwd, env: { PATH: "/bin" } }).args.at(-1)!], { cwd: dir })
+    const found = remote(quoted)
+    expect(found.stdout.toString().trim()).toBe(quoted)
+    expect(found.stderr.toString()).toBe("")
+    const missing = remote(path.join(dir, "absent"))
+    expect(missing.exitCode).toBe(0)
+    expect(missing.stdout.toString().trim()).toBe(dir)
+    expect(missing.stderr.toString()).toContain("does not exist on the remote host")
     for (const cwd of ["/p\nrm -rf /", "/p\u0000x"])
       expect(() => ShellBackend.plan(sshCfg, { ...base, cwd, env: { PATH: "/bin" } })).toThrow(/working directory/)
   })

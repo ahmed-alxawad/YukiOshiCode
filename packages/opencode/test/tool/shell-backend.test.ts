@@ -168,7 +168,7 @@ describe("shell backend plan", () => {
     expect(plan.args).toEqual([
       "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "StrictHostKeyChecking=yes", "-o", "ClearAllForwardings=yes",
       "-p", "2222", "-i", "/home/me/my key", "-o", "IdentitiesOnly=yes",
-      "dev@box.example", "--", "cd '/proj/sub dir' && sh -c 'echo hi'",
+      "dev@box.example", "--", expect.stringContaining("sh -c 'echo hi'"),
     ])
     expect(plan.env.OPENAI_API_KEY).toBeUndefined()
   })
@@ -199,7 +199,7 @@ describe("shell backend argv without executing anything", () => {
         command: `printf %s ${ShellBackend.quote(text)}`, cwd: "/p", env: {}, root: "/p",
       })
       expect(plan.args.indexOf("--")).toBe(plan.args.length - 2)
-      expect(plan.args.at(-1)).toStartWith("cd '/p' && sh -c ")
+      expect(plan.args.at(-1)).toStartWith("cd '/p' 2>/dev/null || ")
     }
   })
   test("quote() wraps in single quotes and escapes embedded quotes", () => {

@@ -124,8 +124,8 @@ export function plan(
       ssh.user ? `${ssh.user}@${ssh.host}` : ssh.host,
       "--",
       // ssh joins its arguments with spaces and hands them to the remote login shell, so quote once.
-      // Without the cd the command would run in the remote home, not in the project folder.
-      `cd ${quote(input.cwd)} && sh -c ${quote(input.command)}`,
+      // Run in the project folder when the remote has the same path; otherwise say so and stay in the remote home.
+      `cd ${quote(input.cwd)} 2>/dev/null || echo ${quote(`yukioshi: ${input.cwd} does not exist on the remote host; running in the remote home folder`)} >&2; sh -c ${quote(input.command)}`,
     ],
     env,
   }

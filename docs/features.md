@@ -762,7 +762,7 @@ Off by default (`local`). In your global config only (a project config cannot se
 ```
 
 - **docker**: each shell command runs in `docker run --rm -i --network <network>` (`shell.docker.network`, default `none`) with the project mounted at `/work` and the working directory mapped. Only the MCP-isolation allow-list of environment variables (locale, proxy and the like) reaches the container, by name; no secrets and no privileged flags. Aborting or a timeout kills the local client and runs `docker kill` on the named container.
-- **ssh**: `ssh -o BatchMode=yes -o StrictHostKeyChecking=yes [-i key] user@host -- sh -c '<quoted command>'`. No password prompts, the host must already be in `known_hosts`, the command is quoted so it stays one remote command. Abort and timeout kill the local ssh client.
+- **ssh**: `ssh -o BatchMode=yes -o StrictHostKeyChecking=yes [-i key] user@host -- cd '<project folder>' 2>/dev/null || <warning>; sh -c '<quoted command>'`. The command runs in the same path on the remote host when it exists there; otherwise it runs in the remote home folder and prints a warning. No password prompts, the host must already be in `known_hosts`, the command is quoted so it stays one remote command. Abort and timeout kill the local ssh client.
 - Permissions are decided before anything runs, exactly as for local commands.
 - The read, edit and write tools stay local. With docker the shell sees the same files because the project is mounted. With ssh it does NOT: the remote machine sees different files than your edits unless you sync them yourself.
 - The OS sandbox is not combined with these backends (the container or remote host is the sandbox). `sandbox.enabled` together with `ssh` is refused with an error; with docker it is not applied.
