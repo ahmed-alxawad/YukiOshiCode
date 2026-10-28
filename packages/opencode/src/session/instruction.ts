@@ -9,6 +9,7 @@ import { Config } from "@/config/config"
 import { InstanceState } from "@/effect/instance-state"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Flag } from "@yukioshi/core/flag/flag"
+import { Edition } from "@yukioshi/core/edition"
 import { FSUtil } from "@yukioshi/core/fs-util"
 import { withTransientReadRetry } from "@/util/effect-http-client"
 import { Global } from "@yukioshi/core/global"
@@ -46,11 +47,14 @@ export interface Interface {
 
 export class Service extends Context.Service<Service, Interface>()("@yukioshi/Instruction") {}
 
-const layer: Layer.Layer<
+// `extraFile` is the edition's extra rule file (KOTHORA.md in the Kothora edition); tests pass it in.
+const makeLayer = (
+  extraFile: string | undefined = Edition.extraInstructionFile,
+): Layer.Layer<
   Service,
   never,
   FSUtil.Service | Config.Service | Global.Service | HttpClient.HttpClient | RuntimeFlags.Service
-> = Layer.effect(
+> => Layer.effect(
   Service,
   Effect.gen(function* () {
     const cfg = yield* Config.Service
@@ -62,6 +66,7 @@ const layer: Layer.Layer<
       path.join(global.config, "AGENTS.md"),
       ...(!flags.disableClaudeCodePrompt ? [path.join(global.home, ".claude", "CLAUDE.md")] : []),
     ]
+    // Kothora edition: KOTHORA.md is read as well as the first AGENTS.md or CLAUDE.md found, and comes first.
     const instructionFiles = [
       "AGENTS.md",
       ...(!flags.disableClaudeCodePrompt ? ["CLAUDE.md"] : []),
@@ -130,6 +135,9 @@ const layer: Layer.Layer<
       const ctx = yield* InstanceState.context
       const paths = new Set<string>()
 
+      if (extraFile && (yield* fs.existsSafe(path.join(global.config, extraFile)))) {
+        paths.add(path.resolve(path.join(global.config, extraFile)))
+      }
       for (const file of globalFiles) {
         if (yield* fs.existsSafe(file)) {
           paths.add(path.resolve(file))
@@ -139,6 +147,13 @@ const layer: Layer.Layer<
 
       // The first project-level match wins so we don't stack AGENTS.md/CLAUDE.md from every ancestor.
       if (!Flag.YUKIOSHI_DISABLE_PROJECT_CONFIG) {
+        if (extraFile) {
+          const extra = yield* fs
+            .findUp(extraFile, ctx.directory, ctx.worktree)
+            .pipe(Effect.catch(() => Effect.succeed([])))
+          const safeExtra = yield* Effect.filter(extra, inProject)
+          safeExtra.forEach((item) => paths.add(path.resolve(item)))
+        }
         for (const file of instructionFiles) {
           const matches = yield* fs
             .findUp(file, ctx.directory, ctx.worktree)
@@ -189,7 +204,7 @@ const layer: Layer.Layer<
     })
 
     const find = Effect.fn("Instruction.find")(function* (dir: string) {
-      for (const file of instructionFiles) {
+      for (const file of extraFile ? [extraFile, ...instructionFiles] : instructionFiles) {
         const filepath = path.resolve(path.join(dir, file))
         if (yield* fs.existsSafe(filepath)) return filepath
       }
@@ -244,6 +259,8 @@ const layer: Layer.Layer<
   }),
 )
 
+const layer = makeLayer()
+
 export function loaded(messages: SessionV1.WithParts[]) {
   return extract(messages)
 }
@@ -253,5 +270,12 @@ export const node = LayerNode.make({
   layer: layer,
   deps: [Config.node, FSUtil.node, Global.node, RuntimeFlags.node, httpClient],
 })
+
+export const nodeWith = (extraFile: string | undefined) =>
+  LayerNode.make({
+    service: Service,
+    layer: makeLayer(extraFile),
+    deps: [Config.node, FSUtil.node, Global.node, RuntimeFlags.node, httpClient],
+  })
 
 export * as Instruction from "./instruction"
