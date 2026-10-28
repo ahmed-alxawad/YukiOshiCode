@@ -141,8 +141,10 @@ expires and after a 401. Network failures retry with backoff and never delete th
 request carries `Authorization: Bearer <device token>` and an `Idempotency-Key` (one UUID per request, the
 same on retries). Credits used up, paced for today and spend-stop answers are shown as plain messages.
 
-Models are listed from `GET /code/v1/models` (Fast, Balanced, Expert). If the list cannot be fetched, all three
-are offered. Context and output sizes are placeholders until the API gives them.
+Models are listed only from `GET /code/v1/models` (Fast, Balanced, Expert); models.dev and any other model
+catalogue are never fetched in this edition. If the list cannot be fetched, all three are offered. Context and
+output sizes come from the answer (`context_length`, `max_output_tokens`) when present, otherwise placeholders.
+Product text says "Kothora Code" and the logo is a plain text wordmark until the brand is chosen.
 
 ### Rule files
 

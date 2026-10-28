@@ -3,6 +3,7 @@ import { useKeyboard, useTerminalDimensions } from "@opentui/solid"
 import { createSignal, For, Show } from "solid-js"
 import { getScrollAcceleration } from "../util/scroll"
 import { useClipboard } from "../context/clipboard"
+import { Edition } from "@yukioshi/core/edition"
 import { InstallationVersion } from "@yukioshi/core/installation/version"
 import { useExit } from "../context/exit"
 import { describeOS, describeTerminal } from "../util/system"
@@ -111,7 +112,7 @@ export function ErrorComponent(props: { error: Error; reset: () => void; mode?: 
         {/* Headline */}
         <box flexDirection="column" alignItems="center" flexShrink={0}>
           <text attributes={TextAttributes.BOLD} fg={colors.text}>
-            yukioshi crashed
+            {Edition.command} crashed
           </text>
           <Show when={showSubtext()}>
             <text fg={colors.muted}>An unexpected error stopped the session.</text>
@@ -195,7 +196,7 @@ export function ErrorComponent(props: { error: Error; reset: () => void; mode?: 
                 ? "Report copied — paste it into a new GitHub issue."
                 : "Copy the report and open a GitHub issue to help us fix this."}
             </text>
-            <text fg={colors.muted}>yukioshi {InstallationVersion}</text>
+            <text fg={colors.muted}>{Edition.command} {InstallationVersion}</text>
           </box>
         </Show>
       </box>
@@ -223,7 +224,7 @@ function buildIssueURL(message: string, stack: string) {
   // so measuring url.toString() is both correct and safe on any input.
   const MAX_URL_LENGTH = 6000
   const marker = "\n… (truncated)"
-  const head = `The YukiOshi TUI crashed with an unexpected error.\n\n**Error:** ${message}\n\n**Stack trace:**\n`
+  const head = `The ${Edition.productName} TUI crashed with an unexpected error.\n\n**Error:** ${message}\n\n**Stack trace:**\n`
   const setBody = (body: string) => url.searchParams.set("description", head + "```\n" + body + "\n```")
 
   setBody(stack)
