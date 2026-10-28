@@ -32,6 +32,8 @@ import { ProviderTransform } from "./transform"
 import { ProviderV2 } from "@yukioshi/core/provider"
 import { ModelV2 } from "@yukioshi/core/model"
 import { ModelStatus } from "./model-status"
+import { Edition } from "@yukioshi/core/edition"
+import * as KothoraProvider from "@/kothora/provider"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { ProviderError } from "./error"
 import {
@@ -1552,7 +1554,14 @@ const layer = Layer.effect(
     const state = yield* InstanceState.make<State>(() =>
       Effect.gen(function* () {
         const bridge = yield* EffectBridge.make()
-        const cfg = yield* config.get()
+        const baseCfg = yield* config.get()
+        // Kothora edition: Kothora is the only provider; config providers, env keys and stored keys are ignored.
+        const edition = Edition.byok
+          ? { config: baseCfg, ignored: [] as string[] }
+          : yield* Effect.promise(() => KothoraProvider.applyEdition(baseCfg, auth))
+        for (const id of edition.ignored)
+          yield* Effect.logWarning(`provider "${id}" ignored: ${Edition.productName} only uses Kothora`)
+        const cfg = edition.config
         const modelsDev = yield* modelsDevSvc.get()
         const catalog = lazyValues(modelsDev, fromModelsDevProvider)
         addCompatiblePreset(catalog, "google-ai-studio", "google")
