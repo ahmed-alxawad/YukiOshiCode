@@ -12,7 +12,8 @@ export const FALLBACK_MODELS: readonly ModelEntry[] = [
   { id: "expert", name: "Expert", available: true },
 ]
 
-// The API contract gives no context or output sizes. These are placeholders until it does.
+// The API contract gives no context or output sizes yet. These are placeholders, used when the models
+// answer has no `context_length` / `max_output_tokens`.
 const CONTEXT = 128_000
 const OUTPUT = 16_000
 
@@ -66,7 +67,13 @@ export async function applyEdition<T extends ConfigLike>(
   const models = Object.fromEntries(
     (available.length ? available : FALLBACK_MODELS).map((item) => [
       item.id,
-      { name: item.name, tool_call: true, temperature: true, limit: { context: CONTEXT, output: OUTPUT } },
+      {
+        name: item.name,
+        tool_call: true,
+        temperature: true,
+        // Sizes from the API when it sends them, otherwise the placeholders.
+        limit: { context: item.context_length ?? CONTEXT, output: item.max_output_tokens ?? OUTPUT },
+      },
     ]),
   )
   const { provider, ...rest } = cfg

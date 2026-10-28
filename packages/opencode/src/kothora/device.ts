@@ -124,6 +124,9 @@ export interface ModelEntry {
   id: string
   name: string
   available: boolean
+  /** Not in the contract yet: used when the API sends them. */
+  context_length?: number
+  max_output_tokens?: number
 }
 
 export async function listModels(client: KothoraClient): Promise<ModelEntry[]> {

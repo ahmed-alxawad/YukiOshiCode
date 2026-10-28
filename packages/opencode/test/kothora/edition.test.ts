@@ -95,6 +95,20 @@ describe("kothora edition: provider setup", () => {
     expect(models.fast.name).toBe("Fast")
   })
 
+  test("context and output limits come from the models answer when present, else the placeholders", async () => {
+    const { config } = await applyEdition<ConfigLike>({}, auth, {
+      baseUrl: "https://api.test.invalid",
+      store: memoryTokenStore(),
+      models: async () => [
+        { id: "fast", name: "Fast", available: true, context_length: 200_000, max_output_tokens: 8_000 },
+        { id: "balanced", name: "Balanced", available: true },
+      ],
+    })
+    const models = (config.provider!["kothora"] as any).models
+    expect(models.fast.limit).toEqual({ context: 200_000, output: 8_000 })
+    expect(models.balanced.limit).toEqual({ context: 128_000, output: 16_000 })
+  })
+
   test("when the list cannot be fetched (offline or signed out) Fast, Balanced and Expert are offered", async () => {
     const { config } = await applyEdition<ConfigLike>({}, auth, {
       baseUrl: "https://api.test.invalid",
