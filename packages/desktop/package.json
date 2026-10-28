@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "@yukioshi/desktop",
+  "version": "1.18.32",
+  "private": true,
+  "type": "module",
+  "license": "UNLICENSED",
+  "main": "dist/main/index.js",
+  "scripts": {
+    "build": "bun run script/build.ts",
+    "dev": "bun run script/build.ts --watch",
+    "typecheck": "tsgo --noEmit",
+    "test": "bun test test --timeout 30000"
+  },
+  "dependencies": {
+    "electron-updater": "6.8.10"
+  },
+  "devDependencies": {
+    "@tsconfig/node22": "catalog:",
+    "@types/bun": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "electron": "44.9.0",
+    "electron-builder": "26.17.0",
+    "esbuild": "0.27.0"
+  },
+  "build": {
+    "appId": "app.kothora.desktop",
+    "productName": "Kothora",
+    "asar": true,
+    "files": ["dist/**", "package.json"],
+    "directories": { "output": "release" },
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "target": ["dmg", "zip"]
+    },
+    "win": { "target": ["nsis", "zip"] },
+    "linux": { "category": "Development", "target": ["AppImage", "deb"] },
+    "publish": { "provider": "github", "releaseType": "release" }
+  }
+}
