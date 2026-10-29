@@ -20,6 +20,16 @@ const setup = (overrides: Partial<KothoraDesktopBridge> = {}) => {
 }
 
 describe("desktop renderer state", () => {
+  test("selects a workspace and reloads its files", async () => {
+    const selected: string[] = []
+    const fake = bridge({ selectWorkspace: async () => "/workspace/project" })
+    const controller = new DesktopController(fake, (state) => selected.push(state.loadState))
+    await controller.selectWorkspace()
+    expect(controller.state.loadState).toBe("ready")
+    expect(controller.state.files).toHaveLength(1)
+    expect(selected).toContain("loading")
+  })
+
   test("starts with safe empty states", () => {
     expect(initialState()).toEqual({
       loadState: "idle",

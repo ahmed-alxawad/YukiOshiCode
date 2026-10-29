@@ -42,6 +42,28 @@ export class DesktopController {
     this.onChange(this.state)
   }
 
+  async selectWorkspace() {
+    this.state.error = undefined
+    this.state.loadState = "loading"
+    this.emit()
+    try {
+      const selected = await this.bridge.selectWorkspace()
+      if (selected === null) {
+        this.state.loadState = "idle"
+        this.emit()
+        return
+      }
+      this.state.selectedPath = undefined
+      this.state.content = ""
+      this.state.contentState = "idle"
+      await this.load()
+    } catch (error) {
+      this.state.loadState = "error"
+      this.state.error = message(error)
+      this.emit()
+    }
+  }
+
   async load() {
     this.state.loadState = "loading"
     this.state.error = undefined
@@ -161,6 +183,9 @@ export function mountDesktopApp(root: HTMLElement, bridge: KothoraDesktopBridge)
   const status = element("div", "status")
   status.setAttribute("role", "status")
   status.setAttribute("aria-live", "polite")
+  const chooseWorkspace = element("button")
+  chooseWorkspace.type = "button"
+  chooseWorkspace.textContent = "Select workspace / ওয়ার্কস্পেস বাছুন"
   const fileList = element("nav", "file-list")
   fileList.setAttribute("aria-label", "Workspace files")
   const changeList = element("nav", "change-list")
@@ -173,7 +198,7 @@ export function mountDesktopApp(root: HTMLElement, bridge: KothoraDesktopBridge)
   const main = element("main", "review")
   main.append(viewerTitle, viewer)
   const header = element("header")
-  header.append(text("h1", "Kothora Code"), taskForm, status)
+  header.append(text("h1", "Kothora Code"), chooseWorkspace, taskForm, status)
   root.replaceChildren(header, sidebar, main)
 
   const render = (state: DesktopState) => {
@@ -246,6 +271,7 @@ export function mountDesktopApp(root: HTMLElement, bridge: KothoraDesktopBridge)
     void controller.startTask()
   })
   cancel.addEventListener("click", () => void controller.cancelTask())
+  chooseWorkspace.addEventListener("click", () => void controller.selectWorkspace())
   render(controller.state)
   void controller.load()
   return controller
