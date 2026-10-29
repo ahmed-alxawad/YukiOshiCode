@@ -102,6 +102,9 @@ export async function startAgentProcess(options: AgentProcessOptions): Promise<A
       child.once("error", onError)
       child.once("exit", onExit)
     })
+    // The core may emit operational logs after readiness. Keep draining stdout so
+    // its pipe cannot fill and stall the long-running child process.
+    child.stdout.on("data", () => undefined)
     return { baseUrl: `http://127.0.0.1:${port}/`, token, dispose }
   } catch (error) {
     dispose()
