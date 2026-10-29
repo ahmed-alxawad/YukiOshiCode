@@ -1,4 +1,4 @@
-import type { CancelTaskInput, ReadDiffInput, StartTaskInput } from "./contracts"
+import type { CancelTaskInput, GetTaskInput, ReadDiffInput, StartTaskInput } from "./contracts"
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value)
@@ -55,4 +55,8 @@ export function validateCancelTask(value: unknown): CancelTaskInput {
   }
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(value.taskId)) throw new TypeError("Invalid task ID")
   return { taskId: value.taskId }
+}
+
+export function validateGetTask(value: unknown): GetTaskInput {
+  return validateCancelTask(value)
 }

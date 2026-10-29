@@ -29,15 +29,42 @@ export const initialState = (): DesktopState => ({
   taskState: "idle",
 })
 
+export interface PollTimer {
+  set(callback: () => void, delayMs: number): unknown
+  clear(handle: unknown): void
+}
+
+export interface PollOptions {
+  intervalMs?: number
+  maxAttempts?: number
+  timer?: PollTimer
+}
+
+const defaultTimer: PollTimer = {
+  set: (callback, delayMs) => globalThis.setTimeout(callback, delayMs),
+  clear: (handle) => globalThis.clearTimeout(handle as ReturnType<typeof setTimeout>),
+}
+
 const message = (error: unknown) => (error instanceof Error ? error.message : "Something went wrong")
 
 export class DesktopController {
   readonly state = initialState()
+  readonly #pollIntervalMs: number
+  readonly #maxPollAttempts: number
+  readonly #timer: PollTimer
+  #pollHandle?: unknown
+  #pollGeneration = 0
+  #pollAttempts = 0
 
   constructor(
     private readonly bridge: KothoraDesktopBridge,
     private readonly onChange: (state: DesktopState) => void,
-  ) {}
+    options: PollOptions = {},
+  ) {
+    this.#pollIntervalMs = options.intervalMs ?? 1_000
+    this.#maxPollAttempts = options.maxAttempts ?? 3_600
+    this.#timer = options.timer ?? defaultTimer
+  }
 
   private emit() {
     this.onChange(this.state)
@@ -123,6 +150,7 @@ export class DesktopController {
       const { taskId } = await this.bridge.startTask({ prompt })
       this.state.task = { id: taskId, status: "running" }
       this.state.taskState = "ready"
+      this.startPolling(taskId)
     } catch (error) {
       this.state.taskState = "error"
       this.state.error = message(error)
@@ -133,6 +161,7 @@ export class DesktopController {
   async cancelTask() {
     if (!this.state.task || this.state.task.status !== "running") return
     this.state.taskState = "loading"
+    this.stopPolling()
     this.emit()
     try {
       await this.bridge.cancelTask({ taskId: this.state.task.id })
@@ -143,6 +172,56 @@ export class DesktopController {
       this.state.error = message(error)
     }
     this.emit()
+  }
+
+  dispose() {
+    this.stopPolling()
+  }
+
+  private startPolling(taskId: string) {
+    this.stopPolling()
+    const generation = this.#pollGeneration
+    this.#pollAttempts = 0
+    const schedule = () => {
+      if (generation !== this.#pollGeneration) return
+      if (this.#pollAttempts >= this.#maxPollAttempts) {
+        this.state.taskState = "error"
+        this.state.error = "Task status polling timed out"
+        this.emit()
+        return
+      }
+      this.#pollHandle = this.#timer.set(() => void poll(), this.#pollIntervalMs)
+    }
+    const poll = async () => {
+      this.#pollHandle = undefined
+      this.#pollAttempts += 1
+      try {
+        const task = await this.bridge.getTask({ taskId })
+        if (generation !== this.#pollGeneration) return
+        if (task.taskId !== taskId) throw new Error("Task status did not match the active task")
+        this.state.task = { id: task.taskId, status: task.status }
+        this.state.taskState = "ready"
+        this.emit()
+        if (task.status === "running") schedule()
+        else {
+          this.stopPolling()
+          await this.load()
+        }
+      } catch (error) {
+        if (generation !== this.#pollGeneration) return
+        this.stopPolling()
+        this.state.taskState = "error"
+        this.state.error = message(error)
+        this.emit()
+      }
+    }
+    schedule()
+  }
+
+  private stopPolling() {
+    this.#pollGeneration += 1
+    if (this.#pollHandle !== undefined) this.#timer.clear(this.#pollHandle)
+    this.#pollHandle = undefined
   }
 }
 
@@ -253,10 +332,7 @@ export function mountDesktopApp(
       button.type = "button"
       const path = text("span", change.path, "path")
       const count = text("span", `+${change.additions} −${change.deletions}`, "count")
-      count.setAttribute(
-        "aria-label",
-        t("changeCount", { additions: change.additions, deletions: change.deletions }),
-      )
+      count.setAttribute("aria-label", t("changeCount", { additions: change.additions, deletions: change.deletions }))
       button.append(path, count)
       button.setAttribute(
         "aria-current",

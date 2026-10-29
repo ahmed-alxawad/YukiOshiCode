@@ -1,4 +1,13 @@
-import type { CancelTaskInput, ChangeSummary, ReadDiffInput, StartedTask, StartTaskInput } from "./contracts"
+import type {
+  CancelTaskInput,
+  ChangeSummary,
+  GetTaskInput,
+  ReadDiffInput,
+  StartedTask,
+  StartTaskInput,
+  TaskDetails,
+  TaskStatus,
+} from "./contracts"
 
 export interface FetchResponse {
   ok: boolean
@@ -26,6 +35,9 @@ const assertLoopback = (baseUrl: string) => {
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null
+const taskStatuses = new Set<TaskStatus>(["running", "complete", "failed", "cancelled"])
+const validTaskId = (value: unknown): value is string =>
+  typeof value === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(value)
 
 export class AgentCoreClient {
   readonly #baseUrl: URL
@@ -69,10 +81,23 @@ export class AgentCoreClient {
 
   async startTask(input: StartTaskInput): Promise<StartedTask> {
     const value = await this.request("desktop/tasks", this.jsonRequest("POST", input))
-    if (!isRecord(value) || typeof value.taskId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(value.taskId)) {
+    if (!isRecord(value) || !validTaskId(value.taskId)) {
       throw new Error("Agent core returned an invalid task")
     }
     return { taskId: value.taskId }
+  }
+
+  async getTask(input: GetTaskInput): Promise<TaskDetails> {
+    const value = await this.request(`desktop/tasks/${encodeURIComponent(input.taskId)}`, { method: "GET" })
+    if (
+      !isRecord(value) ||
+      !validTaskId(value.taskId) ||
+      value.taskId !== input.taskId ||
+      !taskStatuses.has(value.status as TaskStatus)
+    ) {
+      throw new Error("Agent core returned an invalid task status")
+    }
+    return { taskId: value.taskId, status: value.status as TaskStatus }
   }
 
   async cancelTask(input: CancelTaskInput): Promise<void> {

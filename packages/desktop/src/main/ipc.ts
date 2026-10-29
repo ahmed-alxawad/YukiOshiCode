@@ -3,6 +3,7 @@ import type { AgentCoreClient } from "./agent-client"
 import type { WorkspaceService } from "./workspace"
 import {
   validateCancelTask,
+  validateGetTask,
   validateNoPayload,
   validateReadDiff,
   validateRelativePath,
@@ -61,5 +62,6 @@ export function registerDesktopIpc(registry: IpcRegistry, dependencies: IpcDepen
   })
   register(desktopChannels.readDiff, async (payload) => dependencies.agent.readDiff(validateReadDiff(payload)))
   register(desktopChannels.startTask, async (payload) => dependencies.agent.startTask(validateStartTask(payload)))
+  register(desktopChannels.getTask, async (payload) => dependencies.agent.getTask(validateGetTask(payload)))
   register(desktopChannels.cancelTask, async (payload) => dependencies.agent.cancelTask(validateCancelTask(payload)))
 }

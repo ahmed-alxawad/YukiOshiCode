@@ -43,5 +43,8 @@ describe("desktop IPC", () => {
     await expect(registry.handlers.get(desktopChannels.cancelTask)!(event, { taskId: "../../bad" })).rejects.toThrow(
       "Invalid",
     )
+    await expect(registry.handlers.get(desktopChannels.getTask)!(event, { taskId: "bad/id" })).rejects.toThrow(
+      "Invalid",
+    )
   })
 })

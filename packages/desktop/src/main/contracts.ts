@@ -5,6 +5,7 @@ export const desktopChannels = {
   listChanges: "desktop:agent:list-changes",
   readDiff: "desktop:agent:read-diff",
   startTask: "desktop:agent:start-task",
+  getTask: "desktop:agent:get-task",
   cancelTask: "desktop:agent:cancel-task",
 } as const
 
@@ -44,6 +45,17 @@ export interface CancelTaskInput {
   taskId: string
 }
 
+export type TaskStatus = "running" | "complete" | "failed" | "cancelled"
+
+export interface GetTaskInput {
+  taskId: string
+}
+
+export interface TaskDetails {
+  taskId: string
+  status: TaskStatus
+}
+
 export interface DesktopBridge {
   selectWorkspace(): Promise<WorkspaceSelection | null>
   listWorkspaceFiles(): Promise<WorkspaceFile[]>
@@ -51,5 +63,6 @@ export interface DesktopBridge {
   listChanges(): Promise<ChangeSummary[]>
   readDiff(input: ReadDiffInput): Promise<string>
   startTask(input: StartTaskInput): Promise<StartedTask>
+  getTask(input: GetTaskInput): Promise<TaskDetails>
   cancelTask(input: CancelTaskInput): Promise<void>
 }

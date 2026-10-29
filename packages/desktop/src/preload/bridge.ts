@@ -18,6 +18,7 @@ export function createDesktopBridge(ipc: IpcInvoker): DesktopBridge {
     listChanges: () => ipc.invoke(desktopChannels.listChanges) as ReturnType<DesktopBridge["listChanges"]>,
     readDiff: (input) => ipc.invoke(desktopChannels.readDiff, input) as ReturnType<DesktopBridge["readDiff"]>,
     startTask: (input) => ipc.invoke(desktopChannels.startTask, input) as ReturnType<DesktopBridge["startTask"]>,
+    getTask: (input) => ipc.invoke(desktopChannels.getTask, input) as ReturnType<DesktopBridge["getTask"]>,
     cancelTask: (input) => ipc.invoke(desktopChannels.cancelTask, input) as ReturnType<DesktopBridge["cancelTask"]>,
   }
   return Object.freeze(bridge)

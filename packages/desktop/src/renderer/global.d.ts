@@ -35,5 +35,6 @@ export interface KothoraDesktopBridge {
   listChanges(): Promise<ChangedFile[]>
   readDiff(input: { source: "git" | "session"; path?: string }): Promise<string>
   startTask(input: { prompt: string }): Promise<{ taskId: string }>
+  getTask(input: { taskId: string }): Promise<{ taskId: string; status: TaskRun["status"] }>
   cancelTask(input: { taskId: string }): Promise<void>
 }

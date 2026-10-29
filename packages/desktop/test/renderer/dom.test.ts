@@ -51,6 +51,7 @@ const bridge = (payload: string): KothoraDesktopBridge => ({
   listChanges: async () => [],
   readDiff: async () => "",
   startTask: async () => ({ taskId: "one" }),
+  getTask: async ({ taskId }) => ({ taskId, status: "running" }),
   cancelTask: async () => {},
 })
 

@@ -14,6 +14,7 @@ describe("preload bridge", () => {
 
     expect(Object.keys(bridge).sort()).toEqual([
       "cancelTask",
+      "getTask",
       "listChanges",
       "listWorkspaceFiles",
       "readDiff",

@@ -21,4 +21,29 @@ describe("AgentCoreClient", () => {
     await expect(client.listChanges()).rejects.toThrow("invalid changes")
     expect(redirect).toBe("error")
   })
+
+  test("gets task status from the encoded task route", async () => {
+    let request: { url?: string; method?: string } = {}
+    const client = new AgentCoreClient("http://127.0.0.1:4096/", async (url, init) => {
+      request = { url, method: init?.method }
+      return { ok: true, status: 200, json: async () => ({ taskId: "task_7", status: "complete" }) }
+    })
+    await expect(client.getTask({ taskId: "task_7" })).resolves.toEqual({ taskId: "task_7", status: "complete" })
+    expect(request).toEqual({ url: "http://127.0.0.1:4096/desktop/tasks/task_7", method: "GET" })
+  })
+
+  test("rejects invalid or mismatched task status responses", async () => {
+    for (const response of [
+      { taskId: "other", status: "running" },
+      { taskId: "task_7", status: "unknown" },
+      { taskId: 7, status: "complete" },
+    ]) {
+      const client = new AgentCoreClient("http://127.0.0.1:4096/", async () => ({
+        ok: true,
+        status: 200,
+        json: async () => response,
+      }))
+      await expect(client.getTask({ taskId: "task_7" })).rejects.toThrow("invalid task status")
+    }
+  })
 })

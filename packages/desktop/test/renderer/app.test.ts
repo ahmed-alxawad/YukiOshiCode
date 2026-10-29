@@ -9,6 +9,7 @@ const bridge = (overrides: Partial<KothoraDesktopBridge> = {}): KothoraDesktopBr
   listChanges: async () => [{ path: "src/app.ts", additions: 4, deletions: 2, status: "modified" }],
   readDiff: async ({ path }) => `diff:${path}`,
   startTask: async () => ({ taskId: "task-1" }),
+  getTask: async ({ taskId }) => ({ taskId, status: "running" }),
   cancelTask: async () => {},
   ...overrides,
 })
@@ -17,6 +18,29 @@ const setup = (overrides: Partial<KothoraDesktopBridge> = {}) => {
   const renders: DesktopState[] = []
   const controller = new DesktopController(bridge(overrides), (state) => renders.push(structuredClone(state)))
   return { controller, renders }
+}
+
+class ManualTimer {
+  callbacks = new Map<number, () => void>()
+  nextId = 1
+
+  set = (callback: () => void) => {
+    const id = this.nextId++
+    this.callbacks.set(id, callback)
+    return id
+  }
+
+  clear = (handle: unknown) => {
+    this.callbacks.delete(handle as number)
+  }
+
+  async runNext() {
+    const entry = this.callbacks.entries().next().value as [number, () => void] | undefined
+    if (!entry) throw new Error("No scheduled poll")
+    this.callbacks.delete(entry[0])
+    entry[1]()
+    for (let index = 0; index < 6; index++) await Promise.resolve()
+  }
 }
 
 describe("desktop renderer state", () => {
@@ -105,5 +129,66 @@ describe("desktop renderer state", () => {
     const { controller } = setup({ readWorkspaceFile: async () => payload })
     await controller.selectFile("unsafe.txt")
     expect(controller.state.content).toBe(payload)
+  })
+
+  test("polls a started task and refreshes changes after completion", async () => {
+    const timer = new ManualTimer()
+    let statusCalls = 0
+    let changeCalls = 0
+    const fake = bridge({
+      listChanges: async () => {
+        changeCalls++
+        return changeCalls > 1 ? [{ path: "done.ts", additions: 1, deletions: 0, status: "modified" }] : []
+      },
+      getTask: async ({ taskId }) => ({ taskId, status: ++statusCalls === 1 ? "running" : "complete" }),
+    })
+    const controller = new DesktopController(fake, () => {}, { timer, intervalMs: 1, maxAttempts: 3 })
+    await controller.load()
+    controller.setPrompt("Do work")
+    await controller.startTask()
+    expect(timer.callbacks.size).toBe(1)
+    await timer.runNext()
+    expect(controller.state.task?.status).toBe("running")
+    expect(timer.callbacks.size).toBe(1)
+    await timer.runNext()
+    expect(controller.state.task?.status).toBe("complete")
+    expect(controller.state.changes[0]?.path).toBe("done.ts")
+    expect(timer.callbacks.size).toBe(0)
+  })
+
+  test("stops polling on cancel, disposal, errors, and the attempt limit", async () => {
+    for (const action of ["cancel", "dispose"] as const) {
+      const timer = new ManualTimer()
+      const controller = new DesktopController(bridge(), () => {}, { timer })
+      controller.setPrompt("Do work")
+      await controller.startTask()
+      if (action === "cancel") await controller.cancelTask()
+      else controller.dispose()
+      expect(timer.callbacks.size).toBe(0)
+    }
+
+    const errorTimer = new ManualTimer()
+    const errored = new DesktopController(
+      bridge({
+        getTask: async () => {
+          throw new Error("status unavailable")
+        },
+      }),
+      () => {},
+      { timer: errorTimer },
+    )
+    errored.setPrompt("Do work")
+    await errored.startTask()
+    await errorTimer.runNext()
+    expect(errored.state).toMatchObject({ taskState: "error", error: "status unavailable" })
+    expect(errorTimer.callbacks.size).toBe(0)
+
+    const boundedTimer = new ManualTimer()
+    const bounded = new DesktopController(bridge(), () => {}, { timer: boundedTimer, maxAttempts: 1 })
+    bounded.setPrompt("Do work")
+    await bounded.startTask()
+    await boundedTimer.runNext()
+    expect(bounded.state).toMatchObject({ taskState: "error", error: "Task status polling timed out" })
+    expect(boundedTimer.callbacks.size).toBe(0)
   })
 })
