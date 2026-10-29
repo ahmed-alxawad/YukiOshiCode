@@ -6,6 +6,10 @@ prompt, or crash payload is committed or sent by this package.
 
 The local Code area always starts. Set `KOTHORA_WEB_URL` to the public HTTPS Kothora web app
 to enable the isolated Chat area; it receives no preload bridge and cannot access local files.
+If sign-in leaves that origin, set `KOTHORA_AUTH_ORIGINS` to a comma-separated allowlist of the
+public HTTPS OAuth origins. Only the Chat origin and those exact origins may navigate or open a
+hardened popup; all other safe web links open externally, and malformed/private entries disable
+Chat without affecting Code.
 Set `KOTHORA_CRASH_REPORT_URL` to a public HTTPS collector to enable anonymous crash reports.
 Reports contain only app version, platform, architecture and a sanitized error class—never an
 exception message, stack, source code, prompt or workspace path. Updates remain off unless
