@@ -122,6 +122,23 @@ const scenarios: Scenario[] = [
   }),
   http.protected.get("/vcs", "vcs.get").json(),
   http.protected.get("/vcs/status", "vcs.status").json(200, array),
+  // The desktop compatibility surface is enabled only by the private desktop-api
+  // launcher. This general server harness deliberately has no configured desktop
+  // workspace, so every authenticated route must fail closed before doing work.
+  http.protected.get("/desktop/changes", "desktop.changes").status(403),
+  http.protected.get("/desktop/diff", "desktop.diff").status(403),
+  http.protected
+    .post("/desktop/tasks", "desktop.tasks.create")
+    .at((ctx) => ({ path: "/desktop/tasks", headers: ctx.headers(), body: { prompt: "test" } }))
+    .status(403),
+  http.protected
+    .get("/desktop/tasks/{id}", "desktop.tasks.get")
+    .at((ctx) => ({ path: "/desktop/tasks/test", headers: ctx.headers() }))
+    .status(403),
+  http.protected
+    .post("/desktop/tasks/{id}/cancel", "desktop.tasks.cancel")
+    .at((ctx) => ({ path: "/desktop/tasks/test/cancel", headers: ctx.headers() }))
+    .status(403),
   http.protected
     .get("/vcs/diff", "vcs.diff")
     .at((ctx) => ({ path: "/vcs/diff?mode=git", headers: ctx.headers() }))
