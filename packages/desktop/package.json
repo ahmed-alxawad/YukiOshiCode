@@ -8,6 +8,7 @@
   "main": "dist/main/index.js",
   "scripts": {
     "build": "bun run script/build.ts",
+    "package": "bun run script/package.ts",
     "dev": "bun run script/build.ts --watch",
     "terminal:bundle": "bun run script/terminal-installer/build.ts",
     "typecheck": "tsgo --noEmit",
