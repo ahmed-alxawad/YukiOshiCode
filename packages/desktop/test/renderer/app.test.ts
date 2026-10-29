@@ -3,7 +3,7 @@ import { DesktopController, initialState, type DesktopState } from "../../src/re
 import type { KothoraDesktopBridge } from "../../src/renderer/global"
 
 const bridge = (overrides: Partial<KothoraDesktopBridge> = {}): KothoraDesktopBridge => ({
-  selectWorkspace: async () => "/workspace",
+  selectWorkspace: async () => ({ path: "/workspace", name: "workspace" }),
   listWorkspaceFiles: async () => [{ path: "src/app.ts", kind: "file" }],
   readWorkspaceFile: async (path) => `content:${path}`,
   listChanges: async () => [{ path: "src/app.ts", additions: 4, deletions: 2, status: "modified" }],
@@ -22,7 +22,9 @@ const setup = (overrides: Partial<KothoraDesktopBridge> = {}) => {
 describe("desktop renderer state", () => {
   test("selects a workspace and reloads its files", async () => {
     const selected: string[] = []
-    const fake = bridge({ selectWorkspace: async () => "/workspace/project" })
+    const fake = bridge({
+      selectWorkspace: async () => ({ path: "/workspace/project", name: "project" }),
+    })
     const controller = new DesktopController(fake, (state) => selected.push(state.loadState))
     await controller.selectWorkspace()
     expect(controller.state.loadState).toBe("ready")

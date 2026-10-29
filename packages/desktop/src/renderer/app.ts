@@ -1,4 +1,5 @@
 import type { ChangedFile, KothoraDesktopBridge, TaskRun, WorkspaceFile } from "./global"
+import { selectLocale, translate, type Locale } from "./i18n"
 
 export type LoadState = "idle" | "loading" | "ready" | "error"
 export type ReviewMode = "file" | "diff"
@@ -163,21 +164,34 @@ function renderList<T>(host: HTMLElement, items: T[], empty: string, render: (it
   else host.append(...items.map(render))
 }
 
-export function mountDesktopApp(root: HTMLElement, bridge: KothoraDesktopBridge) {
+export function mountDesktopApp(
+  root: HTMLElement,
+  bridge: KothoraDesktopBridge,
+  locale: Locale = selectLocale(globalThis.navigator?.language),
+) {
+  const t = (key: Parameters<typeof translate>[1], values?: Parameters<typeof translate>[2]) =>
+    translate(locale, key, values)
+  const taskStatusText = (task: TaskRun) => {
+    if (task.status === "complete") return t("taskComplete")
+    if (task.status === "cancelled") return t("taskCancelled")
+    if (task.status === "failed") return t("taskFailed")
+    return t("taskRunning")
+  }
+  root.lang = locale
   root.className = "desktop-app"
   const taskForm = element("form", "task-form")
-  const taskLabel = text("label", "Task prompt", "sr-only") as HTMLLabelElement
+  const taskLabel = text("label", t("taskPromptLabel"), "sr-only") as HTMLLabelElement
   taskLabel.htmlFor = "task-prompt"
   const prompt = element("textarea")
   prompt.id = "task-prompt"
   prompt.rows = 2
-  prompt.placeholder = "Describe a coding task…"
+  prompt.placeholder = t("taskPromptPlaceholder")
   const start = element("button", "primary")
   start.type = "submit"
-  start.textContent = "Start task"
+  start.textContent = t("startTask")
   const cancel = element("button")
   cancel.type = "button"
-  cancel.textContent = "Cancel"
+  cancel.textContent = t("cancelTask")
   taskForm.append(taskLabel, prompt, start, cancel)
 
   const status = element("div", "status")
@@ -185,20 +199,20 @@ export function mountDesktopApp(root: HTMLElement, bridge: KothoraDesktopBridge)
   status.setAttribute("aria-live", "polite")
   const chooseWorkspace = element("button")
   chooseWorkspace.type = "button"
-  chooseWorkspace.textContent = "Select workspace / ওয়ার্কস্পেস বাছুন"
+  chooseWorkspace.textContent = t("selectWorkspace")
   const fileList = element("nav", "file-list")
-  fileList.setAttribute("aria-label", "Workspace files")
+  fileList.setAttribute("aria-label", t("workspaceFilesLabel"))
   const changeList = element("nav", "change-list")
-  changeList.setAttribute("aria-label", "Changed files")
-  const viewerTitle = text("h2", "Select a file")
+  changeList.setAttribute("aria-label", t("changedFilesLabel"))
+  const viewerTitle = text("h2", t("selectFileHeading"))
   const viewer = element("pre", "viewer")
   viewer.tabIndex = 0
   const sidebar = element("aside", "sidebar")
-  sidebar.append(text("h2", "Workspace"), fileList, text("h2", "Changes"), changeList)
+  sidebar.append(text("h2", t("workspaceHeading")), fileList, text("h2", t("changesHeading")), changeList)
   const main = element("main", "review")
   main.append(viewerTitle, viewer)
   const header = element("header")
-  header.append(text("h1", "Kothora Code"), chooseWorkspace, taskForm, status)
+  header.append(text("h1", t("appName")), chooseWorkspace, taskForm, status)
   root.replaceChildren(header, sidebar, main)
 
   const render = (state: DesktopState) => {
@@ -208,19 +222,19 @@ export function mountDesktopApp(root: HTMLElement, bridge: KothoraDesktopBridge)
     cancel.disabled = state.taskState === "loading"
     status.className = `status${state.error ? " error" : ""}`
     status.textContent = state.error
-      ? `Error: ${state.error}`
+      ? t("errorStatus", { message: state.error })
       : state.loadState === "loading"
-        ? "Loading workspace…"
+        ? t("loadingWorkspace")
         : state.task?.status === "running"
-          ? "Task is running"
+          ? t("taskRunning")
           : state.task
-            ? `Task ${state.task.status}`
-            : "Ready"
+            ? taskStatusText(state.task)
+            : t("ready")
 
     renderList(
       fileList,
       state.files.filter((entry) => entry.kind === "file"),
-      "No workspace files",
+      t("noWorkspaceFiles"),
       (entry) => {
         const button = element("button", "list-item")
         button.type = "button"
@@ -234,12 +248,15 @@ export function mountDesktopApp(root: HTMLElement, bridge: KothoraDesktopBridge)
         return button
       },
     )
-    renderList(changeList, state.changes, "No changed files", (change) => {
+    renderList(changeList, state.changes, t("noChangedFiles"), (change) => {
       const button = element("button", "change-item")
       button.type = "button"
       const path = text("span", change.path, "path")
       const count = text("span", `+${change.additions} −${change.deletions}`, "count")
-      count.setAttribute("aria-label", `${change.additions} additions, ${change.deletions} deletions`)
+      count.setAttribute(
+        "aria-label",
+        t("changeCount", { additions: change.additions, deletions: change.deletions }),
+      )
       button.append(path, count)
       button.setAttribute(
         "aria-current",
@@ -250,18 +267,18 @@ export function mountDesktopApp(root: HTMLElement, bridge: KothoraDesktopBridge)
     })
 
     viewerTitle.textContent = state.selectedPath
-      ? `${state.mode === "diff" ? "Diff" : "File"}: ${state.selectedPath}`
-      : "Select a file"
+      ? t(state.mode === "diff" ? "diffHeading" : "fileHeading", { path: state.selectedPath })
+      : t("selectFileHeading")
     viewer.className = `viewer ${state.mode}`
     viewer.setAttribute("aria-busy", String(state.contentState === "loading"))
     viewer.textContent =
       state.contentState === "loading"
-        ? "Loading content…"
+        ? t("loadingContent")
         : state.contentState === "error"
-          ? "Content could not be loaded."
+          ? t("contentLoadError")
           : state.selectedPath
-            ? state.content || "This file is empty."
-            : "Choose a workspace file or changed file to review it."
+            ? state.content || t("emptyFile")
+            : t("selectReviewItem")
   }
 
   const controller = new DesktopController(bridge, render)

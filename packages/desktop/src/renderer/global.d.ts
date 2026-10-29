@@ -11,6 +11,11 @@ export interface WorkspaceFile {
   kind: "file" | "directory"
 }
 
+export interface WorkspaceSelection {
+  path: string
+  name: string
+}
+
 export interface ChangedFile {
   path: string
   additions: number
@@ -24,7 +29,7 @@ export interface TaskRun {
 }
 
 export interface KothoraDesktopBridge {
-  selectWorkspace(): Promise<string | null>
+  selectWorkspace(): Promise<WorkspaceSelection | null>
   listWorkspaceFiles(): Promise<WorkspaceFile[]>
   readWorkspaceFile(path: string): Promise<string>
   listChanges(): Promise<ChangedFile[]>

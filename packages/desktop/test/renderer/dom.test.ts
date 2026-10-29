@@ -7,6 +7,7 @@ class FakeElement {
   textContent = ""
   value = ""
   id = ""
+  lang = ""
   title = ""
   type = ""
   placeholder = ""
@@ -44,7 +45,7 @@ const findClass = (node: FakeElement, className: string): FakeElement | undefine
 }
 
 const bridge = (payload: string): KothoraDesktopBridge => ({
-  selectWorkspace: async () => "/workspace",
+  selectWorkspace: async () => ({ path: "/workspace", name: "workspace" }),
   listWorkspaceFiles: async () => [{ path: "unsafe.html", kind: "file" }],
   readWorkspaceFile: async () => payload,
   listChanges: async () => [],
@@ -60,6 +61,20 @@ afterEach(() => {
 })
 
 describe("desktop DOM states", () => {
+  test("renders the complete Bangla interface when requested", () => {
+    Object.defineProperty(globalThis, "document", {
+      configurable: true,
+      value: { createElement: (tag: string) => new FakeElement(tag) },
+    })
+    const root = new FakeElement("div")
+    mountDesktopApp(root as unknown as HTMLElement, bridge(""), "bn")
+
+    expect(root.lang).toBe("bn")
+    expect(root.children[0]?.children[0]?.textContent).toBe("কথোরা কোড")
+    expect(root.children[0]?.children[1]?.textContent).toBe("ওয়ার্কস্পেস বাছুন")
+    expect(root.children[0]?.children[2]?.children[1]?.placeholder).toContain("আপনি")
+  })
+
   test("renders untrusted file content as text and exposes selected state", async () => {
     Object.defineProperty(globalThis, "document", {
       configurable: true,
