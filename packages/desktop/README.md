@@ -30,3 +30,7 @@ bundled-Node artifact and the built Kothora CLI. It rejects absolute paths, trav
 files and symlinks, hashes every payload, and revalidates it while staging. The staged bundle has
 no download URL or credential and runs the CLI with its own Node executable on Windows, macOS
 and Linux.
+
+Run `bun run --cwd packages/desktop terminal:bundle -- --help` from the repository root to see
+the required explicit artifact arguments. The command refuses to overwrite an existing output
+directory.

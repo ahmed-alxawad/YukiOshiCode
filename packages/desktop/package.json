@@ -9,6 +9,7 @@
   "scripts": {
     "build": "bun run script/build.ts",
     "dev": "bun run script/build.ts --watch",
+    "terminal:bundle": "bun run script/terminal-installer/build.ts",
     "typecheck": "tsgo --noEmit",
     "test": "bun test test --timeout 30000"
   },

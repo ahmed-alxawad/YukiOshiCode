@@ -109,11 +109,16 @@ export async function runTerminalInstallerBuild(args: string[]): Promise<void> {
 }
 
 if (import.meta.main) {
-  try {
-    await runTerminalInstallerBuild(process.argv.slice(2))
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : "Unknown build failure"
-    console.error(`terminal-installer: ${detail}\n${usage}`)
-    process.exitCode = 1
+  const args = process.argv.slice(2)
+  if (args.length === 1 && (args[0] === "--help" || args[0] === "-h")) {
+    console.log(usage)
+  } else {
+    try {
+      await runTerminalInstallerBuild(args)
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "Unknown build failure"
+      console.error(`terminal-installer: ${detail}\n${usage}`)
+      process.exitCode = 1
+    }
   }
 }
