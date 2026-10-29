@@ -154,9 +154,11 @@ const boot = async () => {
     allowedRendererOrigins: new Set([new URL(rendererUrl).origin === "null" ? "file://" : new URL(rendererUrl).origin]),
   })
   createWindow()
-  await createUpdateController()
-    .check()
-    .catch(() => undefined)
+  try {
+    await createUpdateController().check()
+  } catch {
+    // An invalid or unavailable optional feed must not prevent local Code use.
+  }
 }
 
 void app.whenReady().then(boot)
