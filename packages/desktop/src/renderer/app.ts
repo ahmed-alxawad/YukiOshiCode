@@ -38,6 +38,7 @@ export interface PollOptions {
   intervalMs?: number
   maxAttempts?: number
   timer?: PollTimer
+  timeoutMessage?: string
 }
 
 const defaultTimer: PollTimer = {
@@ -52,6 +53,7 @@ export class DesktopController {
   readonly #pollIntervalMs: number
   readonly #maxPollAttempts: number
   readonly #timer: PollTimer
+  readonly #pollTimeoutMessage: string
   #pollHandle?: unknown
   #pollGeneration = 0
   #pollAttempts = 0
@@ -64,6 +66,7 @@ export class DesktopController {
     this.#pollIntervalMs = options.intervalMs ?? 1_000
     this.#maxPollAttempts = options.maxAttempts ?? 3_600
     this.#timer = options.timer ?? defaultTimer
+    this.#pollTimeoutMessage = options.timeoutMessage ?? "Task status polling timed out"
   }
 
   private emit() {
@@ -186,7 +189,7 @@ export class DesktopController {
       if (generation !== this.#pollGeneration) return
       if (this.#pollAttempts >= this.#maxPollAttempts) {
         this.state.taskState = "error"
-        this.state.error = "Task status polling timed out"
+        this.state.error = this.#pollTimeoutMessage
         this.emit()
         return
       }
@@ -357,7 +360,7 @@ export function mountDesktopApp(
             : t("selectReviewItem")
   }
 
-  const controller = new DesktopController(bridge, render)
+  const controller = new DesktopController(bridge, render, { timeoutMessage: t("taskPollingTimedOut") })
   prompt.addEventListener("input", () => controller.setPrompt(prompt.value))
   taskForm.addEventListener("submit", (event) => {
     event.preventDefault()
