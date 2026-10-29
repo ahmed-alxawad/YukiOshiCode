@@ -8,9 +8,10 @@ describe("desktop crash reporting", () => {
     error.name = "Type Error<script>"
     error.stack = `${secret}\nconst token = 'secret'`
 
-    const metadata = buildCrashMetadata(error)
+    const metadata = buildCrashMetadata(error, "1.2.3")
     const serialized = JSON.stringify(metadata)
     expect(metadata.errorName).toBe("TypeErrorscript")
+    expect(metadata.appVersion).toBe("1.2.3")
     expect(serialized).not.toContain("alice")
     expect(serialized).not.toContain("prompt")
     expect(serialized).not.toContain("token")
@@ -23,7 +24,7 @@ describe("desktop crash reporting", () => {
       calls.push(args)
       return { ok: true }
     })
-    await sender(buildCrashMetadata(new Error("private")))
+    await sender(buildCrashMetadata(new Error("private"), "1.2.3"))
 
     expect(calls).toHaveLength(1)
     expect(calls[0]?.[0]).toBe("https://crashes.example.test/v1/report")
@@ -36,5 +37,8 @@ describe("desktop crash reporting", () => {
     expect(() => createCrashSender("http://crashes.example.test", fetcher)).toThrow()
     expect(() => createCrashSender("https://token@crashes.example.test", fetcher)).toThrow()
     expect(() => createCrashSender("https://localhost/report", fetcher)).toThrow()
+    expect(() => createCrashSender("https://127.0.0.1/report", fetcher)).toThrow()
+    expect(() => createCrashSender("https://169.254.169.254/report", fetcher)).toThrow()
+    expect(() => createCrashSender("https://[::1]/report", fetcher)).toThrow()
   })
 })

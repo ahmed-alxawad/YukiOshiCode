@@ -13,14 +13,31 @@ const shared = {
   bundle: true,
   logLevel: "info" as const,
   platform: "node" as const,
-  sourcemap: true,
+  sourcemap: watch,
   target: "node22",
 }
 
 const builds = [
-  { ...shared, entryPoints: [resolve(root, "src/main/index.ts")], outfile: resolve(out, "main/index.js"), external: ["electron", "electron-updater"] },
-  { ...shared, entryPoints: [resolve(root, "src/preload/index.ts")], outfile: resolve(out, "preload/index.js"), external: ["electron"] },
-  { bundle: true, entryPoints: [resolve(root, "src/renderer/index.ts")], outfile: resolve(out, "renderer/index.js"), platform: "browser" as const, sourcemap: true, target: "es2022" },
+  {
+    ...shared,
+    entryPoints: [resolve(root, "src/main/index.ts")],
+    outfile: resolve(out, "main/index.js"),
+    external: ["electron", "electron-updater"],
+  },
+  {
+    ...shared,
+    entryPoints: [resolve(root, "src/preload/index.ts")],
+    outfile: resolve(out, "preload/index.js"),
+    external: ["electron"],
+  },
+  {
+    bundle: true,
+    entryPoints: [resolve(root, "src/renderer/index.ts")],
+    outfile: resolve(out, "renderer/index.js"),
+    platform: "browser" as const,
+    sourcemap: watch,
+    target: "es2022",
+  },
 ]
 
 if (watch) {

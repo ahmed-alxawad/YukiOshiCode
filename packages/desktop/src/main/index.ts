@@ -18,7 +18,10 @@ const agentExecutable =
 const crashReportUrl = process.env.KOTHORA_CRASH_REPORT_URL
 if (crashReportUrl) {
   try {
-    installCrashReporting(createCrashSender(crashReportUrl, (url, init) => fetch(url, init)))
+    installCrashReporting(
+      createCrashSender(crashReportUrl, (url, init) => fetch(url, init)),
+      app.getVersion(),
+    )
   } catch {
     // An invalid optional collector must never prevent the local Code area from starting.
   }

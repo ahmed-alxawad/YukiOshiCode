@@ -18,9 +18,9 @@ const safeErrorName = (error: unknown) => {
 }
 
 /** Builds deliberately content-free metadata: never messages, stacks, paths, code, or prompts. */
-export function buildCrashMetadata(error: unknown): CrashMetadata {
+export function buildCrashMetadata(error: unknown, appVersion: string): CrashMetadata {
   return {
-    appVersion: process.env.npm_package_version ?? "unknown",
+    appVersion: /^[0-9A-Za-z.+_-]{1,64}$/.test(appVersion) ? appVersion : "unknown",
     platform: process.platform,
     arch: process.arch,
     errorName: safeErrorName(error),
@@ -30,7 +30,38 @@ export function buildCrashMetadata(error: unknown): CrashMetadata {
 /** Creates an anonymous, credential-free sender for a configured HTTPS collector. */
 export function createCrashSender(endpoint: string, fetcher: CrashFetch): CrashSender {
   const url = new URL(endpoint)
-  if (url.protocol !== "https:" || url.username || url.password || !url.hostname.includes(".")) {
+  const host = url.hostname.replace(/^\[|\]$/g, "").toLowerCase()
+  const version = isIP(host)
+  const octets = version === 4 ? host.split(".").map(Number) : []
+  const privateIp =
+    (version === 4 &&
+      (octets[0] === 0 ||
+        octets[0] === 10 ||
+        octets[0] === 127 ||
+        (octets[0] === 169 && octets[1] === 254) ||
+        (octets[0] === 172 && octets[1]! >= 16 && octets[1]! <= 31) ||
+        (octets[0] === 192 && octets[1] === 168) ||
+        octets[0]! >= 224)) ||
+    (version === 6 &&
+      (host === "::" ||
+        host === "::1" ||
+        host.startsWith("::ffff:") ||
+        host.startsWith("fc") ||
+        host.startsWith("fd") ||
+        /^fe[89a-f]/.test(host) ||
+        host.startsWith("ff")))
+  if (
+    url.protocol !== "https:" ||
+    url.username ||
+    url.password ||
+    !host ||
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    host.endsWith(".local") ||
+    host.endsWith(".internal") ||
+    (!version && !host.includes(".")) ||
+    privateIp
+  ) {
     throw new Error("Crash report URL must be public HTTPS")
   }
   return async (metadata) => {
@@ -45,11 +76,13 @@ export function createCrashSender(endpoint: string, fetcher: CrashFetch): CrashS
 }
 
 /** Installs a minimal crash hook. It never includes source, prompts, or workspace paths. */
-export function installCrashReporting(sender?: CrashSender): void {
+export function installCrashReporting(sender: CrashSender | undefined, appVersion: string): void {
   if (!sender) return
   const report = (error: unknown) => {
-    void sender(buildCrashMetadata(error)).catch(() => undefined)
+    void sender(buildCrashMetadata(error, appVersion)).catch(() => undefined)
   }
-  process.on("uncaughtException", report)
+  // Monitor preserves Node's default fatal behavior for uncaught exceptions.
+  process.on("uncaughtExceptionMonitor", report)
   process.on("unhandledRejection", report)
 }
+import { isIP } from "node:net"
