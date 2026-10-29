@@ -2,6 +2,12 @@
   "$schema": "https://json.schemastore.org/package.json",
   "name": "@yukioshi/desktop",
   "version": "1.18.32",
+  "description": "Kothora desktop chat and coding app",
+  "homepage": "https://kothora.app",
+  "author": {
+    "name": "Kothora",
+    "email": "support@kothora.app"
+  },
   "private": true,
   "type": "module",
   "license": "UNLICENSED",
@@ -28,17 +34,42 @@
   "build": {
     "appId": "app.kothora.desktop",
     "productName": "Kothora",
+    "executableName": "Kothora",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "asar": true,
-    "files": ["dist/**", "package.json"],
-    "directories": { "output": "release" },
+    "files": [
+      "dist/**",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
     "mac": {
       "category": "public.app-category.developer-tools",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
-      "target": ["dmg", "zip"]
+      "target": [
+        "dmg",
+        "zip"
+      ]
     },
-    "win": { "target": ["nsis", "zip"] },
-    "linux": { "category": "Development", "target": ["AppImage", "deb"] },
-    "publish": { "provider": "github", "releaseType": "release" }
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ]
+    },
+    "linux": {
+      "category": "Development",
+      "maintainer": "Kothora <support@kothora.app>",
+      "target": [
+        "AppImage",
+        "deb"
+      ]
+    },
+    "publish": {
+      "provider": "github",
+      "releaseType": "release"
+    }
   }
 }

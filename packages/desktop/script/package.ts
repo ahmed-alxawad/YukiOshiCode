@@ -54,7 +54,12 @@ export async function packageDesktop(options: PackageOptions, dependencies: Pack
 }
 
 async function run(command: string[]): Promise<void> {
-  const child = Bun.spawn(command, { cwd: resolve(import.meta.dir, ".."), stdin: "inherit", stdout: "inherit", stderr: "inherit" })
+  const child = Bun.spawn(command, {
+    cwd: resolve(import.meta.dir, ".."),
+    stdin: "inherit",
+    stdout: "inherit",
+    stderr: "inherit",
+  })
   const exitCode = await child.exited
   if (exitCode !== 0) throw new Error(`Command failed with exit code ${exitCode}: ${command.join(" ")}`)
 }
@@ -72,7 +77,7 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
-  main().catch((error: unknown) => {
+  await main().catch((error: unknown) => {
     console.error(error instanceof Error ? error.message : String(error))
     console.error(usage)
     process.exitCode = 1
