@@ -108,6 +108,7 @@ import { sessionLocationLayer } from "@yukioshi/server/middleware/session-locati
 import { PtyEnvironment } from "@yukioshi/server/pty-environment"
 import { schemaErrorLayer as v2SchemaErrorLayer } from "@yukioshi/server/middleware/schema-error"
 import { workspaceHandlers } from "./handlers/workspace"
+import { desktopHandlers } from "./handlers/desktop"
 import { instanceContextLayer } from "./middleware/instance-context"
 import { workspaceRoutingLayer } from "./middleware/workspace-routing"
 import { disposeMiddleware } from "./lifecycle"
@@ -158,6 +159,7 @@ const ptyConnectApiRoutes = HttpApiBuilder.layer(PtyConnectApi).pipe(
 )
 const instanceApiRoutes = HttpApiBuilder.layer(InstanceHttpApi).pipe(
   Layer.provide([
+    desktopHandlers,
     configHandlers,
     experimentalHandlers,
     fileHandlers,

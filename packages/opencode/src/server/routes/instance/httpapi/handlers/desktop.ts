@@ -16,7 +16,7 @@ type Task = {
   readonly workspace: string
   status: "running" | "complete" | "failed" | "cancelled"
   error?: string
-  fiber?: Fiber.RuntimeFiber<unknown, unknown>
+  fiber?: Fiber.Fiber<unknown, unknown>
 }
 
 // The desktop bridge is a single-workspace process. Keeping this registry process-local
@@ -67,9 +67,13 @@ export const desktopHandlers = HttpApiBuilder.group(InstanceHttpApi, "desktop", 
     }) {
       const workspace = yield* requireDesktopWorkspace()
       const source = ctx.query.source ?? "git"
-      const result =
+      const result: Vcs.FileDiff[] =
         source === "session" && latestTask?.workspace === workspace
-          ? yield* sessions.diff(latestTask.sessionID)
+          ? (yield* sessions.diff(latestTask.sessionID)).flatMap((item) =>
+              item.file
+                ? [{ ...item, file: item.file, additions: item.additions ?? 0, deletions: item.deletions ?? 0 }]
+                : [],
+            )
           : source === "session"
             ? []
             : yield* vcs.diff("git")
@@ -108,8 +112,7 @@ export const desktopHandlers = HttpApiBuilder.group(InstanceHttpApi, "desktop", 
       if (task.status === "running") {
         const status = yield* statuses.get(task.sessionID)
         if (status.type === "idle" && task.fiber) {
-          const poll = yield* Fiber.poll(task.fiber)
-          if (poll._tag === "Some") task.status = "complete"
+          if (task.fiber.pollUnsafe()) task.status = "complete"
         }
       }
       return publicTask(task)
@@ -136,4 +139,3 @@ export const desktopHandlers = HttpApiBuilder.group(InstanceHttpApi, "desktop", 
       .handle("desktopTaskCancel", cancel)
   }),
 )
-

@@ -3,6 +3,7 @@ import { Schema } from "effect"
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/unstable/httpapi"
 import { Authorization } from "../middleware/authorization"
 import { InstanceContextMiddleware } from "../middleware/instance-context"
+import { WorkspaceRoutingMiddleware } from "../middleware/workspace-routing"
 import { described } from "./metadata"
 
 const RelativePath = Schema.String.check(
@@ -74,6 +75,6 @@ export const DesktopApi = HttpApi.make("desktop").add(
     )
     .annotateMerge(OpenApi.annotations({ title: "desktop", description: "Authenticated desktop bridge routes." }))
     .middleware(InstanceContextMiddleware)
+    .middleware(WorkspaceRoutingMiddleware)
     .middleware(Authorization),
 )
-

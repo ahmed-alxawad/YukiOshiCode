@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test"
-import { Effect, Schema } from "effect"
+import { Schema } from "effect"
 import {
   DesktopDiffQuery,
   DesktopPaths,
   DesktopTaskPayload,
 } from "../../src/server/routes/instance/httpapi/groups/desktop"
 
-const decode = <A, I>(schema: Schema.Schema<A, I>, value: unknown) =>
-  Effect.runPromise(Schema.decodeUnknownEffect(schema)(value, { onExcessProperty: "error" }))
+const decode = (schema: Schema.Decoder<unknown, never>, value: unknown) =>
+  Promise.resolve().then(() => Schema.decodeUnknownSync(schema, { onExcessProperty: "error" })(value))
 
 describe("desktop HttpApi contract", () => {
   test("exposes the fixed desktop task lifecycle paths", () => {
@@ -44,4 +44,3 @@ describe("desktop HttpApi contract", () => {
     await expect(decode(DesktopDiffQuery, { directory: "/tmp/escape" })).rejects.toBeDefined()
   })
 })
-
