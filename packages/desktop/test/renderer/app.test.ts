@@ -3,6 +3,7 @@ import { DesktopController, initialState, type DesktopState } from "../../src/re
 import type { KothoraDesktopBridge } from "../../src/renderer/global"
 
 const bridge = (overrides: Partial<KothoraDesktopBridge> = {}): KothoraDesktopBridge => ({
+  selectWorkspace: async () => "/workspace",
   listWorkspaceFiles: async () => [{ path: "src/app.ts", kind: "file" }],
   readWorkspaceFile: async (path) => `content:${path}`,
   listChanges: async () => [{ path: "src/app.ts", additions: 4, deletions: 2, status: "modified" }],

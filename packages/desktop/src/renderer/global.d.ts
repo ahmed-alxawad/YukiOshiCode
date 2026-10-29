@@ -24,6 +24,7 @@ export interface TaskRun {
 }
 
 export interface KothoraDesktopBridge {
+  selectWorkspace(): Promise<string | null>
   listWorkspaceFiles(): Promise<WorkspaceFile[]>
   readWorkspaceFile(path: string): Promise<string>
   listChanges(): Promise<ChangedFile[]>

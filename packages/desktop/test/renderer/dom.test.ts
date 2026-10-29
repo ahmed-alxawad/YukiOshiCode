@@ -44,6 +44,7 @@ const findClass = (node: FakeElement, className: string): FakeElement | undefine
 }
 
 const bridge = (payload: string): KothoraDesktopBridge => ({
+  selectWorkspace: async () => "/workspace",
   listWorkspaceFiles: async () => [{ path: "unsafe.html", kind: "file" }],
   readWorkspaceFile: async () => payload,
   listChanges: async () => [],
