@@ -157,6 +157,7 @@ Normal `{env:…}` substitution applies to both aliases. If a local MCP server s
 | `triggers`             | authenticated HTTP trigger endpoint on `yukioshi serve` (global only) | [Features](features.md#triggers) |
 | `default_agent`        | the primary agent used when none is chosen (default `build`)       |                                             |
 | `architect`            | architect/editor mode — a read-only planner writes an edit plan, an editor subagent applies it: `enabled` (off by default), `planner_model`, `editor_model` | [Features](features.md#architecteditor-mode) |
+| `explanationLanguage` | Kothora Code only: language of the agent's explanations, `en`, `bn`, `mixed` or `auto`; overrides the account's answer mode. Code and commit messages stay English | [Development](development.md#learn-mode-explanation-language-and-built-in-skills-kothora-edition-only) |
 | `agent_sources`        | extra read-only subagent sources, e.g. `["claude"]` to also read `~/.claude/agents` and project `.claude/agents` (global config only; default none) | [Features](features.md#session-agents-and-claude-agent-folders) |
 | `subagent_depth`       | how deep subagents may nest (default 1: no subagents of subagents) | [Features](features.md#subagents)           |
 | `snapshot`             | file snapshots for undo (default true)                             |                                             |

@@ -155,3 +155,21 @@ In the Kothora edition the project rule files are read in this order, and all th
 2. The nearest `AGENTS.md`, or, if there is none, `CLAUDE.md` (as in the YukiOshi edition).
 
 The default permission mode is the same in both editions: Auto-All is off unless the user turns it on.
+
+### Learn mode, explanation language and built-in skills (Kothora edition only)
+
+The yukioshi edition has none of these; tests check that.
+
+- **Learn mode.** An agent mode for students, after Research in Tab order (`--agent learn`, or `/learn <question>` for
+  one question). It explains each step and why, asks the student to try first, gives hints before code, writes a full
+  solution only after the student has tried or asks, and never edits a file without saying so. It is an agent
+  definition in `src/agent/agent.ts` plus a prompt text in `src/kothora/prompt/learn.txt`. Auto mode never picks it.
+- **Explanation language.** The agent explains and plans in the Kothora account's answer mode (English, Bangla, Mixed,
+  Auto), read from `GET /code/me` (`answer_mode`, used when the API sends it; it is not in the contract yet) and cached
+  for ten minutes. The `explanationLanguage` setting (`en`, `bn`, `mixed`, `auto`) overrides the account. With
+  neither, or when offline, the language is English. Bangla is polite (আপনি). Code, identifiers, commit messages and
+  tool calls stay English, and so does the interface.
+- **Built-in skills.** `bangla-interface-helper` (Bangla text, fonts, digits, dates, bilingual i18n) and
+  `freelancer-pack` (proposals, estimates, handover documents and READMEs for client work). They live in
+  `packages/opencode/skills-kothora/`, use the normal `SKILL.md` format, and the Kothora build embeds them. See
+  [Skills](skills.md).
