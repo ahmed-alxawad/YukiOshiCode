@@ -51,6 +51,7 @@ const codeOnlyController = (): AreaController => ({
 export function createChatArea(
   window: ChatHostWindow,
   configuredUrl: string | undefined,
+  configuredAuthOrigins?: string,
   createView: ChatViewFactory = (options) => new WebContentsView(options),
   openExternal: (url: string) => Promise<unknown> = (url) => shell.openExternal(url),
 ): AreaController {
@@ -58,16 +59,17 @@ export function createChatArea(
 
   let policy
   try {
-    policy = createChatViewPolicy(configuredUrl, { openExternal: async (url) => void (await openExternal(url)) })
+    policy = createChatViewPolicy(
+      configuredUrl,
+      { openExternal: async (url) => void (await openExternal(url)) },
+      configuredAuthOrigins,
+    )
   } catch {
     return codeOnlyController()
   }
 
   const view = createView({
-    webPreferences: {
-      ...policy.webPreferences,
-      partition: "persist:kothora-chat",
-    },
+    webPreferences: policy.webPreferences,
   })
   policy.install(view)
   view.setVisible(false)
@@ -130,7 +132,7 @@ const createWindow = () => {
     show: false,
   })
   installWindowPolicy(window, rendererUrl)
-  const areas = createChatArea(window, process.env.KOTHORA_WEB_URL)
+  const areas = createChatArea(window, process.env.KOTHORA_WEB_URL, process.env.KOTHORA_AUTH_ORIGINS)
   installAreaMenu(areas)
   void window.loadURL(rendererUrl)
   window.once("ready-to-show", () => window.show())

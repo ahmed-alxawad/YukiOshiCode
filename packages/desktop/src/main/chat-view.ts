@@ -4,6 +4,7 @@ export interface ChatViewWebPreferences {
   contextIsolation: true
   sandbox: true
   nodeIntegration: false
+  partition: "persist:kothora-chat"
 }
 
 export interface ExternalLinkDelegate {
@@ -12,8 +13,9 @@ export interface ExternalLinkDelegate {
 
 export interface ChatViewTarget {
   webContents: {
-    setWindowOpenHandler(handler: (details: { url: string }) => { action: "deny" }): void
+    setWindowOpenHandler(handler: (details: { url: string }) => WindowOpenResult): void
     on(event: "will-navigate", handler: (event: { preventDefault(): void }, url: string) => void): void
+    on(event: "did-create-window", handler: (window: ChatViewTarget, details: { url: string }) => void): void
     session: {
       setPermissionRequestHandler(
         handler: (_contents: unknown, permission: string, callback: (allowed: boolean) => void) => void,
@@ -22,6 +24,15 @@ export interface ChatViewTarget {
     }
   }
 }
+
+export type WindowOpenResult =
+  | { action: "deny" }
+  | {
+      action: "allow"
+      overrideBrowserWindowOptions: {
+        webPreferences: ChatViewWebPreferences
+      }
+    }
 
 export interface ChatViewPolicy {
   readonly url: string
@@ -91,30 +102,59 @@ const parseSafeHttps = (value: string) => {
   }
 }
 
-export function createChatViewPolicy(configuredUrl: string, links: ExternalLinkDelegate): ChatViewPolicy {
+const parseAuthOrigins = (configuredOrigins: string | undefined) => {
+  const origins = new Set<string>()
+  if (configuredOrigins === undefined || configuredOrigins.trim() === "") return origins
+  for (const entry of configuredOrigins.split(",")) {
+    if (!entry.trim()) throw new Error("Auth origins must be public HTTPS origins")
+    const url = assertPublicHttpsUrl(entry.trim())
+    if (url.pathname !== "/" || url.search || url.hash) throw new Error("Auth origins must not include paths")
+    origins.add(url.origin)
+  }
+  return origins
+}
+
+export function createChatViewPolicy(
+  configuredUrl: string,
+  links: ExternalLinkDelegate,
+  configuredAuthOrigins?: string,
+): ChatViewPolicy {
   const chatUrl = assertPublicHttpsUrl(configuredUrl)
+  const allowedOrigins = parseAuthOrigins(configuredAuthOrigins)
+  allowedOrigins.add(chatUrl.origin)
+  const webPreferences = Object.freeze({
+    contextIsolation: true,
+    sandbox: true,
+    nodeIntegration: false,
+    partition: "persist:kothora-chat",
+  } as const)
   const safelyOpen = (url: URL) => {
     void links.openExternal(url.toString()).catch(() => {})
   }
 
+  const install = (target: ChatViewTarget) => {
+    target.webContents.setWindowOpenHandler(({ url: destination }) => {
+      const url = parseSafeHttps(destination)
+      if (url !== null && allowedOrigins.has(url.origin)) {
+        return { action: "allow", overrideBrowserWindowOptions: { webPreferences } }
+      }
+      if (url !== null) safelyOpen(url)
+      return { action: "deny" }
+    })
+    target.webContents.on("will-navigate", (event, destination) => {
+      const url = parseSafeHttps(destination)
+      if (url !== null && allowedOrigins.has(url.origin)) return
+      event.preventDefault()
+      if (url !== null) safelyOpen(url)
+    })
+    target.webContents.on("did-create-window", (window) => install(window))
+    target.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
+    target.webContents.session.setPermissionCheckHandler(() => false)
+  }
+
   return Object.freeze({
     url: chatUrl.toString(),
-    webPreferences: Object.freeze({ contextIsolation: true, sandbox: true, nodeIntegration: false }),
-    install(target: ChatViewTarget) {
-      target.webContents.setWindowOpenHandler(({ url: destination }) => {
-        const url = parseSafeHttps(destination)
-        if (url !== null && url.origin !== chatUrl.origin) safelyOpen(url)
-        return { action: "deny" }
-      })
-      target.webContents.on("will-navigate", (event, destination) => {
-        const url = parseSafeHttps(destination)
-        const isSameOrigin = url !== null && url.origin === chatUrl.origin
-        if (isSameOrigin) return
-        event.preventDefault()
-        if (url !== null) safelyOpen(url)
-      })
-      target.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
-      target.webContents.session.setPermissionCheckHandler(() => false)
-    },
+    webPreferences,
+    install,
   })
 }

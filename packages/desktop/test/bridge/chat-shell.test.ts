@@ -39,6 +39,7 @@ describe("Chat and Code shell", () => {
     const { host, added } = createHost()
     expect(createChatArea(host as never, undefined).chatAvailable).toBe(false)
     expect(createChatArea(host as never, "http://private.invalid").chatAvailable).toBe(false)
+    expect(createChatArea(host as never, "https://chat.kothora.example", "https://127.0.0.1").chatAvailable).toBe(false)
     expect(added).toEqual([])
   })
 
@@ -61,10 +62,15 @@ describe("Chat and Code shell", () => {
         close: () => (closed = true),
       },
     }
-    const controller = createChatArea(host as never, "https://chat.kothora.example/app", (value) => {
-      options = value
-      return view as never
-    })
+    const controller = createChatArea(
+      host as never,
+      "https://chat.kothora.example/app",
+      "https://accounts.example.com",
+      (value) => {
+        options = value
+        return view as never
+      },
+    )
     await Promise.resolve()
 
     expect(controller.chatAvailable).toBe(true)
