@@ -1,4 +1,4 @@
-import { cp, mkdir, rm } from "node:fs/promises"
+import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import { resolve } from "node:path"
 import { build, context } from "esbuild"
 
@@ -29,6 +29,7 @@ if (watch) {
   console.log("desktop build watching")
 } else {
   await Promise.all(builds.map((options) => build(options)))
-  await cp(resolve(root, "src/renderer/index.html"), resolve(out, "renderer/index.html"))
+  const html = await readFile(resolve(root, "src/renderer/index.html"), "utf8")
+  await writeFile(resolve(out, "renderer/index.html"), html.replace("./index.ts", "./index.js"))
   await cp(resolve(root, "src/renderer/styles.css"), resolve(out, "renderer/styles.css"))
 }
