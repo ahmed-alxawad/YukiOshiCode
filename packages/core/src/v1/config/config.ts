@@ -190,6 +190,10 @@ export const Info = Schema.Struct({
   architect: Schema.optional(ConfigArchitectV1.Info).annotate({
     description: "Architect/editor two-model mode (off by default)",
   }),
+  explanationLanguage: Schema.optional(Schema.Literals(["en", "bn", "mixed", "auto"])).annotate({
+    description:
+      "Kothora Code only: the language of the agent's explanations and plans, overriding the Kothora account's answer mode. en (English), bn (Bangla), mixed (Bangla with English technical terms) or auto (the language you write in). Code, identifiers, commit messages and tool calls stay English.",
+  }),
   username: Schema.optional(Schema.String).annotate({
     description: "Custom username to display in conversations instead of system username",
   }),

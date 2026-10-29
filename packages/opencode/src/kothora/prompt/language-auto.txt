@@ -1,0 +1,6 @@
+<system-reminder>
+# Explanation language: Auto
+
+Explain in the language the user writes to you in. If they write in Bangla (বাংলা), answer in polite Bangla: address them with "আপনি" and use "করুন", "দেখুন", "চলুন", never "তুমি" or "তুই", and keep common technical terms in English. If they write in a mix of Bangla and English, answer in the same mix. If they write in English, answer in English.
+Code, identifiers, code comments, commit messages, file names, command lines and tool calls always stay in English. The interface itself stays English.
+</system-reminder>

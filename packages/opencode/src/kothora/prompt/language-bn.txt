@@ -1,0 +1,7 @@
+<system-reminder>
+# Explanation language: Bangla
+
+Write your explanations, plans and questions to the user in Bangla (বাংলা), in polite form: address the user with "আপনি" and use "করুন", "দেখুন", "চলুন", never the informal "তুমি" or "তুই".
+Keep technical terms that Bangla programmers use in English as they are (for example API, function, commit, test) instead of forcing a translation. Use Bangla digits only if the user does; otherwise use standard digits.
+Code, identifiers, code comments, commit messages, file names, command lines and tool calls always stay in English. The interface itself stays English.
+</system-reminder>

@@ -22,6 +22,7 @@ import { Permission } from "@/permission"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@yukioshi/core/global"
 import path from "path"
+import { Edition, type Info as EditionInfo } from "@yukioshi/core/edition"
 import { Plugin } from "@/plugin"
 import { Skill } from "../skill"
 import { Effect, Context, Layer, Schema } from "effect"
@@ -99,7 +100,8 @@ export class Service extends Context.Service<Service, Interface>()("@yukioshi/Ag
 
 export const use = serviceUse(Service)
 
-const layer = Layer.effect(
+// `edition` is the build edition (Learn mode exists only in the Kothora edition); tests pass it in.
+const makeLayer = (edition: EditionInfo = Edition) => Layer.effect(
   Service,
   Effect.gen(function* () {
     const config = yield* Config.Service
@@ -163,6 +165,8 @@ const layer = Layer.effect(
             "rm *": "deny",
           },
         } as const
+
+        const order = Mode.orderFor(edition)
 
         const agents: Record<string, Info> = {
           build: {
@@ -259,6 +263,25 @@ const layer = Layer.effect(
             mode: "primary",
             native: true,
           },
+          ...(edition.learnMode
+            ? {
+                [Mode.LEARN]: {
+                  name: Mode.LEARN,
+                  description:
+                    "Learn mode. Teaches: explains each step and why, asks you to try first, gives hints before code.",
+                  options: {},
+                  permission: Permission.merge(
+                    defaults,
+                    Permission.fromConfig({
+                      question: "allow",
+                    }),
+                    user,
+                  ),
+                  mode: "primary",
+                  native: true,
+                } satisfies Info,
+              }
+            : {}),
           [Mode.AUTO]: {
             name: Mode.AUTO,
             description: "Auto mode. Picks Build, Plan, Goal, Reasoning, or Research for each message.",
@@ -402,7 +425,7 @@ const layer = Layer.effect(
           let item: Info | undefined = agents[key]
           // A config agent with its own prompt that shares a name with one of the newer built-in modes
           // (for example an existing "research" subagent) stays the user's agent instead of becoming the mode.
-          if (item && value.prompt !== undefined && ["goal", "reasoning", "research", Mode.AUTO].includes(key)) item = undefined
+          if (item && value.prompt !== undefined && ["goal", "reasoning", "research", Mode.LEARN, Mode.AUTO].includes(key)) item = undefined
           if (!item)
             item = agents[key] = {
               name: key,
@@ -462,7 +485,7 @@ const layer = Layer.effect(
             sortBy(
               [(x) => (cfg.default_agent ? x.name === cfg.default_agent : x.name === "build"), "desc"],
               // Built-in modes in Tab order, then everything else by name.
-              [(x) => (x.native && Mode.ORDER.includes(x.name) ? Mode.ORDER.indexOf(x.name) : Mode.ORDER.length), "asc"],
+              [(x) => (x.native && order.includes(x.name) ? order.indexOf(x.name) : order.length), "asc"],
               [(x) => x.name, "asc"],
             ),
           )
@@ -588,10 +611,12 @@ const locationServiceMapNode = LayerNode.make({
   deps: [],
 })
 
-export const node = LayerNode.make({
-  service: Service,
-  layer: layer,
-  deps: [Config.node, Auth.node, Plugin.node, Skill.node, Provider.node, locationServiceMapNode],
-})
+const layer = makeLayer()
+
+const deps = [Config.node, Auth.node, Plugin.node, Skill.node, Provider.node, locationServiceMapNode] as const
+
+export const node = LayerNode.make({ service: Service, layer, deps })
+
+export const nodeWith = (edition: EditionInfo) => LayerNode.make({ service: Service, layer: makeLayer(edition), deps })
 
 export * as Agent from "./agent"
