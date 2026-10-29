@@ -14,6 +14,10 @@ import PLAN_MODE from "./prompt/plan-mode.txt"
 import GOAL_MODE from "./prompt/goal.txt"
 import REASONING_MODE from "./prompt/reasoning.txt"
 import RESEARCH_MODE from "./prompt/research.txt"
+import { Edition } from "@yukioshi/core/edition"
+import { currentClient } from "@/kothora/provider"
+import { accountMode, reminders as kothoraReminders, resolveLanguage } from "@/kothora/tutor"
+import { me } from "@/kothora/device"
 
 const MODE_REMINDERS: Record<string, string> = {
   goal: GOAL_MODE,
@@ -21,10 +25,19 @@ const MODE_REMINDERS: Record<string, string> = {
   research: RESEARCH_MODE,
 }
 
+// One account lookup per process (cached for ten minutes); undefined until the Kothora client exists.
+const account = accountMode(async () => {
+  const client = currentClient()
+  if (!client) throw new Error("not signed in")
+  return me(client)
+})
+
 export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
   messages: SessionV1.WithParts[]
   agent: Agent.Info
   session: Session.Info
+  /** The `explanationLanguage` setting (Kothora edition). */
+  explanationLanguage?: string
 }) {
   const flags = yield* RuntimeFlags.Service
   const fsys = yield* FSUtil.Service
@@ -42,6 +55,22 @@ export const apply = Effect.fn("SessionReminders.apply")(function* (input: {
       text: modeReminder,
       synthetic: true,
     })
+  }
+
+  // Kothora edition: Learn mode text and the explanation language (account answer mode or config).
+  if (Edition.learnMode || Edition.explanationLanguage) {
+    const configured = input.explanationLanguage
+    const language = resolveLanguage({ configured, account: configured ? undefined : yield* Effect.promise(account) })
+    for (const text of kothoraReminders({ edition: Edition, agent: input.agent, language })) {
+      userMessage.parts.push({
+        id: PartID.ascending(),
+        messageID: userMessage.info.id,
+        sessionID: userMessage.info.sessionID,
+        type: "text",
+        text,
+        synthetic: true,
+      })
+    }
   }
 
   if (!flags.experimentalPlanMode) {

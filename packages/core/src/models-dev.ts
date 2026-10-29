@@ -1,3 +1,4 @@
+import { Edition } from "./edition"
 import path from "path"
 import { Context, Duration, Effect, Layer, Option, Schedule, Schema } from "effect"
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/unstable/http"
@@ -143,7 +144,9 @@ export interface Interface {
 
 export class Service extends Context.Service<Service, Interface>()("@yukioshi/ModelsDev") {}
 
-const layer = Layer.effect(
+// `catalog` is false in the Kothora edition: no model catalogue is read or fetched there, models come only
+// from the Kothora API.
+const makeLayer = (catalog: boolean = Edition.byok) => Layer.effect(
   Service,
   Effect.gen(function* () {
     const fs = yield* FSUtil.Service
@@ -232,6 +235,7 @@ const layer = Layer.effect(
     })
 
     const populate = Effect.gen(function* () {
+      if (!catalog) return {} as Record<string, Provider>
       const fromDisk = yield* loadFromDisk
       if (fromDisk) return fromDisk
       const snapshot = yield* loadSnapshot
@@ -260,6 +264,7 @@ const layer = Layer.effect(
     const get = (): Effect.Effect<Record<string, Provider>> => cachedGet
 
     const refresh = Effect.fn("ModelsDev.refresh")(function* (force = false) {
+      if (!catalog) return
       if (!force && (yield* fresh())) return
       yield* Effect.scoped(
         Effect.gen(function* () {
@@ -277,7 +282,7 @@ const layer = Layer.effect(
       )
     })
 
-    if (!Flag.YUKIOSHI_DISABLE_MODELS_FETCH && !process.argv.includes("--get-yargs-completions")) {
+    if (catalog && !Flag.YUKIOSHI_DISABLE_MODELS_FETCH && !process.argv.includes("--get-yargs-completions")) {
       // Schedule.spaced runs the effect once, then waits between completions.
       yield* Effect.forkScoped(refresh().pipe(Effect.repeat(Schedule.spaced("60 minutes")), Effect.ignore))
     }
@@ -286,6 +291,11 @@ const layer = Layer.effect(
   }),
 )
 
+const layer = makeLayer()
+
 export const node = makeGlobalNode({ service: Service, layer: layer, deps: [FSUtil.node, EventV2.node, httpClient] })
+
+export const nodeWith = (catalog: boolean) =>
+  makeGlobalNode({ service: Service, layer: makeLayer(catalog), deps: [FSUtil.node, EventV2.node, httpClient] })
 
 export * as ModelsDev from "./models-dev"

@@ -39,7 +39,7 @@ export function empty() {
 }
 
 export function logo(pad?: string) {
-  // The traced YukiOshi wordmark; colour only when writing to a terminal.
+  // The traced YukiOshi wordmark (a text wordmark in the Kothora edition); colour only when writing to a terminal.
   const color = Boolean(process.stdout.isTTY || process.stderr.isTTY)
   return renderWordmark({ pad, color }).join(EOL).trimEnd()
 }

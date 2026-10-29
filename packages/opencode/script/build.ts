@@ -15,12 +15,16 @@ process.chdir(dir)
 const generated = await import("./generate.ts")
 
 import { Script } from "@yukioshi/script"
+import { resolve as resolveEdition } from "../../core/src/edition"
 import pkg from "../package.json"
 
 const singleFlag = process.argv.includes("--single")
 const baselineFlag = process.argv.includes("--baseline")
 const skipInstall = process.argv.includes("--skip-install")
 const sourcemapsFlag = process.argv.includes("--sourcemaps")
+// One build setting picks the edition: `--edition=kothora` or YUKIOSHI_EDITION=kothora. The default is yukioshi.
+const editionArg = process.argv.find((arg) => arg.startsWith("--edition="))?.slice("--edition=".length)
+const edition = resolveEdition(editionArg, process.env["YUKIOSHI_EDITION"])
 const plugin = createSolidTransformPlugin()
 // YukiOshi Code is terminal-only: there is no web UI to embed unless a packages/app checkout exists.
 const skipEmbedWebUi =
@@ -56,10 +60,21 @@ const createEmbeddedSkillsBundle = async () => {
   const files = (await Array.fromAsync(new Bun.Glob("**/*").scan({ cwd: skillsDir })))
     .map((file) => file.replaceAll("\\", "/"))
     .sort()
-  const imports = files.map(
-    (file, i) => `import file_${i} from ${JSON.stringify(`./skills/${file}`)} with { type: "file" };`,
+  // The Kothora edition adds its own skills under kothora/ (see src/skill/index.ts).
+  const editionDir = path.join(dir, "skills-kothora")
+  const editionFiles = edition.editionSkills
+    ? (await Array.fromAsync(new Bun.Glob("**/*").scan({ cwd: editionDir })))
+        .map((file) => file.replaceAll("\\", "/"))
+        .sort()
+    : []
+  const sources = [
+    ...files.map((file) => ({ key: file, source: `./skills/${file}` })),
+    ...editionFiles.map((file) => ({ key: `kothora/${file}`, source: `./skills-kothora/${file}` })),
+  ]
+  const imports = sources.map(
+    ({ source }, i) => `import file_${i} from ${JSON.stringify(source)} with { type: "file" };`,
   )
-  const entries = files.map((file, i) => `  ${JSON.stringify(file)}: file_${i},`)
+  const entries = sources.map(({ key }, i) => `  ${JSON.stringify(key)}: file_${i},`)
   return [...imports, `export default {`, ...entries, `}`].join("\n")
 }
 
@@ -161,7 +176,7 @@ if (!skipInstall) {
 }
 for (const item of targets) {
   const name = [
-    pkg.name,
+    edition.command,
     // changing to win32 flags npm for some reason
     item.os === "win32" ? "windows" : item.os,
     item.arch,
@@ -193,9 +208,9 @@ for (const item of targets) {
       autoloadDotenv: false,
       autoloadTsconfig: true,
       autoloadPackageJson: true,
-      target: name.replace(pkg.name, "bun") as any,
-      outfile: `dist/${name}/bin/yukioshi`,
-      execArgv: [`--user-agent=yukioshi/${Script.version}`, "--use-system-ca", "--"],
+      target: name.replace(edition.command, "bun") as any,
+      outfile: `dist/${name}/bin/${edition.command}`,
+      execArgv: [`--user-agent=${edition.command}/${Script.version}`, "--use-system-ca", "--"],
       windows: {},
     },
     files: {
@@ -213,6 +228,7 @@ for (const item of targets) {
     define: {
       FFF_LIBC: JSON.stringify(item.abi === "musl" ? "musl" : "gnu"),
       YUKIOSHI_VERSION: `'${Script.version}'`,
+      YUKIOSHI_EDITION: JSON.stringify(edition.id),
       YUKIOSHI_MODELS_DEV: generated.modelsData,
       OTUI_TREE_SITTER_WORKER_PATH: bunfsRoot + treeSitterWorkerPath,
       YUKIOSHI_WORKER_PATH: workerPath,
@@ -224,7 +240,7 @@ for (const item of targets) {
 
   // Smoke test: only run if binary is for current platform
   if (item.os === process.platform && item.arch === process.arch && !item.abi) {
-    const binaryPath = `dist/${name}/bin/yukioshi`
+    const binaryPath = `dist/${name}/bin/${edition.command}`
     console.log(`Running smoke test: ${binaryPath} --version`)
     try {
       const versionOutput = await $`${binaryPath} --version`.text()

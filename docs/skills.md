@@ -28,6 +28,7 @@ command in the terminal UI:
 | `productivity:*` | memory management, getting started, task management, updates |
 | `loop` | how to use `/loop` and when to use `yukioshi schedule` instead |
 | `skill-creator` | create and improve skills |
+| `bangla-interface-helper`, `freelancer-pack` | Kothora Code only: Bangla interfaces and client work for freelancers (see [development](development.md#learn-mode-explanation-language-and-built-in-skills-kothora-edition-only)) |
 | `web-artifacts-builder` | build multi-part web artifacts |
 | `customize-opencode` | help with editing YukiOshi's own configuration |
 

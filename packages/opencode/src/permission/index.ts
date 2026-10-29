@@ -1,4 +1,5 @@
 import { LayerNode } from "@yukioshi/core/effect/layer-node"
+import { Edition } from "@yukioshi/core/edition"
 import { ConfigPermissionV1 } from "@yukioshi/core/v1/config/permission"
 import { InstanceState } from "@/effect/instance-state"
 import { Wildcard } from "@yukioshi/core/util/wildcard"
@@ -250,7 +251,7 @@ const layer = Layer.effect(
         event: "Notification",
         payload: {
           session_id: request.sessionID,
-          message: `YukiOshi Code needs your permission: ${request.permission}`,
+          message: `${Edition.productName} needs your permission: ${request.permission}`,
           tool_name: request.permission,
           risk,
         },

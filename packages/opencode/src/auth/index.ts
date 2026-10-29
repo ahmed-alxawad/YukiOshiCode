@@ -4,6 +4,8 @@ import { Effect, Layer, Record, Result, Schema, Context } from "effect"
 import { NonNegativeInt } from "@yukioshi/core/schema"
 import { Global } from "@yukioshi/core/global"
 import { FSUtil } from "@yukioshi/core/fs-util"
+import { Edition } from "@yukioshi/core/edition"
+import { BYOK_REFUSED } from "@/kothora/errors"
 import { createKeychainStore, type KeychainStore } from "./keychain"
 
 export const OAUTH_DUMMY_KEY = "yukioshi-oauth-dummy-key"
@@ -50,7 +52,7 @@ export interface Interface {
 
 export class Service extends Context.Service<Service, Interface>()("@yukioshi/Auth") {}
 
-export function makeLayer(keychainOverride?: KeychainStore) {
+export function makeLayer(keychainOverride?: KeychainStore, byok: boolean = Edition.byok) {
   return Layer.effect(
     Service,
     Effect.gen(function* () {
@@ -135,6 +137,10 @@ export function makeLayer(keychainOverride?: KeychainStore) {
       })
 
       const set = Effect.fn("Auth.set")(function* (key: string, info: Info) {
+        // Kothora edition: only the Kothora sign-in may be stored, never a key for another provider.
+        if (!byok && key.replace(/\/+$/, "") !== "kothora") {
+          return yield* Effect.fail(new AuthError({ message: BYOK_REFUSED }))
+        }
         const norm = key.replace(/\/+$/, "")
         const data = yield* all()
         if (norm !== key) delete data[key]
@@ -192,8 +198,8 @@ export function makeLayer(keychainOverride?: KeychainStore) {
   )
 }
 
-export function makeNode(keychain?: KeychainStore) {
-  return LayerNode.make({ service: Service, layer: makeLayer(keychain), deps: [FSUtil.node] })
+export function makeNode(keychain?: KeychainStore, byok?: boolean) {
+  return LayerNode.make({ service: Service, layer: makeLayer(keychain, byok), deps: [FSUtil.node] })
 }
 
 export const node = makeNode()

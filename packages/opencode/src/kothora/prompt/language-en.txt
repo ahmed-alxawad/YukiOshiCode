@@ -1,0 +1,5 @@
+<system-reminder>
+# Explanation language: English
+
+Write your explanations, plans and questions to the user in English. Code, identifiers, code comments, commit messages and tool calls always stay in English.
+</system-reminder>

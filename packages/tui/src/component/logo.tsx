@@ -1,6 +1,7 @@
 import { RGBA, TextAttributes } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/solid"
 import { For, Match, Switch, createMemo } from "solid-js"
+import { Edition } from "@yukioshi/core/edition"
 import { useTheme } from "../context/theme"
 import { logoArt, type EmblemArt, type LogoArt } from "../logo-art"
 
@@ -111,6 +112,17 @@ export function Logo() {
       </text>
     </box>
   )
+
+  // The Kothora edition shows a text wordmark until the founder picks the brand.
+  if (!Edition.byok) {
+    return (
+      <box flexDirection="column" alignItems="center">
+        <text fg={RGBA.fromHex(variant().code.text)} attributes={TextAttributes.BOLD} selectable={false}>
+          {Edition.productName}
+        </text>
+      </box>
+    )
+  }
 
   return (
     <box flexDirection="column" alignItems="center">

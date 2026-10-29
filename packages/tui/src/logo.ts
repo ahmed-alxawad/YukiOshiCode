@@ -1,3 +1,4 @@
+import { Edition, type Info as EditionInfo } from "@yukioshi/core/edition"
 import { logoArt, type LogoArt, type LogoVariant } from "./logo-art"
 
 export { logoArt, type LogoArt, type LogoVariant } from "./logo-art"
@@ -17,7 +18,7 @@ function ansi(hex: string) {
   return `\x1b[38;2;${r};${g};${b}m`
 }
 
-type RenderOptions = { pad?: string; color?: boolean; variant?: LogoVariant }
+type RenderOptions = { pad?: string; color?: boolean; variant?: LogoVariant; edition?: EditionInfo }
 
 /** Renders traced logo art for plain terminal output, with or without colour. */
 export function renderArt(art: LogoArt, options: RenderOptions = {}): string[] {
@@ -55,6 +56,12 @@ export function renderCode(options: RenderOptions = {}): string {
 
 /** Wordmark plus the CODE line, for CLI banners. */
 export function renderWordmark(options: RenderOptions = {}): string[] {
+  // The Kothora edition has no traced logo yet: a plain text wordmark until the brand is chosen.
+  const edition = options.edition ?? Edition
+  if (!edition.byok) {
+    const text = options.pad ? options.pad + edition.productName : edition.productName
+    return [options.color ? `\x1b[1m${text}${reset}` : text]
+  }
   const variant = options.variant ?? logoArt.dark
   return [...renderArt(variant.wordmark, { ...options, variant }), renderCode({ ...options, variant })]
 }

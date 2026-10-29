@@ -2,6 +2,7 @@ import { spawn } from "node:child_process"
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { Global } from "@yukioshi/core/global"
+import { Edition } from "@yukioshi/core/edition"
 
 export interface ProcessResult {
   readonly exitCode: number
@@ -175,7 +176,7 @@ export class SecretServiceStore implements KeychainStore {
     const payload = packSecret(value)
     const result = await this.runner.run(
       "secret-tool",
-      ["store", `--label=YukiOshi Code (${key})`, "service", this.service, "account", key],
+      ["store", `--label=${Edition.productName} (${key})`, "service", this.service, "account", key],
       payload,
     )
     if (result.exitCode !== 0) {
@@ -312,7 +313,7 @@ export function createKeychainStore(options: CreateKeychainOptions = {}): Keycha
 
   const platform = options.platform ?? process.platform
   const runner = options.runner ?? new DefaultProcessRunner()
-  const service = options.service ?? process.env.YUKIOSHI_KEYCHAIN_SERVICE ?? "yukioshi-code"
+  const service = options.service ?? process.env.YUKIOSHI_KEYCHAIN_SERVICE ?? Edition.keychainService
 
   if (platform === "darwin") {
     return new MacKeychainStore(runner, service)

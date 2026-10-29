@@ -36,6 +36,7 @@ import { isMedia } from "@/util/media"
 import type { SystemError } from "bun"
 import type { Provider } from "@/provider/provider"
 import { Effect, Schema } from "effect"
+import { KothoraError } from "@/kothora/errors"
 
 /** Error shape thrown by Bun's fetch() when gzip/br decompression fails mid-stream */
 interface FetchDecompressionError extends Error {
@@ -640,6 +641,12 @@ function convertError(
       return e
     case APIError.isInstance(e):
       return e.toObject()
+    case e instanceof KothoraError:
+      // Credits, paced and spend-stop answers show as one plain message, never a stack trace.
+      return new APIError(
+        { message: e.userMessage, statusCode: e.status || undefined, isRetryable: false, metadata: { code: e.code } },
+        { cause: e },
+      ).toObject()
     case LoadAPIKeyError.isInstance(e):
       return new AuthError(
         {

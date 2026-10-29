@@ -1,5 +1,6 @@
 import { LayerNode } from "@yukioshi/core/effect/layer-node"
 import path from "path"
+import { Edition, type Info as EditionInfo } from "@yukioshi/core/edition"
 import fs from "fs/promises"
 import { fileURLToPath } from "url"
 import { InstallationVersion } from "@yukioshi/core/installation/version"
@@ -36,6 +37,10 @@ const BUILTIN_SKILL_PATTERN = "**/SKILL.md"
 // works for `bun run src/index.ts`. Compiled binaries embed the same files via the
 // build-generated `yukioshi-skills.gen.ts` module and extract them to the cache.
 export const BUILTIN_SKILLS_DIR = fileURLToPath(new URL("../../skills", import.meta.url))
+
+// Skills that ship only with the Kothora edition. A compiled Kothora binary embeds them under kothora/
+// inside the same extracted folder as the others.
+export const EDITION_SKILLS_DIR = fileURLToPath(new URL("../../skills-kothora", import.meta.url))
 
 // Set once the embedded skills of a compiled binary are extracted, so isBuiltin() recognizes them.
 let extractedSkillsDir: string | undefined
@@ -270,6 +275,7 @@ const discoverSkills = Effect.fnUntraced(function* (
   global: Global.Interface,
   disableExternalSkills: boolean,
   disableClaudeCodeSkills: boolean,
+  editionSkills: boolean,
   directory: string,
   worktree: string,
 ) {
@@ -280,6 +286,10 @@ const discoverSkills = Effect.fnUntraced(function* (
     : yield* extractEmbeddedSkills(global.cache)
   if (builtinDir) {
     yield* scan(state, builtinDir, BUILTIN_SKILL_PATTERN, { scope: "builtin" })
+  }
+  // From source the edition's skills live in their own folder; in a binary they are inside builtinDir already.
+  if (editionSkills && builtinDir === BUILTIN_SKILLS_DIR && (yield* fsys.isDir(EDITION_SKILLS_DIR))) {
+    yield* scan(state, EDITION_SKILLS_DIR, BUILTIN_SKILL_PATTERN, { scope: "builtin", label: "edition" })
   }
 
   const externalDirs: string[] = []
@@ -373,7 +383,8 @@ const loadSkills = Effect.fnUntraced(function* (
 
 export class Service extends Context.Service<Service, Interface>()("@yukioshi/Skill") {}
 
-const layer = Layer.effect(
+// `edition` is the build edition; the Kothora edition adds its own built-in skills. Tests pass it in.
+const makeLayer = (edition: EditionInfo = Edition) => Layer.effect(
   Service,
   Effect.gen(function* () {
     const discovery = yield* Discovery.Service
@@ -391,6 +402,7 @@ const layer = Layer.effect(
           global,
           flags.disableExternalSkills,
           flags.disableClaudeCodeSkills,
+          edition.editionSkills,
           ctx.directory,
           ctx.worktree,
         )
@@ -449,6 +461,7 @@ export function isBuiltin(info: Pick<Info, "location">): boolean {
   return (
     info.location === "<built-in>" ||
     FSUtil.contains(BUILTIN_SKILLS_DIR, info.location) ||
+    FSUtil.contains(EDITION_SKILLS_DIR, info.location) ||
     (extractedSkillsDir !== undefined && FSUtil.contains(extractedSkillsDir, info.location))
   )
 }
@@ -490,10 +503,12 @@ export function fmt(list: Info[], opts: { verbose: boolean }) {
   ].join("\n")
 }
 
-export const node = LayerNode.make({
-  service: Service,
-  layer: layer,
-  deps: [Discovery.node, Config.node, EventV2Bridge.node, FSUtil.node, Global.node, RuntimeFlags.node],
-})
+const layer = makeLayer()
+
+const deps = [Discovery.node, Config.node, EventV2Bridge.node, FSUtil.node, Global.node, RuntimeFlags.node] as const
+
+export const node = LayerNode.make({ service: Service, layer, deps })
+
+export const nodeWith = (edition: EditionInfo) => LayerNode.make({ service: Service, layer: makeLayer(edition), deps })
 
 export * as Skill from "."

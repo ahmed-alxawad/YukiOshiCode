@@ -4,6 +4,7 @@ import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
 import { Deferred, Effect } from "effect"
 import { Global } from "@yukioshi/core/global"
 import { Flag } from "@yukioshi/core/flag/flag"
+import { Edition } from "@yukioshi/core/edition"
 import { InstallationVersion } from "@yukioshi/core/installation/version"
 import { ClipboardProvider, useClipboard } from "./context/clipboard"
 import { ExitProvider, useExit } from "./context/exit"
@@ -460,24 +461,24 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     if (!terminalTitleEnabled() || Flag.YUKIOSHI_DISABLE_TERMINAL_TITLE) return
 
     if (route.data.type === "home") {
-      renderer.setTerminalTitle("YukiOshi")
+      renderer.setTerminalTitle(Edition.productName)
       return
     }
 
     if (route.data.type === "session") {
       const session = sync.session.get(route.data.sessionID)
       if (!session || isDefaultTitle(session.title)) {
-        renderer.setTerminalTitle("YukiOshi")
+        renderer.setTerminalTitle(Edition.productName)
         return
       }
 
       const title = session.title.length > 40 ? session.title.slice(0, 37) + "…" : session.title
-      renderer.setTerminalTitle(`YukiOshi | ${title}`)
+      renderer.setTerminalTitle(`${Edition.productName} | ${title}`)
       return
     }
 
     if (route.data.type === "plugin") {
-      renderer.setTerminalTitle(`YukiOshi | ${route.data.id}`)
+      renderer.setTerminalTitle(`${Edition.productName} | ${route.data.id}`)
     }
   })
 
@@ -1104,7 +1105,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     await DialogAlert.show(
       dialog,
       "Update Complete",
-      `Successfully updated to YukiOshi v${result.data.version}. Please restart the application.`,
+      `Successfully updated to ${Edition.productName} v${result.data.version}. Please restart the application.`,
     )
 
     void exit()
