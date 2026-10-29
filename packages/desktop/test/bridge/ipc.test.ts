@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { AgentCoreClient } from "../../src/main/agent-client"
+import { ManagedAgent } from "../../src/main/managed-agent"
 import { desktopChannels, type DesktopChannel } from "../../src/main/contracts"
 import { registerDesktopIpc, type IpcHandler, type IpcRegistry } from "../../src/main/ipc"
 import { WorkspaceService } from "../../src/main/workspace"
@@ -17,11 +17,15 @@ const setup = () => {
     { realpath: async (value) => value, readdir: async () => [], readFile: async () => "content" },
     { pickDirectory: async () => "/work/project" },
   )
-  const agent = new AgentCoreClient("http://127.0.0.1:4096/", async () => ({
-    ok: true,
-    status: 200,
-    json: async () => [],
-  }))
+  const agent = new ManagedAgent(
+    "/agent",
+    async () => ({ ok: true, status: 200, json: async () => [] }),
+    async () => ({
+      baseUrl: "http://127.0.0.1:4096/",
+      token: "A".repeat(43),
+      dispose() {},
+    }),
+  )
   registerDesktopIpc(registry, { workspace, agent, allowedRendererOrigins: new Set(["app://kothora"]) })
   return registry
 }

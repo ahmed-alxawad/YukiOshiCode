@@ -23,16 +23,16 @@ describe("AgentCoreClient", () => {
 
   test("authenticates every request and disables redirects", async () => {
     let redirect: RequestRedirect | undefined
-    let authorization: string | null = null
+    const authorization: Array<string | null> = []
     const client = new AgentCoreClient("http://127.0.0.1:4096/", token, async (_url, init) => {
       redirect = init?.redirect
-      authorization = new Headers(init?.headers).get("authorization")
+      authorization.push(new Headers(init?.headers).get("authorization"))
       return { ok: true, status: 200, json: async () => [] }
     })
 
     await expect(client.listChanges()).resolves.toEqual([])
     expect(redirect).toBe("error")
-    expect(authorization).toBe(`Basic ${Buffer.from(`kothora-desktop:${token}`).toString("base64")}`)
+    expect(authorization).toEqual([`Basic ${Buffer.from(`kothora-desktop:${token}`).toString("base64")}`])
   })
 
   test("rejects malformed responses and reports request failures", async () => {

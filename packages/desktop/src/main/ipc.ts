@@ -1,5 +1,5 @@
 import { desktopChannels, type DesktopChannel } from "./contracts"
-import type { AgentCoreClient } from "./agent-client"
+import type { ManagedAgent } from "./managed-agent"
 import type { WorkspaceService } from "./workspace"
 import {
   validateCancelTask,
@@ -22,7 +22,7 @@ export interface IpcRegistry {
 
 export interface IpcDependencies {
   workspace: WorkspaceService
-  agent: AgentCoreClient
+  agent: ManagedAgent
   allowedRendererOrigins: ReadonlySet<string>
 }
 
@@ -47,7 +47,9 @@ export function registerDesktopIpc(registry: IpcRegistry, dependencies: IpcDepen
 
   register(desktopChannels.selectWorkspace, async (payload) => {
     validateNoPayload(payload)
-    return dependencies.workspace.select()
+    const selected = await dependencies.workspace.select()
+    if (selected) await dependencies.agent.selectWorkspace(selected.path)
+    return selected
   })
   register(desktopChannels.listWorkspaceFiles, async (payload) => {
     validateNoPayload(payload)

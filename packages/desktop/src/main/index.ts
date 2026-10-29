@@ -1,6 +1,6 @@
 import { app, BrowserWindow, Menu, shell, WebContentsView, type MenuItemConstructorOptions } from "electron"
 import { resolve } from "node:path"
-import { AgentCoreClient } from "./agent-client"
+import { ManagedAgent } from "./managed-agent"
 import { createChatViewPolicy } from "./chat-view"
 import { createCrashSender, installCrashReporting } from "./crash-reporter"
 import { createUpdateController } from "./updater"
@@ -11,7 +11,9 @@ import { WorkspaceService } from "./workspace"
 
 const runtimeDir = typeof __dirname === "string" ? __dirname : process.resourcesPath
 const rendererUrl = process.env.KOTHORA_RENDERER_URL ?? `file://${resolve(runtimeDir, "../renderer/index.html")}`
-const agentUrl = process.env.KOTHORA_AGENT_URL ?? "http://127.0.0.1:8765/"
+const agentExecutable =
+  process.env.KOTHORA_AGENT_EXECUTABLE ??
+  resolve(process.resourcesPath ?? runtimeDir, "agent", process.platform === "win32" ? "yukioshi.exe" : "yukioshi")
 
 const crashReportUrl = process.env.KOTHORA_CRASH_REPORT_URL
 if (crashReportUrl) {
@@ -141,7 +143,8 @@ const createWindow = () => {
 
 const boot = async () => {
   const workspace = new WorkspaceService(nodeWorkspaceFileSystem, electronWorkspacePicker)
-  const agent = new AgentCoreClient(agentUrl, (url, init) => fetch(url, init))
+  const agent = new ManagedAgent(agentExecutable, (url, init) => fetch(url, init))
+  app.once("before-quit", () => agent.dispose())
   registerDesktopIpc(electronIpcRegistry, {
     workspace,
     agent,
