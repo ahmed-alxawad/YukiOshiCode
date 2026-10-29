@@ -5,6 +5,11 @@ export const MODES = ["build", "plan", "goal", "reasoning", "research"] as const
 export type Mode = (typeof MODES)[number]
 export const ORDER: readonly string[] = [...MODES, AUTO]
 
+// Kothora edition only: Learn mode for students, between Research and Auto in Tab order. Auto never picks it.
+export const LEARN = "learn"
+export const orderFor = (edition: { learnMode: boolean }): readonly string[] =>
+  edition.learnMode ? [...MODES, LEARN, AUTO] : ORDER
+
 function isMode(value: string): value is Mode {
   return (MODES as readonly string[]).includes(value)
 }

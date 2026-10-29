@@ -16,6 +16,9 @@ describe("edition selection", () => {
     expect(edition.keychainService).toBe("yukioshi-code")
     expect(edition.byok).toBe(true)
     expect(edition.extraInstructionFile).toBeUndefined()
+    expect(edition.learnMode).toBe(false)
+    expect(edition.explanationLanguage).toBe(false)
+    expect(edition.editionSkills).toBe(false)
   })
 
   test("kothora can be chosen by the build define or by the environment when nothing was defined", () => {
@@ -27,6 +30,9 @@ describe("edition selection", () => {
       expect(edition.keychainService).toBe("kothora-code")
       expect(edition.byok).toBe(false)
       expect(edition.extraInstructionFile).toBe("KOTHORA.md")
+      expect(edition.learnMode).toBe(true)
+      expect(edition.explanationLanguage).toBe(true)
+      expect(edition.editionSkills).toBe(true)
     }
   })
 

@@ -23,6 +23,12 @@ export interface Info {
    * takes precedence when rules conflict. Read from both the project and the global config folder.
    */
   readonly extraInstructionFile?: string
+  /** Learn mode (the agent mode for students) and the /learn command. */
+  readonly learnMode: boolean
+  /** The agent explains in the account's answer mode (or the `explanationLanguage` setting). */
+  readonly explanationLanguage: boolean
+  /** Skills that ship only with this edition (the skills-kothora folder). */
+  readonly editionSkills: boolean
 }
 
 const editions: Record<ID, Info> = {
@@ -33,6 +39,9 @@ const editions: Record<ID, Info> = {
     appDir: "yukioshi",
     keychainService: "yukioshi-code",
     byok: true,
+    learnMode: false,
+    explanationLanguage: false,
+    editionSkills: false,
   },
   kothora: {
     id: "kothora",
@@ -42,6 +51,9 @@ const editions: Record<ID, Info> = {
     keychainService: "kothora-code",
     byok: false,
     extraInstructionFile: "KOTHORA.md",
+    learnMode: true,
+    explanationLanguage: true,
+    editionSkills: true,
   },
 }
 

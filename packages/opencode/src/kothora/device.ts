@@ -116,6 +116,8 @@ export interface Me {
   plan: string
   credits: { balance: string; allowance: number; renews_on: string }
   device_id: string
+  /** The account's answer mode (English, Bangla, Mixed, Auto). Not in the contract yet: used when the API sends it. */
+  answer_mode?: string
 }
 
 export const me = (client: KothoraClient) => client.json<Me>("/code/me")

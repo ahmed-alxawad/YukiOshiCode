@@ -25,6 +25,11 @@ export function clientFor(store: TokenStore, baseUrl = apiUrl()) {
   return shared.client
 }
 
+/** The client of this process, once the provider setup or a command made one; undefined before that. */
+export function currentClient() {
+  return shared?.client
+}
+
 export function resetSharedClient() {
   shared = undefined
 }
