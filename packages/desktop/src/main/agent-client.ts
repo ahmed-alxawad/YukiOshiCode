@@ -17,6 +17,9 @@ export interface FetchResponse {
 
 export type FetchAdapter = (url: string, init?: RequestInit) => Promise<FetchResponse>
 
+const desktopUsername = "kothora-desktop"
+const validDesktopToken = /^[A-Za-z0-9_-]{43,128}$/
+
 const assertLoopback = (baseUrl: string) => {
   const url = new URL(baseUrl)
   const loopbackNames = new Set(["localhost", "127.0.0.1", "[::1]"])
@@ -41,12 +44,16 @@ const validTaskId = (value: unknown): value is string =>
 
 export class AgentCoreClient {
   readonly #baseUrl: URL
+  readonly #authorization: string
 
   constructor(
     baseUrl: string,
+    token: string,
     private readonly fetch: FetchAdapter,
   ) {
     this.#baseUrl = assertLoopback(baseUrl)
+    if (!validDesktopToken.test(token)) throw new Error("Agent core token must be a base64url credential")
+    this.#authorization = `Basic ${Buffer.from(`${desktopUsername}:${token}`, "utf8").toString("base64")}`
   }
 
   async listChanges(): Promise<ChangeSummary[]> {
@@ -109,7 +116,13 @@ export class AgentCoreClient {
   }
 
   private async request(route: string, init: RequestInit): Promise<unknown> {
-    const response = await this.fetch(new URL(route, this.#baseUrl).toString(), { ...init, redirect: "error" })
+    const headers = new Headers(init.headers)
+    headers.set("authorization", this.#authorization)
+    const response = await this.fetch(new URL(route, this.#baseUrl).toString(), {
+      ...init,
+      headers,
+      redirect: "error",
+    })
     if (!response.ok) throw new Error(`Agent core request failed (${response.status})`)
     return response.json()
   }
