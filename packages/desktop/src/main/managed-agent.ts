@@ -7,6 +7,7 @@ type StartProcess = (options: AgentProcessOptions) => Promise<AgentProcess>
 export class ManagedAgent {
   #process: AgentProcess | undefined
   #client: AgentCoreClient | undefined
+  #generation = 0
 
   constructor(
     private readonly executable: string,
@@ -16,9 +17,19 @@ export class ManagedAgent {
 
   async selectWorkspace(workspace: string): Promise<void> {
     this.dispose()
+    const generation = this.#generation
     const process = await this.start({ executable: this.executable, workspace })
-    this.#process = process
-    this.#client = new AgentCoreClient(process.baseUrl, process.token, this.fetch)
+    if (generation !== this.#generation) {
+      process.dispose()
+      return
+    }
+    try {
+      this.#client = new AgentCoreClient(process.baseUrl, process.token, this.fetch)
+      this.#process = process
+    } catch (error) {
+      process.dispose()
+      throw error
+    }
   }
 
   async listChanges() {
@@ -42,6 +53,7 @@ export class ManagedAgent {
   }
 
   dispose(): void {
+    this.#generation += 1
     this.#process?.dispose()
     this.#process = undefined
     this.#client = undefined
