@@ -2,6 +2,7 @@ import { app, BrowserWindow, Menu, shell, WebContentsView, type MenuItemConstruc
 import { resolve } from "node:path"
 import { AgentCoreClient } from "./agent-client"
 import { createChatViewPolicy } from "./chat-view"
+import { createCrashSender, installCrashReporting } from "./crash-reporter"
 import { createUpdateController } from "./updater"
 import { electronIpcRegistry, electronWorkspacePicker, nodeWorkspaceFileSystem } from "./electron-adapters"
 import { registerDesktopIpc } from "./ipc"
@@ -11,6 +12,15 @@ import { WorkspaceService } from "./workspace"
 const runtimeDir = typeof __dirname === "string" ? __dirname : process.resourcesPath
 const rendererUrl = process.env.KOTHORA_RENDERER_URL ?? `file://${resolve(runtimeDir, "../renderer/index.html")}`
 const agentUrl = process.env.KOTHORA_AGENT_URL ?? "http://127.0.0.1:8765/"
+
+const crashReportUrl = process.env.KOTHORA_CRASH_REPORT_URL
+if (crashReportUrl) {
+  try {
+    installCrashReporting(createCrashSender(crashReportUrl, (url, init) => fetch(url, init)))
+  } catch {
+    // An invalid optional collector must never prevent the local Code area from starting.
+  }
+}
 
 export interface AreaController {
   readonly chatAvailable: boolean
