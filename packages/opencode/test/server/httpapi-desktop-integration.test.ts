@@ -68,7 +68,7 @@ describe("desktop HTTP API integration", () => {
       })
       expect(authorized.status).toBe(200)
       expect(await authorized.json()).toContainEqual(
-        expect.objectContaining({ file: "desktop-change.txt", status: "added" }),
+        expect.objectContaining({ path: "desktop-change.txt", status: "added" }),
       )
     } finally {
       await listener.stop(true)

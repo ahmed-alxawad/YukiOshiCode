@@ -59,7 +59,7 @@ export const desktopHandlers = HttpApiBuilder.group(InstanceHttpApi, "desktop", 
 
     const changes = Effect.fn("DesktopHttpApi.changes")(function* () {
       yield* requireDesktopWorkspace()
-      return yield* vcs.status()
+      return (yield* vcs.status()).map(({ file, ...change }) => ({ path: file, ...change }))
     })
 
     const diff = Effect.fn("DesktopHttpApi.diff")(function* (ctx: {
@@ -77,9 +77,9 @@ export const desktopHandlers = HttpApiBuilder.group(InstanceHttpApi, "desktop", 
           : source === "session"
             ? []
             : yield* vcs.diff("git")
-      if (!ctx.query.path) return result
-      const requested = ctx.query.path.replaceAll("\\", "/")
-      return result.filter((item) => item.file === requested)
+      const requested = ctx.query.path?.replaceAll("\\", "/")
+      const selected = requested ? result.filter((item) => item.file === requested) : result
+      return { diff: selected.map((item) => item.patch ?? "").join("") }
     })
 
     const create = Effect.fn("DesktopHttpApi.taskCreate")(function* (ctx: { payload: { prompt: string } }) {

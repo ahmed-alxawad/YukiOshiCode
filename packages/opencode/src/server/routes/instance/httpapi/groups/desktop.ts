@@ -1,4 +1,3 @@
-import { Vcs } from "@/project/vcs"
 import { Schema } from "effect"
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/unstable/httpapi"
 import { Authorization } from "../middleware/authorization"
@@ -27,6 +26,15 @@ export const DesktopTask = Schema.Struct({
   error: Schema.optional(Schema.String.check(Schema.isMaxLength(1_000))),
 })
 
+export const DesktopChange = Schema.Struct({
+  path: Schema.String,
+  additions: Schema.Finite,
+  deletions: Schema.Finite,
+  status: Schema.Literals(["added", "deleted", "modified"]),
+})
+
+export const DesktopDiff = Schema.Struct({ diff: Schema.String })
+
 export class DesktopWorkspaceError extends Schema.ErrorClass<DesktopWorkspaceError>("DesktopWorkspaceError")(
   { message: Schema.String },
   { httpApiStatus: 403 },
@@ -49,12 +57,12 @@ export const DesktopApi = HttpApi.make("desktop").add(
   HttpApiGroup.make("desktop")
     .add(
       HttpApiEndpoint.get("desktopChanges", DesktopPaths.changes, {
-        success: described(Schema.Array(Vcs.FileStatus), "Desktop workspace changes"),
+        success: described(Schema.Array(DesktopChange), "Desktop workspace changes"),
         error: DesktopWorkspaceError,
       }),
       HttpApiEndpoint.get("desktopDiff", DesktopPaths.diff, {
         query: DesktopDiffQuery,
-        success: described(Schema.Array(Vcs.FileDiff), "Desktop workspace diff"),
+        success: described(DesktopDiff, "Desktop workspace diff"),
         error: DesktopWorkspaceError,
       }),
       HttpApiEndpoint.post("desktopTaskCreate", DesktopPaths.tasks, {
