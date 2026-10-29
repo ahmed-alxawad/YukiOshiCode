@@ -60,10 +60,21 @@ const createEmbeddedSkillsBundle = async () => {
   const files = (await Array.fromAsync(new Bun.Glob("**/*").scan({ cwd: skillsDir })))
     .map((file) => file.replaceAll("\\", "/"))
     .sort()
-  const imports = files.map(
-    (file, i) => `import file_${i} from ${JSON.stringify(`./skills/${file}`)} with { type: "file" };`,
+  // The Kothora edition adds its own skills under kothora/ (see src/skill/index.ts).
+  const editionDir = path.join(dir, "skills-kothora")
+  const editionFiles = edition.editionSkills
+    ? (await Array.fromAsync(new Bun.Glob("**/*").scan({ cwd: editionDir })))
+        .map((file) => file.replaceAll("\\", "/"))
+        .sort()
+    : []
+  const sources = [
+    ...files.map((file) => ({ key: file, source: `./skills/${file}` })),
+    ...editionFiles.map((file) => ({ key: `kothora/${file}`, source: `./skills-kothora/${file}` })),
+  ]
+  const imports = sources.map(
+    ({ source }, i) => `import file_${i} from ${JSON.stringify(source)} with { type: "file" };`,
   )
-  const entries = files.map((file, i) => `  ${JSON.stringify(file)}: file_${i},`)
+  const entries = sources.map(({ key }, i) => `  ${JSON.stringify(key)}: file_${i},`)
   return [...imports, `export default {`, ...entries, `}`].join("\n")
 }
 
