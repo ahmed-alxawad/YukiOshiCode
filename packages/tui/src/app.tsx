@@ -461,24 +461,24 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     if (!terminalTitleEnabled() || Flag.YUKIOSHI_DISABLE_TERMINAL_TITLE) return
 
     if (route.data.type === "home") {
-      renderer.setTerminalTitle(Edition.productName)
+      renderer.setTerminalTitle(Edition.terminalTitle)
       return
     }
 
     if (route.data.type === "session") {
       const session = sync.session.get(route.data.sessionID)
       if (!session || isDefaultTitle(session.title)) {
-        renderer.setTerminalTitle(Edition.productName)
+        renderer.setTerminalTitle(Edition.terminalTitle)
         return
       }
 
       const title = session.title.length > 40 ? session.title.slice(0, 37) + "…" : session.title
-      renderer.setTerminalTitle(`${Edition.productName} | ${title}`)
+      renderer.setTerminalTitle(`${Edition.terminalTitle} | ${title}`)
       return
     }
 
     if (route.data.type === "plugin") {
-      renderer.setTerminalTitle(`${Edition.productName} | ${route.data.id}`)
+      renderer.setTerminalTitle(`${Edition.terminalTitle} | ${route.data.id}`)
     }
   })
 
