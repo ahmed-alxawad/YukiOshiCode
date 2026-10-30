@@ -12,6 +12,8 @@ export interface Info {
   /** Name of the command a user types. */
   readonly command: string
   readonly productName: string
+  /** Terminal title shown by the TUI (YukiOshi keeps its original short title). */
+  readonly terminalTitle: string
   /** Folder name under the XDG data, cache, config and state directories. */
   readonly appDir: string
   /** Service name in the OS keychain. */
@@ -36,6 +38,7 @@ const editions: Record<ID, Info> = {
     id: "yukioshi",
     command: "yukioshi",
     productName: "YukiOshi Code",
+    terminalTitle: "YukiOshi",
     appDir: "yukioshi",
     keychainService: "yukioshi-code",
     byok: true,
@@ -47,6 +50,7 @@ const editions: Record<ID, Info> = {
     id: "kothora",
     command: "kothora",
     productName: "Kothora Code",
+    terminalTitle: "Kothora Code",
     appDir: "kothora",
     keychainService: "kothora-code",
     byok: false,
