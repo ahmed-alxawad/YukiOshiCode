@@ -42,6 +42,18 @@ directory to the project root, then the global config directory. A missing
 the same ambient instruction context as `AGENTS.md` (see
 `packages/core/src/instruction-context.ts`).
 
+## Models
+
+After device sign-in the `kothora` provider's model catalog comes from the
+Kothora gateway, not from a static list. The kothora auth plugin fetches
+`{base}/code/v1/models` with the device access token and maps the gateway's
+three tiers — `fast`, `balanced`, `expert` — into model entries whose
+completions go to the OpenAI-compatible `{base}/code/v1/chat/completions`,
+authenticated by the same token. Tiers the gateway marks unavailable are left
+out of the picker, and a failed catalog fetch falls back to the provider's
+existing catalog rather than breaking model selection
+(`packages/opencode/src/plugin/kothora.ts`).
+
 ## Learn mode and answer languages
 
 Two config options change how the agent talks, not what it may do. Both are off by default: unset,
