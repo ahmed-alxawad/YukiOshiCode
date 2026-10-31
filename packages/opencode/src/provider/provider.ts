@@ -33,6 +33,7 @@ import { ProviderV2 } from "@yukioshi/core/provider"
 import { ModelV2 } from "@yukioshi/core/model"
 import { ModelStatus } from "./model-status"
 import { RuntimeFlags } from "@/effect/runtime-flags"
+import { isKothoraEdition, KOTHORA_PROVIDER_ID } from "@/kothora/edition"
 import { ProviderError } from "./error"
 import {
   OPENCODE_DISABLED_MESSAGE,
@@ -1604,6 +1605,8 @@ const layer = Layer.effect(
         function isProviderAllowed(providerID: ProviderV2.ID): boolean {
           if (enabled && !enabled.has(providerID)) return false
           if (disabled.has(providerID)) return false
+          // The Kothora edition resolves only the kothora provider (gateway-only models).
+          if (isKothoraEdition() && providerID !== ProviderV2.ID.make(KOTHORA_PROVIDER_ID)) return false
           return true
         }
 

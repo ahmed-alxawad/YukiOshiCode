@@ -248,11 +248,64 @@ describe("InstructionContext", () => {
       )
 
       expect(observed).toEqual({
-        targets: ["AGENTS.md"],
+        targets: ["AGENTS.md", "KOTHORA.md"],
         start: FSUtil.resolve("/repo"),
         stop: FSUtil.resolve("/repo"),
       })
     }),
+  )
+
+  it.live("loads KOTHORA.md alongside AGENTS.md when present", () =>
+    Effect.acquireRelease(
+      Effect.promise(() => tmpdir()),
+      (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
+    ).pipe(
+      Effect.flatMap((tmp) =>
+        Effect.gen(function* () {
+          const global = path.join(tmp.path, "global")
+          const project = path.join(tmp.path, "project")
+          const globalAgents = path.join(global, "AGENTS.md")
+          const globalKothora = path.join(global, "KOTHORA.md")
+          const projectAgents = path.join(project, "AGENTS.md")
+          const projectKothora = path.join(project, "KOTHORA.md")
+          yield* Effect.promise(async () => {
+            await fs.mkdir(global, { recursive: true })
+            await fs.mkdir(project, { recursive: true })
+            await fs.writeFile(globalAgents, "global agents")
+            await fs.writeFile(globalKothora, "global kothora")
+            await fs.writeFile(projectAgents, "project agents")
+            await fs.writeFile(projectKothora, "project kothora")
+          })
+
+          const context = yield* SystemContextRegistry.Service.pipe(
+            Effect.flatMap((service) => service.load()),
+            Effect.provide(
+              instructionLayer({
+                config: global,
+                locationServiceLayer: Layer.succeed(
+                  Location.Service,
+                  Location.Service.of(
+                    location(
+                      { directory: AbsolutePath.make(project) },
+                      { projectDirectory: AbsolutePath.make(project) },
+                    ),
+                  ),
+                ),
+              }),
+            ),
+          )
+
+          expect((yield* SystemContext.initialize(context)).baseline).toBe(
+            [
+              `Instructions from: ${globalAgents}\nglobal agents`,
+              `Instructions from: ${globalKothora}\nglobal kothora`,
+              `Instructions from: ${projectAgents}\nproject agents`,
+              `Instructions from: ${projectKothora}\nproject kothora`,
+            ].join("\n\n"),
+          )
+        }),
+      ),
+    ),
   )
 
   it.effect("honors the project instruction opt-out", () =>
