@@ -34,6 +34,8 @@ type ListenOptions = CorsOptions & {
   hostname: string
   mdns?: boolean
   mdnsDomain?: string
+  /** Desktop launches must not race or attach to the conventional 4096 port. */
+  randomPort?: boolean
 }
 type ListenerState = {
   scope: Scope.Scope
@@ -115,6 +117,7 @@ function listenerLayer(opts: ListenOptions, port: number) {
 }
 
 function startWithPortFallback(opts: ListenOptions) {
+  if (opts.randomPort) return startListener(opts, 0)
   if (opts.port !== 0) return startListener(opts, opts.port)
   // Match the legacy listener port-resolution behavior: explicit `0` prefers
   // 4096 first, then any free port.
