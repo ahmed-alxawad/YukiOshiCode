@@ -21,6 +21,7 @@ import { AzureAuthPlugin } from "./azure"
 import { DigitalOceanAuthPlugin } from "./digitalocean"
 import { XaiAuthPlugin } from "./xai"
 import { GoogleAIStudioAuthPlugin } from "./google"
+import { KothoraAuthPlugin } from "./kothora"
 import { CerebrasPlugin } from "./cerebras"
 import { SnowflakeCortexAuthPlugin } from "./snowflake-cortex"
 import { Effect, Layer, Context } from "effect"
@@ -83,6 +84,7 @@ function internalPlugins(flags: RuntimeFlags.Info): PluginInstance[] {
     SnowflakeCortexAuthPlugin,
     XaiAuthPlugin,
     GoogleAIStudioAuthPlugin,
+    KothoraAuthPlugin,
     CerebrasPlugin,
   ]
 }
