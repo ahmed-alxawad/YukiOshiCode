@@ -42,6 +42,26 @@ directory to the project root, then the global config directory. A missing
 the same ambient instruction context as `AGENTS.md` (see
 `packages/core/src/instruction-context.ts`).
 
+## Learn mode and answer languages
+
+Two config options change how the agent talks, not what it may do. Both are off by default: unset,
+the system prompt is exactly what it was before (edition-off is a no-op). They work in every answer
+mode and every agent, and code, identifiers and commit messages stay English in all of them.
+
+- `learning.mode: "teach"` — Learn mode for students. The system prompt gains a teaching
+  directive: explain what you are doing and why, one step at a time, check understanding before
+  large changes, never present unexplained code. `"off"` or unset is the default.
+- `answers.language: english | bangla | mixed | auto` — the language of explanations:
+  `bangla` writes them in Bangla in the polite আপনি form, `mixed` keeps English technical terms
+  inline in Bangla prose, `auto` matches the user's latest message (Bengali script U+0980–U+09FF
+  switches to Bangla), and `english` (the default) adds no behaviour beyond an explicit directive.
+
+Both are wired as directives appended to the assembled system prompt
+(`packages/opencode/src/session/kothora-prompts.ts`, applied in
+`packages/opencode/src/session/prompt.ts`). The built-in `bangla-interface` skill keeps the Bangla
+explanations correct and polite (register, which terms stay English, worked examples). The
+freelancer pack skill from the build plan is intentionally omitted pending its contents.
+
 ## Repository hygiene
 
 No secrets and no private URLs belong in this repository. The Kothora edition

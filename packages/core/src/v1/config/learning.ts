@@ -3,6 +3,10 @@ export * as ConfigLearningV1 from "./learning"
 import { Schema } from "effect"
 
 export const Info = Schema.Struct({
+  mode: Schema.optional(Schema.Literals(["teach", "off"])).annotate({
+    description:
+      "Learn mode: the agent teaches while it works, explaining what it does and why, one step at a time. 'teach' turns it on; unset or 'off' keeps normal behaviour.",
+  }),
   nudges: Schema.optional(Schema.Boolean).annotate({
     description:
       "After a long or error-fixing turn, remind the agent that it may save lessons with memory_save / skill_save. Off by default. Global config only.",

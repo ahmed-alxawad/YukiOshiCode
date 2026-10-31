@@ -11,6 +11,7 @@ import { Agent } from "../agent/agent"
 import * as Mode from "../agent/mode"
 import { SessionGoal } from "./goal"
 import { SessionLearning } from "./learning"
+import { KothoraPrompts } from "./kothora-prompts"
 import { SessionRepoMap } from "./repo-map"
 import { LearnedSkills } from "../skill/learned"
 import { SessionRepeat } from "./repeat"
@@ -1672,6 +1673,9 @@ const layer = Layer.effect(
             ])
             const fullCfg = yield* config.get()
             const redactCfg = fullCfg.redact
+            // Kothora Learn mode (learning.mode) and answer language (answers.language): both off by
+            // default, in which case this appends nothing and the system prompt is unchanged.
+            const kothoraDirectives = KothoraPrompts.directives(fullCfg, msgs)
             const repoMap = SessionRepoMap.systemText(ctx.worktree === "/" ? ctx.directory : ctx.worktree, fullCfg.repo_map)
             let promptRedacted = false
             const modelMsgs = rawModelMsgs.map((rawMsg) => {
@@ -1719,6 +1723,7 @@ const layer = Layer.effect(
               ...(mcpInstructions ? [mcpInstructions] : []),
               ...(skills ? [skills] : []),
               ...(preloaded ? [preloaded] : []),
+              ...kothoraDirectives,
             ]
             const format = lastUser.format ?? { type: "text" as const }
             if (format.type === "json_schema") system.push(STRUCTURED_OUTPUT_SYSTEM_PROMPT)

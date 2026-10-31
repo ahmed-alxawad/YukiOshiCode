@@ -39,6 +39,7 @@ import { ConfigTriggersV1 } from "./triggers"
 import { ConfigWebSearchV1 } from "./web-search"
 import { ConfigWebFetchV1 } from "./webfetch"
 import { ConfigLearningV1 } from "./learning"
+import { ConfigAnswersV1 } from "./answers"
 import { ConfigRepoMapV1 } from "./repo-map"
 import { ConfigBrowserV1 } from "./browser"
 import { ConfigBackgroundShellV1 } from "./background-shell"
@@ -239,6 +240,9 @@ export const Info = Schema.Struct({
   }),
   learning: Schema.optional(ConfigLearningV1.Info).annotate({
     description: "Learning nudges (global config only; off by default)",
+  }),
+  answers: Schema.optional(ConfigAnswersV1.Info).annotate({
+    description: "How the agent words its explanations (Learn mode lives under learning; off by default)",
   }),
   repo_map: Schema.optional(ConfigRepoMapV1.Info).annotate({
     description: "Repo map in the system context (global config only; off by default)",
