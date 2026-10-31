@@ -1,5 +1,6 @@
 import { LayerNode } from "@yukioshi/core/effect/layer-node"
 import path from "path"
+import { Edition } from "@yukioshi/core/edition"
 import { InstanceState } from "@/effect/instance-state"
 import { EffectBridge } from "@/effect/bridge"
 import type { InstanceContext } from "@/project/instance-context"
@@ -55,6 +56,7 @@ export const Default = {
   GOAL: "goal",
   LOOP: "loop",
   LEARNING: "learning",
+  LEARN: "learn",
 } as const
 
 export interface Interface {
@@ -151,6 +153,18 @@ const layer = Layer.effect(
         source: "command",
         template: "$ARGUMENTS",
         hints: ["$ARGUMENTS"],
+      }
+
+      // Kothora edition: /learn asks one question in Learn mode.
+      if (Edition.learnMode) {
+        commands[Default.LEARN] = {
+          name: Default.LEARN,
+          description: "ask in Learn mode: explains each step and why, hints before code [<question or task>]",
+          source: "command",
+          agent: "learn",
+          template: "$ARGUMENTS\n\nIf nothing is written above, ask what I want to learn or practise first.",
+          hints: ["$ARGUMENTS"],
+        }
       }
 
       for (const [name, command] of Object.entries(cfg.command ?? {})) {

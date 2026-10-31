@@ -4,6 +4,12 @@ import { RunCommand } from "./cli/cmd/run"
 import { GenerateCommand } from "./cli/cmd/generate"
 import { ConsoleCommand } from "./cli/cmd/account"
 import { ProvidersCommand } from "./cli/cmd/providers"
+import {
+  KothoraLoginCommand,
+  KothoraLogoutCommand,
+  KothoraWhoamiCommand,
+  RefusedProvidersCommand,
+} from "./cli/cmd/kothora"
 import { AgentCommand } from "./cli/cmd/agent"
 import { UpgradeCommand } from "./cli/cmd/upgrade"
 import { UninstallCommand } from "./cli/cmd/uninstall"
@@ -35,13 +41,15 @@ import { ScheduleCommand } from "./cli/cmd/schedule"
 import { WatchCommand } from "./cli/cmd/watch"
 import { SkillCommand } from "./cli/cmd/skill"
 import { WorktreeCommand } from "./cli/cmd/worktree"
+import { DesktopApiCommand } from "./cli/cmd/desktop-api"
+import { Edition } from "@yukioshi/core/edition"
 import { ChildRegistry } from "@yukioshi/core/child-registry"
 
 const args = hideBin(process.argv)
 
 function show(out: string) {
   const text = out.trimStart()
-  if (!text.startsWith("yukioshi ")) {
+  if (!text.startsWith(`${Edition.command} `)) {
     process.stderr.write(UI.logo() + EOL + EOL)
     process.stderr.write(text + EOL)
     return
@@ -54,7 +62,7 @@ ChildRegistry.stopOnSignals(["SIGINT", "SIGTERM", "SIGHUP"])
 
 const cli = yargs(args)
   .parserConfiguration({ "populate--": true })
-  .scriptName("yukioshi")
+  .scriptName(Edition.command)
   .wrap(100)
   .help("help", "show help")
   .alias("help", "h")
@@ -96,7 +104,7 @@ const cli = yargs(args)
   .command(GenerateCommand)
   .command(DebugCommand)
   .command(ConsoleCommand)
-  .command(ProvidersCommand)
+  .command(Edition.byok ? ProvidersCommand : RefusedProvidersCommand)
   .command(AgentCommand)
   .command(UpgradeCommand)
   .command(UninstallCommand)
@@ -116,8 +124,10 @@ const cli = yargs(args)
   .command(WatchCommand)
   .command(SkillCommand)
   .command(WorktreeCommand)
+  .command(Edition.byok ? [] : [DesktopApiCommand])
   .command(DbCommand)
   .command(DoctorCommand)
+  .command(Edition.byok ? [] : [KothoraLoginCommand, KothoraLogoutCommand, KothoraWhoamiCommand])
   .fail((msg, err) => {
     if (
       msg?.startsWith("Unknown argument") ||
@@ -149,11 +159,11 @@ try {
   if (args[0] === "completion" && (args.includes("-h") || args.includes("--help"))) {
     process.stdout.write(
       [
-        "yukioshi completion",
+        `${Edition.command} completion`,
         "",
         "Print a shell completion script for bash or zsh. Add it to your shell's startup file, for example:",
-        "  yukioshi completion >> ~/.bashrc",
-        "  yukioshi completion >> ~/.zshrc",
+        `  ${Edition.command} completion >> ~/.bashrc`,
+        `  ${Edition.command} completion >> ~/.zshrc`,
         "",
       ].join(EOL),
     )

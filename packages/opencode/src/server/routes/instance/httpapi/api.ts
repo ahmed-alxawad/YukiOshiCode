@@ -25,6 +25,7 @@ import { SessionApi } from "./groups/session"
 import { SyncApi } from "./groups/sync"
 import { TuiApi } from "./groups/tui"
 import { WorkspaceApi } from "./groups/workspace"
+import { DesktopApi } from "./groups/desktop"
 import { makeApi } from "@yukioshi/protocol/api"
 import { LocationMiddleware } from "@yukioshi/server/location"
 import { SessionLocationMiddleware } from "@yukioshi/server/middleware/session-location"
@@ -59,6 +60,7 @@ export const RootHttpApi = HttpApi.make("opencode-root")
   .middleware(Authorization)
 
 export const InstanceHttpApi = HttpApi.make("opencode-instance")
+  .addHttpApi(DesktopApi)
   .addHttpApi(ConfigApi)
   .addHttpApi(ExperimentalApi)
   .addHttpApi(FileApi)
