@@ -18,7 +18,8 @@
     "dev:temporary": "bun run ./src/temporary.ts"
   },
   "bin": {
-    "yukioshi": "./bin/yukioshi"
+    "yukioshi": "./bin/yukioshi",
+    "kothora": "./bin/kothora"
   },
   "exports": {
     "./*": "./src/*.ts"

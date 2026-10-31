@@ -1,0 +1,32 @@
+#!/usr/bin/env node
+
+// Kothora edition launcher. Runs the same entry as bin/yukioshi with
+// KOTHORA_EDITION=1 set in the child environment. Written with ESM syntax so
+// the extensionless bin is unambiguous under Node's module detection (the
+// nearest package.json sets "type": "module"); the yukioshi wrapper itself is
+// CommonJS, so it is spawned with the interpreter that launched us.
+
+import { spawn } from "node:child_process"
+import path from "node:path"
+import { fileURLToPath } from "node:url"
+
+const scriptDir = path.dirname(fileURLToPath(import.meta.url))
+const target = path.join(scriptDir, "yukioshi")
+
+const child = spawn(process.execPath, [target, ...process.argv.slice(2)], {
+  stdio: "inherit",
+  env: { ...process.env, KOTHORA_EDITION: "1" },
+})
+
+child.on("error", (error) => {
+  console.error(error.message)
+  process.exit(1)
+})
+
+child.on("exit", (code, signal) => {
+  if (signal) {
+    process.kill(process.pid, signal)
+    return
+  }
+  process.exit(typeof code === "number" ? code : 0)
+})

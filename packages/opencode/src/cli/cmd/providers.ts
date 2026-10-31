@@ -21,6 +21,7 @@ import { errorMessage } from "@/util/error"
 import { text } from "node:stream/consumers"
 import { Effect, Option } from "effect"
 import { authMethodEntries } from "@/provider/auth-methods"
+import { filterProvidersForEdition } from "@/kothora/edition"
 
 type PluginAuth = NonNullable<Hooks["auth"]>
 
@@ -255,7 +256,11 @@ export function providerLoginOptions(
   providers: Array<{ id: string; name?: string }>,
   pluginProviders: Array<{ id: string; name: string }>,
 ) {
-  const selected = [...providers, ...pluginProviders].filter((provider) => ProviderV2.isSelected(provider.id))
+  // The Kothora edition only offers the kothora provider (device sign-in via its
+  // auth plugin); bring-your-own-key providers are filtered out of the picker.
+  const selected = filterProvidersForEdition([...providers, ...pluginProviders]).filter((provider) =>
+    ProviderV2.isSelected(provider.id),
+  )
   return pipe(
     selected,
     sortBy(
