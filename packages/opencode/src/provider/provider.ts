@@ -1594,6 +1594,22 @@ const layer = Layer.effect(
           providers[providerID] = mergeDeep(match, provider)
         }
 
+        // The Kothora edition's provider is not in the models.dev catalog; seed a minimal
+        // record so the kothora plugin's models hook fires and supplies the gateway catalog.
+        if (isKothoraEdition()) {
+          const kothoraID = ProviderV2.ID.make(KOTHORA_PROVIDER_ID)
+          if (!database[kothoraID]) {
+            database[kothoraID] = {
+              id: kothoraID,
+              name: "Kothora",
+              env: [],
+              options: {},
+              source: "config",
+              models: {},
+            }
+          }
+        }
+
         // load plugins first so config() hook runs before reading cfg.provider
         const plugins = yield* plugin.list()
 
