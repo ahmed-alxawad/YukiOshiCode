@@ -58,7 +58,7 @@ jobs:
           - os: windows-latest
             artifact: yukioshi-windows-x64
             binary: yukioshi.exe
-          - os: macos-14
+          - os: macos-15
             artifact: yukioshi-darwin-arm64
             binary: yukioshi
     runs-on: ${{ matrix.os }}
