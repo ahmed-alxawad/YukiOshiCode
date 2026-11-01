@@ -1,5 +1,6 @@
 import { realpath, stat } from "node:fs/promises"
 import path from "node:path"
+import { Flag } from "@yukioshi/core/flag/flag"
 import { Effect } from "effect"
 import { CliError, effectCmd } from "../effect-cmd"
 
@@ -8,6 +9,13 @@ const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43,128}$/
 export interface DesktopApiConfig {
   workspace: string
   token: string
+}
+
+/** Scrub launch credentials from process.env once the HTTP listener has snapshotted them. */
+export function clearDesktopSecretEnv(env: NodeJS.ProcessEnv = process.env) {
+  delete env.KOTHORA_DESKTOP_TOKEN
+  delete env.YUKIOSHI_SERVER_PASSWORD
+  delete env.YUKIOSHI_SERVER_USERNAME
 }
 
 /** Resolve the only workspace before the server starts; requests never select another path. */
@@ -40,8 +48,11 @@ export const DesktopApiCommand = effectCmd({
         new CliError({ message: error instanceof Error ? error.message : "Invalid desktop API configuration" }),
     })
     process.env.KOTHORA_DESKTOP_WORKSPACE = config.workspace
+    Flag.YUKIOSHI_SERVER_USERNAME = "kothora-desktop"
+    Flag.YUKIOSHI_SERVER_PASSWORD = config.token
     process.env.YUKIOSHI_SERVER_USERNAME = "kothora-desktop"
     process.env.YUKIOSHI_SERVER_PASSWORD = config.token
+    delete process.env.KOTHORA_DESKTOP_TOKEN
 
     const { Server } = yield* Effect.promise(() => import("../../server/server"))
     const server = yield* Effect.tryPromise({
@@ -52,7 +63,7 @@ export const DesktopApiCommand = effectCmd({
           mdns: false,
           cors: [],
           randomPort: true,
-        }),
+        }).finally(() => clearDesktopSecretEnv()),
       catch: () => new CliError({ message: "Could not start the desktop agent core on this computer." }),
     })
 

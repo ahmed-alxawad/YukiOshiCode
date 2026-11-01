@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { mkdtemp, mkdir, realpath, rm, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
-import { resolveDesktopApiConfig } from "../../src/cli/cmd/desktop-api"
+import { clearDesktopSecretEnv, resolveDesktopApiConfig } from "../../src/cli/cmd/desktop-api"
 
 const roots: string[] = []
 const token = "A".repeat(43)
@@ -38,5 +38,19 @@ describe("desktop API bootstrap", () => {
     expect((await resolveDesktopApiConfig(alias, token)).workspace).toBe(await realpath(workspace))
     await expect(resolveDesktopApiConfig(file, token)).rejects.toThrow("directory")
     await expect(resolveDesktopApiConfig(path.join(root, "missing"), token)).rejects.toThrow()
+  })
+
+  test("clearDesktopSecretEnv removes launch secrets so child tools do not inherit them", () => {
+    const env: NodeJS.ProcessEnv = {
+      KOTHORA_DESKTOP_TOKEN: token,
+      YUKIOSHI_SERVER_PASSWORD: token,
+      YUKIOSHI_SERVER_USERNAME: "kothora-desktop",
+      KOTHORA_DESKTOP_WORKSPACE: "/tmp/workspace",
+    }
+    clearDesktopSecretEnv(env)
+    expect(env.KOTHORA_DESKTOP_TOKEN).toBeUndefined()
+    expect(env.YUKIOSHI_SERVER_PASSWORD).toBeUndefined()
+    expect(env.YUKIOSHI_SERVER_USERNAME).toBeUndefined()
+    expect(env.KOTHORA_DESKTOP_WORKSPACE).toBe("/tmp/workspace")
   })
 })
