@@ -7,8 +7,16 @@ import type { WorkspaceFileSystem, WorkspacePicker } from "./workspace"
 export const electronIpcRegistry: IpcRegistry = {
   handle(channel: DesktopChannel, handler) {
     ipcMain.handle(channel, (event, payload) => {
-      if (event.senderFrame === null) throw new Error("Untrusted renderer origin")
-      return handler({ senderFrame: { url: event.senderFrame.url } }, payload)
+      if (event.senderFrame === null || event.senderFrame !== event.sender.mainFrame) {
+        throw new Error("Untrusted renderer origin")
+      }
+      return handler(
+        {
+          senderFrame: { url: event.senderFrame.url },
+          isMainFrame: event.senderFrame === event.sender.mainFrame,
+        },
+        payload,
+      )
     })
   },
 }

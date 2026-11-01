@@ -5,7 +5,7 @@ import { createChatViewPolicy } from "./chat-view"
 import { createCrashSender, installCrashReporting } from "./crash-reporter"
 import { createUpdateController } from "./updater"
 import { electronIpcRegistry, electronWorkspacePicker, nodeWorkspaceFileSystem } from "./electron-adapters"
-import { registerDesktopIpc } from "./ipc"
+import { registerDesktopIpc, trustedRendererIdentifier } from "./ipc"
 import { installWindowPolicy, hardenedWindowPreferences } from "./window-policy"
 import { WorkspaceService } from "./workspace"
 
@@ -151,7 +151,7 @@ const boot = async () => {
   registerDesktopIpc(electronIpcRegistry, {
     workspace,
     agent,
-    allowedRendererOrigins: new Set([new URL(rendererUrl).origin === "null" ? "file://" : new URL(rendererUrl).origin]),
+    allowedRendererOrigins: new Set([trustedRendererIdentifier(rendererUrl)]),
   })
   createWindow()
   try {

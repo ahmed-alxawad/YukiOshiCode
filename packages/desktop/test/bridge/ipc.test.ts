@@ -37,6 +37,40 @@ describe("desktop IPC", () => {
     await expect(handler({ senderFrame: { url: "https://attacker.example/app" } })).rejects.toThrow("Untrusted")
   })
 
+  test("pins file:// renderers to the exact bundled document and rejects subframes or wildcard file://", async () => {
+    const registry = new Registry()
+    const workspace = new WorkspaceService(
+      { realpath: async (value) => value, readdir: async () => [], readFile: async () => "content" },
+      { pickDirectory: async () => "/work/project" },
+    )
+    const agent = new ManagedAgent(
+      "/agent",
+      async () => ({ ok: true, status: 200, json: async () => [] }),
+      async () => ({
+        baseUrl: "http://127.0.0.1:4096/",
+        token: "A".repeat(43),
+        dispose() {},
+      }),
+    )
+    registerDesktopIpc(registry, {
+      workspace,
+      agent,
+      allowedRendererOrigins: new Set(["file:///opt/kothora/renderer/index.html", "file://"]),
+    })
+    const handler = registry.handlers.get(desktopChannels.selectWorkspace)!
+
+    await expect(
+      handler({ senderFrame: { url: "file:///opt/kothora/renderer/index.html#code" } }),
+    ).resolves.toEqual({ name: "project", path: "/work/project" })
+    await expect(handler({ senderFrame: { url: "file:///tmp/evil.html" } })).rejects.toThrow("Untrusted")
+    await expect(
+      handler({
+        senderFrame: { url: "file:///opt/kothora/renderer/index.html" },
+        isMainFrame: false,
+      } as never),
+    ).rejects.toThrow("Untrusted")
+  })
+
   test("validates payloads before dispatch", async () => {
     const registry = setup()
     const event = { senderFrame: { url: "app://kothora/index.html" } }
