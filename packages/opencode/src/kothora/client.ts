@@ -73,6 +73,10 @@ export class KothoraClient {
     return this.unsaved ? Promise.resolve(this.unsaved) : this.options.store.load()
   }
 
+  get baseUrl() {
+    return this.options.baseUrl
+  }
+
   url(path: string) {
     return this.options.baseUrl + path
   }

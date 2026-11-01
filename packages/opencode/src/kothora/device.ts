@@ -20,6 +20,76 @@ export function platformName(platform: NodeJS.Platform = process.platform): Plat
   return "other"
 }
 
+const CONTROL_CHAR_CLASS = /[\x00-\x1f\x7f-\x9f]/
+const CONTROL_CHARS_GLOBAL = /[\x00-\x1f\x7f-\x9f]+/g
+
+export function sanitizeForTerminal(value: string) {
+  return String(value).replace(CONTROL_CHARS_GLOBAL, "")
+}
+
+function isLoopbackHost(hostname: string) {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]" || hostname === "::1"
+}
+
+function sameKothoraDomain(candidateHost: string, apiHost: string) {
+  if (candidateHost === apiHost) return true
+  const root = apiHost.startsWith("api.") ? apiHost.slice(4) : apiHost
+  const labels = root.split(".")
+  if (labels.length < 2) return false
+  if (labels.length === 2 && labels[1].length === 2 && /^(co|com|org|net|gov|edu|ac)$/.test(labels[0])) return false
+  const candidateRoot = candidateHost.replace(/^(app|www)\./, "")
+  return candidateRoot === root
+}
+
+function invalidAuthorizationResponse(): never {
+  throw new KothoraError({
+    code: "invalid_authorization_response",
+    status: 502,
+    message: "Kothora returned an invalid sign-in address.",
+  })
+}
+
+export function validateDeviceAuthorization(auth: DeviceAuthorization, baseUrl: string): DeviceAuthorization {
+  if (!auth || typeof auth !== "object") invalidAuthorizationResponse()
+  for (const field of [auth.device_code, auth.user_code, auth.verification_uri, auth.verification_uri_complete]) {
+    if (typeof field !== "string" || field.length === 0 || CONTROL_CHAR_CLASS.test(field)) {
+      invalidAuthorizationResponse()
+    }
+  }
+  if (!Number.isFinite(auth.expires_in) || auth.expires_in <= 0 || !Number.isFinite(auth.interval) || auth.interval < 0) {
+    invalidAuthorizationResponse()
+  }
+
+  let base: URL
+  let uri: URL
+  let complete: URL
+  try {
+    base = new URL(baseUrl)
+    uri = new URL(auth.verification_uri)
+    complete = new URL(auth.verification_uri_complete)
+  } catch {
+    invalidAuthorizationResponse()
+  }
+
+  if (uri.username || uri.password || complete.username || complete.password || uri.origin !== complete.origin) {
+    invalidAuthorizationResponse()
+  }
+
+  if (base.protocol === "https:") {
+    if (uri.protocol !== "https:" || !sameKothoraDomain(uri.hostname, base.hostname)) {
+      invalidAuthorizationResponse()
+    }
+  } else if (base.protocol === "http:" && isLoopbackHost(base.hostname)) {
+    if ((uri.protocol !== "http:" && uri.protocol !== "https:") || !isLoopbackHost(uri.hostname)) {
+      invalidAuthorizationResponse()
+    }
+  } else {
+    invalidAuthorizationResponse()
+  }
+
+  return auth
+}
+
 const post = (client: KothoraClient, path: string, body: unknown) =>
   client.send(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
 
@@ -29,7 +99,7 @@ export async function authorize(client: KothoraClient, input: { clientName: stri
     client_name: input.clientName,
     platform: input.platform ?? platformName(),
   })
-  return (await res.json()) as DeviceAuthorization
+  return validateDeviceAuthorization((await res.json()) as DeviceAuthorization, client.baseUrl)
 }
 
 export interface PollOptions {
@@ -94,7 +164,7 @@ export async function pollForTokens(
         continue
       case "device_limit":
         // The request stays valid: polling works once a device is signed out.
-        if (!noticed) options.onNotice?.(error.message)
+        if (!noticed) options.onNotice?.(sanitizeForTerminal(error.message))
         noticed = true
         continue
       case "rate_limited":
@@ -139,8 +209,8 @@ export async function listModels(client: KothoraClient): Promise<ModelEntry[]> {
 /** What `kothora whoami` prints. */
 export function formatMe(info: Me) {
   return [
-    `Account: ${info.account.name} <${info.account.email}>`,
-    `Plan: ${info.plan}`,
-    `Credits: ${info.credits.balance} of ${info.credits.allowance} left, renews on ${info.credits.renews_on}`,
+    `Account: ${sanitizeForTerminal(info.account.name)} <${sanitizeForTerminal(info.account.email)}>`,
+    `Plan: ${sanitizeForTerminal(info.plan)}`,
+    `Credits: ${sanitizeForTerminal(info.credits.balance)} of ${info.credits.allowance} left, renews on ${sanitizeForTerminal(info.credits.renews_on)}`,
   ].join("\n")
 }

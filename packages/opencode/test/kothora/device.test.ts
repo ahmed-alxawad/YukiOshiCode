@@ -145,4 +145,59 @@ describe("kothora device flow", () => {
     )
     expect((await listModels(client)).map((m) => m.name)).toEqual(["Fast", "Balanced", "Expert"])
   })
+
+  test("authorize rejects untrusted hosts, protocol downgrades, embedded credentials, and control characters", async () => {
+    const badPayloads = [
+      { ...authorization, verification_uri_complete: "https://evil.example/code/activate?user_code=ABCD-EFGH" },
+      {
+        ...authorization,
+        verification_uri: "http://api.test.invalid/code/activate",
+        verification_uri_complete: "http://api.test.invalid/code/activate?user_code=ABCD-EFGH",
+      },
+      {
+        ...authorization,
+        verification_uri_complete: "https://user:pass@api.test.invalid/code/activate?user_code=ABCD-EFGH",
+      },
+      { ...authorization, user_code: "ABCD\x1b]52;c;cHduZWQ=\x07-EFGH" },
+      { ...authorization, verification_uri_complete: `${BASE}/code/activate?user_code=ABCD\x1b[2J` },
+    ]
+
+    for (const payload of badPayloads) {
+      const server = fakeServer({ "/code/device/authorize": () => json(payload) })
+      const client = new KothoraClient({ baseUrl: BASE, store: memoryTokenStore(), fetch: server.fetch })
+      const error = await authorize(client, { clientName: "Kothora Code", platform: "linux" }).catch((e) => e)
+      expect(error).toBeInstanceOf(KothoraError)
+      expect(error.code).toBe("invalid_authorization_response")
+    }
+
+    const companionServer = fakeServer({
+      "/code/device/authorize": () =>
+        json({
+          ...authorization,
+          verification_uri: "https://test.invalid/code/activate",
+          verification_uri_complete: "https://test.invalid/code/activate?user_code=ABCD-EFGH",
+        }),
+    })
+    const companionClient = new KothoraClient({ baseUrl: BASE, store: memoryTokenStore(), fetch: companionServer.fetch })
+    const ok = await authorize(companionClient, { clientName: "Kothora Code", platform: "linux" })
+    expect(ok.verification_uri).toBe("https://test.invalid/code/activate")
+  })
+
+  test("formatMe and device_limit notices strip terminal escape and control characters", async () => {
+    const rendered = formatMe({
+      account: {
+        id: "a",
+        email: "ada\x1b]52;c;cHduZWQ=\x07@example.com",
+        name: "Ada\r\nFake line: approved",
+      },
+      plan: "tester\x1b[31m",
+      credits: { balance: "41.250", allowance: 100, renews_on: "2026-12-01\x07" },
+      device_id: "d",
+    })
+    expect(rendered).not.toContain("\x1b")
+    expect(rendered).not.toContain("\x07")
+    expect(rendered).toBe(
+      "Account: AdaFake line: approved <ada]52;c;cHduZWQ=@example.com>\nPlan: tester[31m\nCredits: 41.250 of 100 left, renews on 2026-12-01",
+    )
+  })
 })
