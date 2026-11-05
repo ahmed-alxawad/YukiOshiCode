@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { KothoraClient } from "../../src/kothora/client"
-import { authorize, formatMe, listModels, me, pollForTokens, platformName } from "../../src/kothora/device"
+import { authorize, formatMe, listModels, me, pollForTokens, platformName, sanitizeForTerminal, validateDeviceAuthorization } from "../../src/kothora/device"
 import { KothoraError } from "../../src/kothora/errors"
 import { memoryTokenStore } from "../../src/kothora/tokens"
 import { apiError, fakeServer, json, networkDown, tokenOut } from "./fake-server"
@@ -179,7 +179,7 @@ describe("kothora device flow", () => {
         }),
     })
     const companionClient = new KothoraClient({ baseUrl: BASE, store: memoryTokenStore(), fetch: companionServer.fetch })
-    const ok = await authorize(companionClient, { clientName: "Kothora Code", platform: "linux" })
+    const ok = await authorize(companionClient, { clientName: "Kothora Code", platform: "linux", webUrl: "https://test.invalid" })
     expect(ok.verification_uri).toBe("https://test.invalid/code/activate")
   })
 
@@ -197,7 +197,55 @@ describe("kothora device flow", () => {
     expect(rendered).not.toContain("\x1b")
     expect(rendered).not.toContain("\x07")
     expect(rendered).toBe(
-      "Account: AdaFake line: approved <ada]52;c;cHduZWQ=@example.com>\nPlan: tester[31m\nCredits: 41.250 of 100 left, renews on 2026-12-01",
+      "Account: AdaFake line: approved <ada@example.com>\nPlan: tester\nCredits: 41.250 of 100 left, renews on 2026-12-01",
     )
+  })
+
+  test("verification host must be the configured API or web host, with the same port", () => {
+    const mk = (u: string) => ({ ...authorization, verification_uri: u, verification_uri_complete: u + "?user_code=A" })
+    const web = "https://app.test.invalid"
+    for (const bad of [
+      "https://api.test.invalid:8443/x",
+      "https://test.invalid/x", // no longer derived by stripping api.
+      "https://app.test.invalid:444/x",
+      "https://evil.example/x",
+      "https://app.test.invalid.evil.example/x",
+      "javascript:alert(1)",
+      "data:text/html,hi",
+      "file:///etc/passwd",
+    ]) {
+      expect(() => validateDeviceAuthorization(mk(bad), BASE, web)).toThrow(KothoraError)
+    }
+    expect(validateDeviceAuthorization(mk("https://app.test.invalid/x"), BASE, web).verification_uri).toContain("app.test")
+    expect(validateDeviceAuthorization(mk("https://api.test.invalid/x"), BASE, web)).toBeTruthy()
+    expect(() => validateDeviceAuthorization(mk("https://app.test.invalid/x"), BASE)).toThrow(KothoraError)
+  })
+
+  test("sanitizeForTerminal strips bidi, line separators, zero-width, OSC-52 and CSI", () => {
+    const dirty = "a\u202Eb\u2066c\u2069d\u2028e\u2029f\u200Bg\u200Dh\uFEFFi\x1b]52;c;QUJD\x07j\x1b[2Jk\x85l"
+    expect(sanitizeForTerminal(dirty)).toBe("abcdefghijkl")
+  })
+
+  test("server error messages never reach the terminal with control characters", async () => {
+    const evil = "\u001b]52;c;QUJD\u0007hi\u202Eevil"
+    const server = fakeServer({ "/code/device/authorize": () => json({ error: { code: "x", message: evil } }, 400) })
+    const client = new KothoraClient({ baseUrl: BASE, store: memoryTokenStore(), fetch: server.fetch })
+    const error = await authorize(client, { clientName: "Kothora Code", platform: "linux" }).catch((e) => e)
+    expect(error).toBeInstanceOf(KothoraError)
+    expect(error.userMessage).toBe("hievil")
+    expect(error.message).not.toMatch(/[\u0000-\u001f\u202e]/)
+    const direct = new KothoraError({ code: "a\x1b[2J", status: 400, message: "m\x1b[2J", requestId: "r\u202E" })
+    expect(direct.code).toBe("a")
+    expect(direct.requestId).toBe("r")
+  })
+
+  test("formatMe sanitizes a non-numeric allowance", () => {
+    const out = formatMe({
+      account: { id: "a", email: "e@x", name: "n" },
+      plan: "p",
+      credits: { balance: "1", allowance: "1\u001b[2J" as unknown as number, renews_on: "d" },
+      device_id: "d",
+    })
+    expect(out).not.toContain("\u001b")
   })
 })

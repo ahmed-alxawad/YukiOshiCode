@@ -18,7 +18,7 @@ const run = <A>(fn: () => Promise<A>) =>
     catch: (error) => error,
   }).pipe(
     Effect.catch((error) =>
-      fail(error instanceof KothoraError ? error.userMessage : error instanceof Error ? error.message : String(error)),
+      fail(error instanceof KothoraError ? error.userMessage : sanitizeForTerminal(error instanceof Error ? error.message : String(error))),
     ),
   )
 

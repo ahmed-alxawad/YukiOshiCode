@@ -8,3 +8,9 @@ export function apiUrl(env: Record<string, string | undefined> = process.env) {
 }
 
 export const PROVIDER_ID = "kothora"
+
+/** The web host that serves the sign-in page, when it is not the API host (for example https://app.kothora.com). */
+export function webUrl(env: Record<string, string | undefined> = process.env) {
+  const value = env["KOTHORA_WEB_URL"]?.trim()
+  return value ? value.replace(/\/+$/, "") : undefined
+}

@@ -7,6 +7,17 @@ export interface ApiErrorBody {
   request_id?: string
 }
 
+// Whole escape sequences first (OSC incl. OSC-52 up to BEL/ST, then CSI and other ESC forms), then any
+// remaining C0/C1 control, bidi override/isolate, line/paragraph separator and zero-width character.
+const ESCAPE_SEQUENCES =
+  /(?:\x1b\]|\x9d)[^\x07\x1b\x9c]*(?:\x07|\x1b\\|\x9c)?|(?:\x1b\[|\x9b)[\x30-\x3f]*[\x20-\x2f]*[\x40-\x7e]?|\x1b[PX^_][^\x1b\x9c]*(?:\x1b\\|\x9c)?|\x1b[\x20-\x7e]?/g
+const UNSAFE_CHARS = /[\x00-\x1f\x7f-\x9f\u200b-\u200f\u2028-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/g
+
+/** Remove everything from server-supplied text that could act on the terminal or disguise what it says. */
+export function sanitizeForTerminal(value: unknown) {
+  return String(value).replace(ESCAPE_SEQUENCES, "").replace(UNSAFE_CHARS, "")
+}
+
 /** A failed call to the Kothora API. `userMessage` is safe to show as is; it never holds a stack trace. */
 export class KothoraError extends Error {
   readonly code: string
@@ -15,11 +26,11 @@ export class KothoraError extends Error {
   readonly retryAfterSeconds?: number
 
   constructor(input: { code: string; status: number; message: string; requestId?: string; retryAfterSeconds?: number }) {
-    super(input.message)
+    super(sanitizeForTerminal(input.message))
     this.name = "KothoraError"
-    this.code = input.code
+    this.code = sanitizeForTerminal(input.code)
     this.status = input.status
-    this.requestId = input.requestId
+    this.requestId = input.requestId === undefined ? undefined : sanitizeForTerminal(input.requestId)
     this.retryAfterSeconds = input.retryAfterSeconds
   }
 

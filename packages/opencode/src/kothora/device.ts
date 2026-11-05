@@ -1,4 +1,5 @@
-import { errorFromResponse, KothoraError, messageFor } from "./errors"
+import { errorFromResponse, KothoraError, messageFor, sanitizeForTerminal } from "./errors"
+import { webUrl as configuredWebUrl } from "./config"
 import { backoff, KothoraClient, toTokens, type TokenResponse } from "./client"
 import type { Tokens } from "./tokens"
 
@@ -21,24 +22,22 @@ export function platformName(platform: NodeJS.Platform = process.platform): Plat
 }
 
 const CONTROL_CHAR_CLASS = /[\x00-\x1f\x7f-\x9f]/
-const CONTROL_CHARS_GLOBAL = /[\x00-\x1f\x7f-\x9f]+/g
 
-export function sanitizeForTerminal(value: string) {
-  return String(value).replace(CONTROL_CHARS_GLOBAL, "")
-}
+export { sanitizeForTerminal }
 
 function isLoopbackHost(hostname: string) {
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]" || hostname === "::1"
 }
 
-function sameKothoraDomain(candidateHost: string, apiHost: string) {
-  if (candidateHost === apiHost) return true
-  const root = apiHost.startsWith("api.") ? apiHost.slice(4) : apiHost
-  const labels = root.split(".")
-  if (labels.length < 2) return false
-  if (labels.length === 2 && labels[1].length === 2 && /^(co|com|org|net|gov|edu|ac)$/.test(labels[0])) return false
-  const candidateRoot = candidateHost.replace(/^(app|www)\./, "")
-  return candidateRoot === root
+/** Hosts (with port) the sign-in page may live on: the API host and the configured web host, nothing derived. */
+function allowedHosts(base: URL, web?: string) {
+  const hosts = new Set([base.host])
+  if (web) {
+    try {
+      hosts.add(new URL(web).host)
+    } catch {}
+  }
+  return hosts
 }
 
 function invalidAuthorizationResponse(): never {
@@ -49,7 +48,7 @@ function invalidAuthorizationResponse(): never {
   })
 }
 
-export function validateDeviceAuthorization(auth: DeviceAuthorization, baseUrl: string): DeviceAuthorization {
+export function validateDeviceAuthorization(auth: DeviceAuthorization, baseUrl: string, webUrl?: string): DeviceAuthorization {
   if (!auth || typeof auth !== "object") invalidAuthorizationResponse()
   for (const field of [auth.device_code, auth.user_code, auth.verification_uri, auth.verification_uri_complete]) {
     if (typeof field !== "string" || field.length === 0 || CONTROL_CHAR_CLASS.test(field)) {
@@ -76,7 +75,7 @@ export function validateDeviceAuthorization(auth: DeviceAuthorization, baseUrl: 
   }
 
   if (base.protocol === "https:") {
-    if (uri.protocol !== "https:" || !sameKothoraDomain(uri.hostname, base.hostname)) {
+    if (uri.protocol !== "https:" || !allowedHosts(base, webUrl).has(uri.host)) {
       invalidAuthorizationResponse()
     }
   } else if (base.protocol === "http:" && isLoopbackHost(base.hostname)) {
@@ -94,12 +93,12 @@ const post = (client: KothoraClient, path: string, body: unknown) =>
   client.send(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
 
 /** Step 1: ask for a user code and the address where the user enters it. */
-export async function authorize(client: KothoraClient, input: { clientName: string; platform?: Platform }) {
+export async function authorize(client: KothoraClient, input: { clientName: string; platform?: Platform; webUrl?: string }) {
   const res = await post(client, "/code/device/authorize", {
     client_name: input.clientName,
     platform: input.platform ?? platformName(),
   })
-  return validateDeviceAuthorization((await res.json()) as DeviceAuthorization, client.baseUrl)
+  return validateDeviceAuthorization((await res.json()) as DeviceAuthorization, client.baseUrl, input.webUrl ?? configuredWebUrl())
 }
 
 export interface PollOptions {
@@ -211,6 +210,6 @@ export function formatMe(info: Me) {
   return [
     `Account: ${sanitizeForTerminal(info.account.name)} <${sanitizeForTerminal(info.account.email)}>`,
     `Plan: ${sanitizeForTerminal(info.plan)}`,
-    `Credits: ${sanitizeForTerminal(info.credits.balance)} of ${info.credits.allowance} left, renews on ${sanitizeForTerminal(info.credits.renews_on)}`,
+    `Credits: ${sanitizeForTerminal(info.credits.balance)} of ${sanitizeForTerminal(info.credits.allowance)} left, renews on ${sanitizeForTerminal(info.credits.renews_on)}`,
   ].join("\n")
 }
