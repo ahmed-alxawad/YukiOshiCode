@@ -9,6 +9,7 @@ import { EventV2 } from "./event"
 import { Location } from "./location"
 import { PtyID } from "./pty/schema"
 import { Shell } from "./shell"
+import { childEnv } from "./util/child-env"
 import { lazy } from "./util/lazy"
 
 const BUFFER_LIMIT = 1024 * 1024 * 2
@@ -168,8 +169,7 @@ const layer = Layer.effect(
       const args = Shell.login(command) ? [...(input.args ?? []), "-l"] : [...(input.args ?? [])]
       const cwd = input.cwd || location.directory
       const env = {
-        ...process.env,
-        ...input.env,
+        ...childEnv(input.env),
         TERM: "xterm-256color",
         YUKIOSHI_TERMINAL: "1",
       } as Record<string, string>

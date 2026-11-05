@@ -1,3 +1,4 @@
+import { childEnv } from "@yukioshi/core/util/child-env"
 import { Effect, Schema, Stream } from "effect"
 import os from "os"
 import { createWriteStream } from "node:fs"
@@ -489,10 +490,7 @@ export const ShellTool = Tool.define(
         { cwd, sessionID: ctx.sessionID, callID: ctx.callID },
         { env: {} },
       )
-      return {
-        ...process.env,
-        ...extra.env,
-      }
+      return childEnv(extra.env)
     })
 
     const run = Effect.fn("ShellTool.run")(function* (

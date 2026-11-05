@@ -65,7 +65,7 @@ export const PtyApi = HttpApi.make("pty")
           query: WorkspaceRoutingQuery,
           payload: Pty.CreateInput,
           success: described(Pty.Info, "Created session"),
-          error: HttpApiError.BadRequest,
+          error: [HttpApiError.BadRequest, HttpApiError.Forbidden],
         }).annotateMerge(
           OpenApi.annotations({
             identifier: "pty.create",

@@ -21,6 +21,8 @@ import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { HttpApiBuilder } from "effect/unstable/httpapi"
 import * as Socket from "effect/unstable/socket/Socket"
 import { InstanceHttpApi } from "../api"
+import { HttpApiError } from "effect/unstable/httpapi"
+import { confineDirectory } from "../middleware/workspace-routing"
 import * as ApiError from "../errors"
 import { CursorQuery, PtyConnectApi } from "../groups/pty"
 import { WebSocketTracker } from "../websocket-tracker"
@@ -68,6 +70,10 @@ export const ptyHandlers = HttpApiBuilder.group(InstanceHttpApi, "pty", (handler
 
     const create = Effect.fn("PtyHttpApi.create")(function* (ctx: { payload: typeof Pty.CreateInput.Type }) {
       const cwd = ctx.payload.cwd || (yield* InstanceState.context).directory
+      // A body-level cwd is confined the same way as the request workspace (desktop mode only).
+      if (ctx.payload.cwd && (yield* Effect.promise(() => confineDirectory(cwd))) === undefined) {
+        return yield* new HttpApiError.Forbidden({})
+      }
       const shell = yield* plugin.trigger("shell.env", { cwd }, { env: {} as Record<string, string> })
       return yield* pty(
         Pty.Service.use((service) =>

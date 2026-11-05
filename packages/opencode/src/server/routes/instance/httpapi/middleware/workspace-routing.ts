@@ -98,22 +98,27 @@ function desktopForbidden(message: string): HttpServerResponse.HttpServerRespons
   return HttpServerResponse.jsonUnsafe({ message }, { status: 403 })
 }
 
+/** Canonical desktop workspace when `directory` is exactly it (symlinks resolved on both sides), else undefined. */
+export async function confineDirectory(directory: string): Promise<string | undefined> {
+  const configured = process.env.KOTHORA_DESKTOP_WORKSPACE
+  if (configured === undefined) return directory
+  if (!configured || !path.isAbsolute(configured)) return undefined
+  try {
+    const [workspace, requested] = await Promise.all([fs.realpath(configured), fs.realpath(directory)])
+    return workspace === requested ? workspace : undefined
+  } catch {
+    return undefined
+  }
+}
+
 const confineDesktopWorkspace = Effect.fn("WorkspaceRouting.confineDesktopWorkspace")(function* (
   directory: string,
 ) {
-  const configured = process.env.KOTHORA_DESKTOP_WORKSPACE
-  if (configured === undefined) return { ok: true as const, directory }
-  if (!configured || !path.isAbsolute(configured)) {
-    return { ok: false as const, response: desktopForbidden("Desktop workspace is not configured") }
-  }
-  const resolved = yield* Effect.tryPromise({
-    try: () => Promise.all([fs.realpath(configured), fs.realpath(directory)]),
-    catch: () => undefined,
-  }).pipe(Effect.catch(() => Effect.succeed(undefined)))
-  if (!resolved || resolved[0] !== resolved[1]) {
+  const confined = yield* Effect.promise(() => confineDirectory(directory))
+  if (confined === undefined) {
     return { ok: false as const, response: desktopForbidden("Request is outside the desktop workspace") }
   }
-  return { ok: true as const, directory: resolved[0] }
+  return { ok: true as const, directory: confined }
 })
 
 function shouldStayOnControlPlane(request: HttpServerRequest.HttpServerRequest, url: URL): boolean {
@@ -231,7 +236,12 @@ function routeWorkspace<E>(
           { status: 400 },
         ),
       ),
-    MissingWorkspace: ({ workspaceID }) => Effect.succeed(missingWorkspaceResponse(workspaceID)),
+    MissingWorkspace: ({ workspaceID }) =>
+      Effect.succeed(
+        process.env.KOTHORA_DESKTOP_WORKSPACE !== undefined
+          ? desktopForbidden("Request is outside the desktop workspace")
+          : missingWorkspaceResponse(workspaceID),
+      ),
     Remote: ({ request, workspace, target, url }) =>
       process.env.KOTHORA_DESKTOP_WORKSPACE !== undefined
         ? Effect.succeed(desktopForbidden("Request is outside the desktop workspace"))

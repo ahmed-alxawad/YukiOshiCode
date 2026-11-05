@@ -1,3 +1,4 @@
+import { childEnv } from "@yukioshi/core/util/child-env"
 import fs from "fs/promises"
 import path from "path"
 import matter from "gray-matter"
@@ -115,7 +116,7 @@ async function git(args: string[], cwd: string) {
     stderr: "pipe",
     stdin: "ignore",
     env: {
-      ...process.env,
+      ...childEnv(),
       GIT_ALLOW_PROTOCOL: "file:git:http:https:ssh",
       GIT_TERMINAL_PROMPT: "0",
     },

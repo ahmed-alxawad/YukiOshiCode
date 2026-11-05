@@ -53,4 +53,32 @@ describe("desktop API bootstrap", () => {
     expect(env.YUKIOSHI_SERVER_USERNAME).toBeUndefined()
     expect(env.KOTHORA_DESKTOP_WORKSPACE).toBe("/tmp/workspace")
   })
+
+  test("child processes get an explicit env without the launch token, even while it is in process.env", async () => {
+    const saved = { ...process.env }
+    process.env.KOTHORA_DESKTOP_TOKEN = token
+    process.env.YUKIOSHI_SERVER_PASSWORD = token
+    try {
+      const { Process } = await import("../../src/util/process")
+      const read = async (opts: Parameters<typeof Process.run>[1]) =>
+        (
+          await Process.run(
+            [process.execPath, "-e", "console.log(JSON.stringify([process.env.KOTHORA_DESKTOP_TOKEN, process.env.YUKIOSHI_SERVER_PASSWORD, process.env.KEEP_ME]))"],
+            { ...opts, nothrow: true },
+          )
+        ).stdout.toString()
+      for (const opts of [{}, { env: { KEEP_ME: "1" } }, { env: { KOTHORA_DESKTOP_TOKEN: token } }]) {
+        expect(await read(opts)).not.toContain(token)
+      }
+      expect(await read({ env: { KEEP_ME: "1" } })).toContain('"1"')
+      const { childEnv } = await import("@yukioshi/core/util/child-env")
+      const env = childEnv({ KEEP_ME: "1" })
+      expect(env.KEEP_ME).toBe("1")
+      expect(env.PATH).toBe(process.env.PATH ?? "")
+      expect(JSON.stringify(env)).not.toContain(token)
+    } finally {
+      for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k]
+      Object.assign(process.env, saved)
+    }
+  })
 })
