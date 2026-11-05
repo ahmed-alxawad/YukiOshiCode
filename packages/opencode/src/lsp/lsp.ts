@@ -1,3 +1,4 @@
+import { childEnv } from "@yukioshi/core/util/child-env"
 import { LayerNode } from "@yukioshi/core/effect/layer-node"
 import { FSUtil } from "@yukioshi/core/fs-util"
 import { EventV2Bridge } from "@/event-v2-bridge"
@@ -187,7 +188,7 @@ const layer = Layer.effect(
                 spawn: async (root) => ({
                   process: lspspawn(item.command[0], item.command.slice(1), {
                     cwd: root,
-                    env: { ...process.env, ...item.env },
+                    env: { ...childEnv(), ...item.env },
                   }),
                   initialization: item.initialization,
                 }),

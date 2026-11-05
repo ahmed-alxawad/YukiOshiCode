@@ -1,3 +1,4 @@
+import { childEnv } from "@yukioshi/core/util/child-env"
 import fs from "fs/promises"
 import { existsSync } from "fs"
 import path from "path"
@@ -28,7 +29,7 @@ async function git(args: string[], cwd: string) {
     stderr: "pipe",
     stdin: "ignore",
     env: {
-      ...process.env,
+      ...childEnv(),
       // No scripts from the repository, no helper transports like ext::, no prompts.
       GIT_ALLOW_PROTOCOL: "file:git:http:https:ssh",
       GIT_TERMINAL_PROMPT: "0",

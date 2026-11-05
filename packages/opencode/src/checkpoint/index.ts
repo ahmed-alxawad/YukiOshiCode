@@ -1,3 +1,4 @@
+import { childEnv } from "@yukioshi/core/util/child-env"
 import { LayerNode } from "@yukioshi/core/effect/layer-node"
 import type { ConfigCheckpointsV1 } from "@yukioshi/core/v1/config/checkpoints"
 import { Cause, Context, Effect, Layer } from "effect"
@@ -34,7 +35,7 @@ const MAX_OUTPUT = 1024 * 1024 * 1024
 function git(cwd: string, args: string[], env?: Record<string, string>, input?: string): GitResult {
   const result = spawnSync("git", [...SAFE_CONFIG, ...args], {
     cwd,
-    env: { ...process.env, ...env },
+    env: { ...childEnv(), ...env },
     input,
     encoding: "utf8",
     maxBuffer: MAX_OUTPUT,
@@ -47,7 +48,7 @@ function git(cwd: string, args: string[], env?: Record<string, string>, input?: 
 function tryGit(cwd: string, args: string[], env?: Record<string, string>) {
   const result = spawnSync("git", [...SAFE_CONFIG, ...args], {
     cwd,
-    env: { ...process.env, ...env },
+    env: { ...childEnv(), ...env },
     encoding: "utf8",
     maxBuffer: MAX_OUTPUT,
   })

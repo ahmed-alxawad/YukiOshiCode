@@ -12,6 +12,8 @@ import { Context, Data, Effect, Layer, Option, Schema } from "effect"
 import { HttpClient, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { HttpApiMiddleware } from "effect/unstable/httpapi"
 import * as Socket from "effect/unstable/socket/Socket"
+import fs from "node:fs/promises"
+import path from "node:path"
 import { InvalidRequestError } from "../errors"
 
 // Query fields this middleware reads from the URL. Spread into every
@@ -84,8 +86,40 @@ function selectedV2WorkspaceID(
 }
 
 function defaultDirectory(request: HttpServerRequest.HttpServerRequest, url: URL): string {
-  return url.searchParams.get("directory") || request.headers["x-yukioshi-directory"] || process.cwd()
+  return (
+    url.searchParams.get("directory") ||
+    request.headers["x-yukioshi-directory"] ||
+    process.env.KOTHORA_DESKTOP_WORKSPACE ||
+    process.cwd()
+  )
 }
+
+function desktopForbidden(message: string): HttpServerResponse.HttpServerResponse {
+  return HttpServerResponse.jsonUnsafe({ message }, { status: 403 })
+}
+
+/** Canonical desktop workspace when `directory` is exactly it (symlinks resolved on both sides), else undefined. */
+export async function confineDirectory(directory: string): Promise<string | undefined> {
+  const configured = process.env.KOTHORA_DESKTOP_WORKSPACE
+  if (configured === undefined) return directory
+  if (!configured || !path.isAbsolute(configured)) return undefined
+  try {
+    const [workspace, requested] = await Promise.all([fs.realpath(configured), fs.realpath(directory)])
+    return workspace === requested ? workspace : undefined
+  } catch {
+    return undefined
+  }
+}
+
+const confineDesktopWorkspace = Effect.fn("WorkspaceRouting.confineDesktopWorkspace")(function* (
+  directory: string,
+) {
+  const confined = yield* Effect.promise(() => confineDirectory(directory))
+  if (confined === undefined) {
+    return { ok: false as const, response: desktopForbidden("Request is outside the desktop workspace") }
+  }
+  return { ok: true as const, directory: confined }
+})
 
 function shouldStayOnControlPlane(request: HttpServerRequest.HttpServerRequest, url: URL): boolean {
   return isLocalWorkspaceRoute(request.method, url.pathname) || url.pathname.startsWith("/console")
@@ -202,10 +236,27 @@ function routeWorkspace<E>(
           { status: 400 },
         ),
       ),
-    MissingWorkspace: ({ workspaceID }) => Effect.succeed(missingWorkspaceResponse(workspaceID)),
-    Remote: ({ request, workspace, target, url }) => proxyRemote(client, request, workspace, target, url),
+    MissingWorkspace: ({ workspaceID }) =>
+      Effect.succeed(
+        process.env.KOTHORA_DESKTOP_WORKSPACE !== undefined
+          ? desktopForbidden("Request is outside the desktop workspace")
+          : missingWorkspaceResponse(workspaceID),
+      ),
+    Remote: ({ request, workspace, target, url }) =>
+      process.env.KOTHORA_DESKTOP_WORKSPACE !== undefined
+        ? Effect.succeed(desktopForbidden("Request is outside the desktop workspace"))
+        : proxyRemote(client, request, workspace, target, url),
     Local: ({ directory, workspaceID }) =>
-      effect.pipe(Effect.provideService(WorkspaceRouteContext, WorkspaceRouteContext.of({ directory, workspaceID }))),
+      Effect.gen(function* () {
+        const confined = yield* confineDesktopWorkspace(directory)
+        if (!confined.ok) return confined.response
+        return yield* effect.pipe(
+          Effect.provideService(
+            WorkspaceRouteContext,
+            WorkspaceRouteContext.of({ directory: confined.directory, workspaceID }),
+          ),
+        )
+      }),
   })
 }
 

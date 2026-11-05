@@ -1,3 +1,4 @@
+import { childEnv } from "@yukioshi/core/util/child-env"
 import { LayerNode } from "@yukioshi/core/effect/layer-node"
 import { Context, Effect, Layer } from "effect"
 import { serviceUse } from "@yukioshi/core/effect/service-use"
@@ -19,7 +20,7 @@ export const use = serviceUse(Service)
 const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
-    const state = yield* InstanceState.make<State>(Effect.fn("Env.state")(() => Effect.succeed({ ...process.env })))
+    const state = yield* InstanceState.make<State>(Effect.fn("Env.state")(() => Effect.succeed({ ...childEnv() })))
 
     const get = Effect.fn("Env.get")((key: string) => InstanceState.use(state, (env) => env[key]))
     const all = Effect.fn("Env.all")(() => InstanceState.get(state))
