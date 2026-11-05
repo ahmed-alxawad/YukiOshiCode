@@ -7,7 +7,7 @@ import { cmd } from "./cmd"
 import { UI } from "../ui"
 import { KothoraClient } from "../../kothora/client"
 import { apiUrl } from "../../kothora/config"
-import { authorize, formatMe, me, pollForTokens } from "../../kothora/device"
+import { authorize, formatMe, me, pollForTokens, sanitizeForTerminal } from "../../kothora/device"
 import { BYOK_REFUSED, KothoraError } from "../../kothora/errors"
 import { clientFor } from "../../kothora/provider"
 import { authTokenStore } from "../../kothora/tokens"
@@ -18,7 +18,7 @@ const run = <A>(fn: () => Promise<A>) =>
     catch: (error) => error,
   }).pipe(
     Effect.catch((error) =>
-      fail(error instanceof KothoraError ? error.userMessage : error instanceof Error ? error.message : String(error)),
+      fail(error instanceof KothoraError ? error.userMessage : sanitizeForTerminal(error instanceof Error ? error.message : String(error))),
     ),
   )
 
@@ -43,7 +43,7 @@ export const KothoraLoginCommand = effectCmd({
     )
     yield* run(() => store.save(tokens))
     const info = yield* run(() => me(clientFor(store)))
-    UI.println(UI.Style.TEXT_SUCCESS_BOLD + `Signed in as ${info.account.email}` + UI.Style.TEXT_NORMAL)
+    UI.println(UI.Style.TEXT_SUCCESS_BOLD + `Signed in as ${sanitizeForTerminal(info.account.email)}` + UI.Style.TEXT_NORMAL)
   }),
 })
 

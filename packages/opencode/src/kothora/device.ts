@@ -1,4 +1,5 @@
-import { errorFromResponse, KothoraError, messageFor } from "./errors"
+import { errorFromResponse, KothoraError, messageFor, sanitizeForTerminal } from "./errors"
+import { webUrl as configuredWebUrl } from "./config"
 import { backoff, KothoraClient, toTokens, type TokenResponse } from "./client"
 import type { Tokens } from "./tokens"
 
@@ -20,16 +21,84 @@ export function platformName(platform: NodeJS.Platform = process.platform): Plat
   return "other"
 }
 
+const CONTROL_CHAR_CLASS = /[\x00-\x1f\x7f-\x9f]/
+
+export { sanitizeForTerminal }
+
+function isLoopbackHost(hostname: string) {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]" || hostname === "::1"
+}
+
+/** Hosts (with port) the sign-in page may live on: the API host and the configured web host, nothing derived. */
+function allowedHosts(base: URL, web?: string) {
+  const hosts = new Set([base.host])
+  if (web) {
+    try {
+      hosts.add(new URL(web).host)
+    } catch {}
+  }
+  return hosts
+}
+
+function invalidAuthorizationResponse(): never {
+  throw new KothoraError({
+    code: "invalid_authorization_response",
+    status: 502,
+    message: "Kothora returned an invalid sign-in address.",
+  })
+}
+
+export function validateDeviceAuthorization(auth: DeviceAuthorization, baseUrl: string, webUrl?: string): DeviceAuthorization {
+  if (!auth || typeof auth !== "object") invalidAuthorizationResponse()
+  for (const field of [auth.device_code, auth.user_code, auth.verification_uri, auth.verification_uri_complete]) {
+    if (typeof field !== "string" || field.length === 0 || CONTROL_CHAR_CLASS.test(field)) {
+      invalidAuthorizationResponse()
+    }
+  }
+  if (!Number.isFinite(auth.expires_in) || auth.expires_in <= 0 || !Number.isFinite(auth.interval) || auth.interval < 0) {
+    invalidAuthorizationResponse()
+  }
+
+  let base: URL
+  let uri: URL
+  let complete: URL
+  try {
+    base = new URL(baseUrl)
+    uri = new URL(auth.verification_uri)
+    complete = new URL(auth.verification_uri_complete)
+  } catch {
+    invalidAuthorizationResponse()
+  }
+
+  if (uri.username || uri.password || complete.username || complete.password || uri.origin !== complete.origin) {
+    invalidAuthorizationResponse()
+  }
+
+  if (base.protocol === "https:") {
+    if (uri.protocol !== "https:" || !allowedHosts(base, webUrl).has(uri.host)) {
+      invalidAuthorizationResponse()
+    }
+  } else if (base.protocol === "http:" && isLoopbackHost(base.hostname)) {
+    if ((uri.protocol !== "http:" && uri.protocol !== "https:") || !isLoopbackHost(uri.hostname)) {
+      invalidAuthorizationResponse()
+    }
+  } else {
+    invalidAuthorizationResponse()
+  }
+
+  return auth
+}
+
 const post = (client: KothoraClient, path: string, body: unknown) =>
   client.send(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
 
 /** Step 1: ask for a user code and the address where the user enters it. */
-export async function authorize(client: KothoraClient, input: { clientName: string; platform?: Platform }) {
+export async function authorize(client: KothoraClient, input: { clientName: string; platform?: Platform; webUrl?: string }) {
   const res = await post(client, "/code/device/authorize", {
     client_name: input.clientName,
     platform: input.platform ?? platformName(),
   })
-  return (await res.json()) as DeviceAuthorization
+  return validateDeviceAuthorization((await res.json()) as DeviceAuthorization, client.baseUrl, input.webUrl ?? configuredWebUrl())
 }
 
 export interface PollOptions {
@@ -94,7 +163,7 @@ export async function pollForTokens(
         continue
       case "device_limit":
         // The request stays valid: polling works once a device is signed out.
-        if (!noticed) options.onNotice?.(error.message)
+        if (!noticed) options.onNotice?.(sanitizeForTerminal(error.message))
         noticed = true
         continue
       case "rate_limited":
@@ -139,8 +208,8 @@ export async function listModels(client: KothoraClient): Promise<ModelEntry[]> {
 /** What `kothora whoami` prints. */
 export function formatMe(info: Me) {
   return [
-    `Account: ${info.account.name} <${info.account.email}>`,
-    `Plan: ${info.plan}`,
-    `Credits: ${info.credits.balance} of ${info.credits.allowance} left, renews on ${info.credits.renews_on}`,
+    `Account: ${sanitizeForTerminal(info.account.name)} <${sanitizeForTerminal(info.account.email)}>`,
+    `Plan: ${sanitizeForTerminal(info.plan)}`,
+    `Credits: ${sanitizeForTerminal(info.credits.balance)} of ${sanitizeForTerminal(info.credits.allowance)} left, renews on ${sanitizeForTerminal(info.credits.renews_on)}`,
   ].join("\n")
 }
